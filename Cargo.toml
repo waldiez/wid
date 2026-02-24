@@ -10,6 +10,7 @@ homepage = "https://waldiez.github.io/wid"
 readme = "README.md"
 
 [lib]
+name = "wid"
 path = "rust/src/lib.rs"
 
 [[bin]]
