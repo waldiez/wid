@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WID Valid Test Cases",
+  "description": "WIDs that MUST be accepted by compliant implementations",
+  "test_cases": [
+    {
+      "id": "wid_minimal_w4_z0",
+      "wid": "20260212T091530.0000Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "timestamp": "2026-02-12T09:15:30Z",
+        "sequence": 0,
+        "padding": null
+      }
+    },
+    {
+      "id": "wid_seq42_w4_z0",
+      "wid": "20260212T091530.0042Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "timestamp": "2026-02-12T09:15:30Z",
+        "sequence": 42,
+        "padding": null
+      }
+    },
+    {
+      "id": "wid_with_padding_w4_z6",
+      "wid": "20260212T091530.0042Z-a3f91c",
+      "type": "wid",
+      "params": {"W": 4, "Z": 6},
+      "expected": {
+        "valid": true,
+        "timestamp": "2026-02-12T09:15:30Z",
+        "sequence": 42,
+        "padding": "a3f91c"
+      }
+    },
+    {
+      "id": "wid_with_padding_w4_z6_ms",
+      "wid": "20260212T091530123.0042Z-a3f91c",
+      "type": "wid",
+      "params": {"W": 4, "Z": 6, "time_unit": "ms"},
+      "expected": {
+        "valid": true,
+        "timestamp": "2026-02-12T09:15:30.123Z",
+        "sequence": 42,
+        "padding": "a3f91c"
+      }
+    },
+    {
+      "id": "wid_max_sequence_w4",
+      "wid": "20260212T091530.9999Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "sequence": 9999
+      }
+    },
+    {
+      "id": "wid_midnight_utc",
+      "wid": "20260101T000000.0000Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "timestamp": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "id": "wid_end_of_day",
+      "wid": "20261231T235959.0000Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "timestamp": "2026-12-31T23:59:59Z"
+      }
+    },
+    {
+      "id": "hlc_minimal_w4_z0",
+      "wid": "20260212T091530.0000Z-node01",
+      "type": "hlc",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "sequence": 0,
+        "node": "node01",
+        "padding": null
+      }
+    },
+    {
+      "id": "hlc_with_padding_w4_z6",
+      "wid": "20260212T091530.0042Z-node01-a3f91c",
+      "type": "hlc",
+      "params": {"W": 4, "Z": 6},
+      "expected": {
+        "valid": true,
+        "sequence": 42,
+        "node": "node01",
+        "padding": "a3f91c"
+      }
+    },
+    {
+      "id": "hlc_with_padding_w4_z6_ms",
+      "wid": "20260212T091530123.0042Z-node01-a3f91c",
+      "type": "hlc",
+      "params": {"W": 4, "Z": 6, "time_unit": "ms"},
+      "expected": {
+        "valid": true,
+        "sequence": 42,
+        "node": "node01",
+        "padding": "a3f91c"
+      }
+    },
+    {
+      "id": "hlc_underscore_node",
+      "wid": "20260212T091530.0000Z-my_node_01",
+      "type": "hlc",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "node": "my_node_01"
+      }
+    },
+    {
+      "id": "hlc_alphanumeric_node",
+      "wid": "20260212T091530.0000Z-Server42ABC",
+      "type": "hlc",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "node": "Server42ABC"
+      }
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "waldiez-wid"
+version = "1.0.0"
+requires-python = ">=3.10"
+license = "MIT"
+description = "WID — time-ordered, human-readable, collision-resistant identifier"
+readme = "README.md"
+
+[project.urls]
+Repository = "https://github.com/waldiez/wid"
+Homepage = "https://waldiez.github.io/wid"
+
+[project.scripts]
+wid = "wid.cli:main"
+hlc-wid = "wid.cli:main_hlc"
+
+[project.optional-dependencies]
+crypto = [
+    "cryptography",
+]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "ruff",
+    "mypy",
+    "coverage",
+]
+bench = [
+    "nanoid",
+    "ulid-py",
+    "ksuid",
+]
+sql = [
+    "aiosqlite",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["python/wid"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["F", "Q", "D", "I", "G", "C4", "C90", "E", "W", "B", "N", "B", "A"]
+# Allow fix for all enabled rules (when `--fix`) is provided.
+ignore = ["D102", "D203", "D211", "D212", "D213"]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.mypy]
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["cryptography", "cryptography.*", "aiosqlite"]
+ignore_missing_imports = true
+
+[tool.basedpyright]
+extraPaths = ["python"]
+reportCallIssue = false
+reportUnusedCallResult = false
+reportExplicitAny = false
+reportUnannotatedClassAttribute = false
+reportAny = false
+reportImplicitOverride = false
+
+[tool.pytest.ini_options]
+testpaths = ["python/tests"]

@@ -1,0 +1,30 @@
+[
+  {
+    "name": "valid-envelope-shape",
+    "expect": "valid",
+    "envelope": {
+      "version": "1.0",
+      "wid": "20260218T164700.0000Z-edge01-event",
+      "sig": "BASE64URL_PLACEHOLDER",
+      "key_id": "edge01-ed25519-v1",
+      "alg": "Ed25519",
+      "issued_at": "2026-02-18T16:47:00Z",
+      "expires_at": "2099-01-01T00:00:00Z",
+      "data_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  {
+    "name": "expired-envelope",
+    "expect": "invalid_expired",
+    "envelope": {
+      "version": "1.0",
+      "wid": "20260218T164700.0000Z-edge01-event",
+      "sig": "BASE64URL_PLACEHOLDER",
+      "key_id": "edge01-ed25519-v1",
+      "alg": "Ed25519",
+      "issued_at": "2020-01-01T00:00:00Z",
+      "expires_at": "2020-01-01T00:01:00Z",
+      "data_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  }
+]

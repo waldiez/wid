@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WID Stream Semantics Conformance",
+  "description": "Cross-language stream semantics for canonical mode",
+  "test_cases": [
+    {
+      "id": "stream_n0_infinite",
+      "canonical": {"A": "stream", "N": "0", "L": "0", "W": "4", "Z": "0", "T": "sec"},
+      "expect": {"mode": "infinite", "timeout_sec": 3, "min_lines": 1}
+    },
+    {
+      "id": "stream_n3_bounded",
+      "canonical": {"A": "stream", "N": "3", "L": "0", "W": "4", "Z": "0", "T": "sec"},
+      "expect": {"mode": "bounded", "lines": 3}
+    }
+  ]
+}

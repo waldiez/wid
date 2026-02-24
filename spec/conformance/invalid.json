@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WID Invalid Test Cases",
+  "description": "WIDs that MUST be rejected by compliant implementations",
+  "test_cases": [
+    {
+      "id": "not_a_wid",
+      "wid": "waldiez",
+      "type": "wid",
+      "reason": "Not a WID format at all"
+    },
+    {
+      "id": "missing_z_suffix",
+      "wid": "20260212T091530.0000",
+      "type": "wid",
+      "reason": "Missing 'Z' suffix"
+    },
+    {
+      "id": "lowercase_z",
+      "wid": "20260212T091530.0000z",
+      "type": "wid",
+      "reason": "Lowercase 'z' not allowed, must be uppercase 'Z'"
+    },
+    {
+      "id": "extended_iso_format",
+      "wid": "2026-02-12T09:15:30.0000Z",
+      "type": "wid",
+      "reason": "Extended ISO format with separators not allowed"
+    },
+    {
+      "id": "uppercase_hex_padding",
+      "wid": "20260212T091530.0000Z-A3F91C",
+      "type": "wid",
+      "reason": "Padding must be lowercase hex"
+    },
+    {
+      "id": "invalid_hex_in_padding",
+      "wid": "20260212T091530.0000Z-ghijkl",
+      "type": "wid",
+      "reason": "Invalid hex characters in padding"
+    },
+    {
+      "id": "short_timestamp",
+      "wid": "2026021T091530.0000Z",
+      "type": "wid",
+      "reason": "Timestamp too short (missing digit)"
+    },
+    {
+      "id": "ms_timestamp_too_short",
+      "wid": "20260212T09153012.0000Z",
+      "type": "wid",
+      "params": {"time_unit": "ms"},
+      "reason": "Millisecond timestamp must have exactly 3 ms digits"
+    },
+    {
+      "id": "ms_timestamp_too_long",
+      "wid": "20260212T0915301234.0000Z",
+      "type": "wid",
+      "params": {"time_unit": "ms"},
+      "reason": "Millisecond timestamp cannot have 4 ms digits"
+    },
+    {
+      "id": "missing_t_separator",
+      "wid": "20260212091530.0000Z",
+      "type": "wid",
+      "reason": "Missing 'T' separator between date and time"
+    },
+    {
+      "id": "missing_dot_separator",
+      "wid": "20260212T0915300000Z",
+      "type": "wid",
+      "reason": "Missing '.' separator before sequence"
+    },
+    {
+      "id": "invalid_month",
+      "wid": "20261312T091530.0000Z",
+      "type": "wid",
+      "reason": "Invalid month (13)"
+    },
+    {
+      "id": "invalid_day",
+      "wid": "20260232T091530.0000Z",
+      "type": "wid",
+      "reason": "Invalid day (32)"
+    },
+    {
+      "id": "invalid_hour",
+      "wid": "20260212T251530.0000Z",
+      "type": "wid",
+      "reason": "Invalid hour (25)"
+    },
+    {
+      "id": "invalid_minute",
+      "wid": "20260212T096130.0000Z",
+      "type": "wid",
+      "reason": "Invalid minute (61)"
+    },
+    {
+      "id": "invalid_second",
+      "wid": "20260212T091561.0000Z",
+      "type": "wid",
+      "reason": "Invalid second (61)"
+    },
+    {
+      "id": "uuid_format",
+      "wid": "550e8400-e29b-41d4-a716-446655440000",
+      "type": "wid",
+      "reason": "UUID format, not WID"
+    },
+    {
+      "id": "ulid_format",
+      "wid": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      "type": "wid",
+      "reason": "ULID format, not WID"
+    },
+    {
+      "id": "hlc_as_wid",
+      "wid": "20260212T091530.0000Z-node01",
+      "type": "wid",
+      "reason": "HLC-WID format should not validate as plain WID"
+    },
+    {
+      "id": "wid_as_hlc",
+      "wid": "20260212T091530.0000Z",
+      "type": "hlc",
+      "reason": "Plain WID should not validate as HLC-WID (missing node)"
+    },
+    {
+      "id": "hlc_hyphen_in_node",
+      "wid": "20260212T091530.0000Z-node-01",
+      "type": "hlc",
+      "reason": "Node cannot contain hyphens (ambiguous with padding)"
+    },
+    {
+      "id": "hlc_space_in_node",
+      "wid": "20260212T091530.0000Z-my node",
+      "type": "hlc",
+      "reason": "Node cannot contain spaces"
+    }
+  ]
+}

@@ -1,0 +1,185 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  capabilities:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+      - run: make capabilities-check
+
+  stream-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v6.2.0
+        with:
+          node-version: "22"
+      - uses: actions/setup-go@v6.2.0
+        with:
+          go-version: "1.22"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.0"
+      - run: make stream-conformance
+
+  hardening-spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v6.2.0
+        with:
+          node-version: "22"
+      - run: python3 -m pip install websockets cryptography aiosqlite
+      - run: npm ci --include=optional
+      - run: |
+          if [ "$(uname -s)" = "Linux" ]; then
+            if [ "$(uname -m)" = "aarch64" ]; then
+              npm i --no-save @rollup/rollup-linux-arm64-gnu || true
+            elif [ "$(uname -m)" = "x86_64" ]; then
+              npm i --no-save @rollup/rollup-linux-x64-gnu || true
+            fi
+          fi
+      - run: npm run build
+      - run: make signed-envelope-check
+      - run: make security-matrix-check
+      - run: make key-rotation-drill-check
+      - run: make envelope-compat-check
+      - run: SOAK_SECONDS=60 SOAK_WORKERS=4 make soak-check
+
+  wotp-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+      - run: python3 -m pip install --upgrade pip
+      - run: python3 -m pip install -e ".[crypto,sql]"
+      - uses: actions/setup-node@v6.2.0
+        with:
+          node-version: "22"
+      - uses: actions/setup-go@v6.2.0
+        with:
+          go-version: "1.22"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.0"
+      - run: WOTP_PARITY_STRICT=1 WOTP_PYTHON=python3 WOTP_PARITY_LANGS=sh,python,typescript,go,rust,c make wotp-parity-check
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.0"
+          components: clippy
+      - run: make rust-check
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+      - run: python3 -m pip install --upgrade pip
+      - run: python3 -m pip install -e ".[crypto,sql]"
+      - run: make python-setup
+      - run: make python-check
+
+  c:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - run: make c-check
+
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - uses: actions/setup-node@v6.2.0
+        with:
+          node-version: "22"
+      - run: npm ci --include=optional
+      - run: |
+          if [ "$(uname -s)" = "Linux" ]; then
+            if [ "$(uname -m)" = "aarch64" ]; then
+              npm i --no-save @rollup/rollup-linux-arm64-gnu || true
+            elif [ "$(uname -m)" = "x86_64" ]; then
+              npm i --no-save @rollup/rollup-linux-x64-gnu || true
+            fi
+          fi
+      - run: make ts-setup
+      - run: make ts-check
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - uses: actions/setup-go@v6.2.0
+        with:
+          go-version: "1.22"
+      - run: make go-check
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - run: make sh-check
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: rust
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - run: make docker

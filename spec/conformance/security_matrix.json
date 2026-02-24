@@ -1,0 +1,7 @@
+[
+  {"id": "tampered_wid", "type": "verify_invalid", "required": true},
+  {"id": "tampered_data", "type": "verify_invalid", "required": true},
+  {"id": "wrong_key", "type": "verify_invalid", "required": true},
+  {"id": "expired_envelope", "type": "envelope_invalid", "required": true},
+  {"id": "malformed_ciphertext", "type": "decrypt_invalid", "required": true}
+]

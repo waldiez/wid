@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WID Generation Test Cases",
+  "description": "Tests for WID generation behavior",
+  "test_cases": [
+    {
+      "id": "wid_monotonic_sequence",
+      "description": "Sequence numbers must be monotonically increasing within the same second",
+      "type": "wid",
+      "setup": {
+        "W": 4,
+        "Z": 0
+      },
+      "operations": [
+        {"action": "generate", "expect_seq": 0},
+        {"action": "generate", "expect_seq": 1},
+        {"action": "generate", "expect_seq": 2}
+      ]
+    },
+    {
+      "id": "wid_padding_randomness",
+      "description": "Padding should be different for consecutive WIDs",
+      "type": "wid",
+      "setup": {
+        "W": 4,
+        "Z": 6
+      },
+      "operations": [
+        {"action": "generate_n", "count": 10, "expect": "all_padding_unique"}
+      ]
+    },
+    {
+      "id": "wid_millisecond_mode",
+      "description": "Generator emits millisecond timestamp shape in ms mode",
+      "type": "wid",
+      "setup": {
+        "W": 4,
+        "Z": 0,
+        "time_unit": "ms"
+      },
+      "operations": [
+        {"action": "generate", "expect_seq": 0}
+      ]
+    },
+    {
+      "id": "hlc_node_included",
+      "description": "Node is included in HLC-WID output",
+      "type": "hlc",
+      "setup": {
+        "W": 4,
+        "Z": 0,
+        "node": "testnode"
+      },
+      "operations": [
+        {"action": "generate", "expect_node": "testnode"}
+      ]
+    },
+    {
+      "id": "hlc_monotonic_sequence",
+      "description": "HLC logical counters increase monotonically within same instance",
+      "type": "hlc",
+      "setup": {
+        "W": 4,
+        "Z": 0,
+        "node": "local"
+      },
+      "operations": [
+        {"action": "generate", "expect_seq": 0},
+        {"action": "generate", "expect_seq": 1}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "name": "@waldiez/wid",
+  "version": "1.0.0",
+  "description": "WID — time-ordered, collision-resistant identifier",
+  "main": "typescript/dist/index.js",
+  "module": "typescript/dist/index.mjs",
+  "types": "typescript/dist/index.d.ts",
+  "bin": {
+    "wid-ts": "typescript/dist/cli.js"
+  },
+  "files": [
+    "typescript/dist/",
+    "typescript/src/"
+  ],
+  "scripts": {
+    "build": "tsup --config typescript/tsup.config.ts",
+    "test": "vitest run --config typescript/vitest.config.ts",
+    "lint": "eslint typescript/src --ext .ts",
+    "typecheck": "tsc -p typescript/tsconfig.json --noEmit",
+    "check": "npm run lint && npm run typecheck && npm run test",
+    "all": "npm run check && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/waldiez/wid.git"
+  },
+  "homepage": "https://waldiez.github.io/wid",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^10.0.1",
+    "playwright": "^1.58.2",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}

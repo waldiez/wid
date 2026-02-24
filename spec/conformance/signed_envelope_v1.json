@@ -1,0 +1,16 @@
+[
+  {
+    "name": "v1-shape",
+    "expect": "compatible",
+    "envelope": {
+      "version": "1.0",
+      "wid": "20260218T170000.0000Z-edge01-event",
+      "sig": "BASE64URL_PLACEHOLDER",
+      "key_id": "edge01-ed25519-v1",
+      "alg": "Ed25519",
+      "issued_at": "2026-02-18T17:00:00Z",
+      "expires_at": "2099-01-01T00:00:00Z",
+      "data_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  }
+]

@@ -1,0 +1,79 @@
+# Rust
+target/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+junit.xml
+htmlcov/
+.hatch/
+.tox/
+
+# Node/TypeScript
+node_modules/
+
+# Keep published TypeScript artifacts in git (package.json main/bin/files point here)
+!typescript/dist/
+!typescript/dist/**
+
+# C
+c/.build/
+*.o
+*.gcno
+*.gcda
+*.gcov
+
+# Go
+go/cmd/wid/wid
+
+# Zig
+zig/.zig-cache/
+zig/zig-cache/
+zig/zig-out/
+zig/.zig-global-cache/
+
+# Java
+.gradle/
+build/
+*.class
+
+# .NET
+bin/
+obj/
+
+# Build artifacts
+wid-web.zip
+
+# General
+.local/
+.env
+.env.local
+*.log
+*.pid
+*.tmp
+*.bak
+*.orig
+*~
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*.iml
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.claude/
+.codex/
+.gemini/

@@ -1,0 +1,56 @@
+{
+  "languages": ["rust", "python", "c", "typescript", "go", "sh"],
+  "summary": {
+    "transport_baseline": ["mqtt", "ws", "redis", "null", "stdout"],
+    "transport_extended_sh": ["http", "tcp", "udp"],
+    "full_native_service_languages": ["sh", "rust", "c", "go", "python", "typescript"],
+    "core_cli_only_languages": [],
+    "stream_n0_semantics": "infinite",
+    "state_modes_generation_sql": ["state", "stateless", "sql"],
+    "state_modes_other": ["state", "stateless"]
+  },
+  "per_language": {
+    "rust": {
+      "core_cli_actions": ["next", "stream", "validate", "parse", "healthcheck", "bench", "selftest"],
+      "native_service_actions": ["discover", "scaffold", "run", "start", "stop", "status", "logs", "saf", "saf-wid", "wir", "wism", "wihp", "wipr", "duplex"],
+      "canonical_transports": ["auto", "mqtt", "ws", "redis", "null", "stdout"],
+      "stream_n0": "infinite",
+      "state_modes": ["state", "stateless", "sql"]
+    },
+    "python": {
+      "core_cli_actions": ["next", "stream", "validate", "parse", "healthcheck"],
+      "native_service_actions": ["discover", "scaffold", "run", "start", "stop", "status", "logs", "saf", "saf-wid", "wir", "wism", "wihp", "wipr", "duplex"],
+      "canonical_transports": ["auto", "mqtt", "ws", "redis", "null", "stdout"],
+      "stream_n0": "infinite",
+      "state_modes": ["state", "stateless", "sql"]
+    },
+    "c": {
+      "core_cli_actions": ["next", "stream", "validate", "parse", "healthcheck", "bench", "selftest"],
+      "native_service_actions": ["discover", "scaffold", "run", "start", "stop", "status", "logs", "saf", "saf-wid", "wir", "wism", "wihp", "wipr", "duplex"],
+      "canonical_transports": ["auto", "mqtt", "ws", "redis", "null", "stdout"],
+      "stream_n0": "infinite",
+      "state_modes": ["state", "stateless", "sql"]
+    },
+    "typescript": {
+      "core_cli_actions": ["next", "stream", "validate", "parse", "healthcheck", "bench", "selftest"],
+      "native_service_actions": ["discover", "scaffold", "run", "start", "stop", "status", "logs", "saf", "saf-wid", "wir", "wism", "wihp", "wipr", "duplex"],
+      "canonical_transports": ["auto", "mqtt", "ws", "redis", "null", "stdout"],
+      "stream_n0": "infinite",
+      "state_modes": ["state", "stateless", "sql"]
+    },
+    "go": {
+      "core_cli_actions": ["next", "stream", "validate", "parse", "healthcheck", "bench", "selftest"],
+      "native_service_actions": ["discover", "scaffold", "run", "start", "stop", "status", "logs", "saf", "saf-wid", "wir", "wism", "wihp", "wipr", "duplex"],
+      "canonical_transports": ["auto", "mqtt", "ws", "redis", "null", "stdout"],
+      "stream_n0": "infinite",
+      "state_modes": ["state", "stateless", "sql"]
+    },
+    "sh": {
+      "core_cli_actions": ["next", "stream", "validate", "parse", "healthcheck", "bench", "selftest"],
+      "native_service_actions": ["discover", "scaffold", "run", "start", "stop", "status", "logs", "heal", "saf", "saf-wid", "wir", "wism", "wihp", "wipr", "duplex"],
+      "canonical_transports": ["auto", "mqtt", "ws", "redis", "http", "tcp", "udp", "null", "stdout"],
+      "stream_n0": "infinite",
+      "state_modes": ["state", "stateless", "sql"]
+    }
+  }
+}

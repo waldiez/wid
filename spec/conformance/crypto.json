@@ -1,0 +1,42 @@
+[
+  {
+    "description": "Valid Ed25519 signature for a WID",
+    "test_type": "sign_verify",
+    "wid": "20260217T120000.0000Z",
+    "key_type": "ed25519",
+    "expected_status": "valid"
+  },
+  {
+    "description": "Valid Ed25519 signature for a WID with additional data",
+    "test_type": "sign_verify",
+    "wid": "20260217T120001.0000Z",
+    "data_content": "some additional data to sign",
+    "key_type": "ed25519",
+    "expected_status": "valid"
+  },
+  {
+    "description": "Invalid signature (tampered WID)",
+    "test_type": "verify_invalid",
+    "original_wid": "20260217T120002.0000Z",
+    "modified_wid": "20260217T120002.0001Z",
+    "key_type": "ed25519",
+    "expected_status": "invalid"
+  },
+  {
+    "description": "Invalid signature (tampered data)",
+    "test_type": "verify_invalid",
+    "original_wid": "20260217T120003.0000Z",
+    "original_data_content": "some original data",
+    "modified_data_content": "some modified data",
+    "key_type": "ed25519",
+    "expected_status": "invalid"
+  },
+  {
+    "description": "Invalid signature (wrong key)",
+    "test_type": "verify_invalid",
+    "wid": "20260217T120004.0000Z",
+    "key_type": "ed25519",
+    "use_wrong_key": true,
+    "expected_status": "invalid"
+  }
+]
