@@ -13,7 +13,6 @@
     "typescript/src/"
   ],
   "scripts": {
-    "prepare": "tsup --config typescript/tsup.config.ts",
     "build": "tsup --config typescript/tsup.config.ts",
     "test": "vitest run --config typescript/vitest.config.ts",
     "lint": "eslint typescript/src --ext .ts",
