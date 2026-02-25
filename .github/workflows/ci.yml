@@ -36,6 +36,7 @@ jobs:
       - uses: actions/setup-go@v6.2.0
         with:
           go-version: "1.22"
+          cache: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.93.0"
@@ -89,6 +90,7 @@ jobs:
       - uses: actions/setup-go@v6.2.0
         with:
           go-version: "1.22"
+          cache: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.93.0"
@@ -163,6 +165,7 @@ jobs:
       - uses: actions/setup-go@v6.2.0
         with:
           go-version: "1.22"
+          cache: false
       - run: make go-check
 
   shell:

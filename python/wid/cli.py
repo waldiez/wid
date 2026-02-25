@@ -265,12 +265,12 @@ def _is_true(raw: str) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-def _repo_root() -> Path:
+def _repo_root() -> Path | None:
     here = Path(__file__).resolve()
     for parent in [here.parent, *here.parents]:
         if (parent / "sh" / "wid").exists() and (parent / "README.md").exists():
             return parent
-    raise RuntimeError("Unable to locate repository root (missing sh/wid)")
+    return None
 
 
 def _run_cmd(
@@ -718,7 +718,6 @@ def _run_canonical(argv: list[str]) -> bool:
     if canon["R"] not in TRANSPORTS:
         raise ValueError(f"invalid transport: {canon['R']}")
 
-    root_dir: Path = _repo_root()
     action: str = canon["A"].strip().lower()
     action = ACTION_ALIASES.get(action, action)
     w_val: int = int(canon["W"])
@@ -737,7 +736,7 @@ def _run_canonical(argv: list[str]) -> bool:
     data_dir = (
         Path(d_val).expanduser().resolve()
         if d_val
-        else (root_dir / ".local" / "services").resolve()
+        else (Path.home() / ".local" / "wid" / "services").resolve()
     )
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -758,6 +757,9 @@ def _run_canonical(argv: list[str]) -> bool:
 
     if action in {"next", "stream", "healthcheck"}:
         if input_src in {"sh", "bash"}:
+            root_dir = _repo_root()
+            if root_dir is None:
+                raise RuntimeError("Unable to locate repository root (missing sh/wid)")
             _run_shell_wid(root_dir, canon)
             return True
 
@@ -858,17 +860,18 @@ def _run_canonical(argv: list[str]) -> bool:
             data_dir=data_dir,
         )
         return True
-    if action == "start":
-        _start_native_daemon(root_dir=root_dir, canon=canon)
-        return True
-    if action == "stop":
-        _stop_native_daemon(root_dir)
-        return True
-    if action == "status":
-        _status_native_daemon(root_dir)
-        return True
-    if action == "logs":
-        _logs_native_daemon(root_dir)
+    if action in {"start", "stop", "status", "logs"}:
+        root_dir = _repo_root()
+        if root_dir is None:
+            raise RuntimeError("Unable to locate repository root (missing sh/wid)")
+        if action == "start":
+            _start_native_daemon(root_dir=root_dir, canon=canon)
+        elif action == "stop":
+            _stop_native_daemon(root_dir)
+        elif action == "status":
+            _status_native_daemon(root_dir)
+        elif action == "logs":
+            _logs_native_daemon(root_dir)
         return True
     if action == "self.check-update":
         _check_update_native()
