@@ -35,6 +35,7 @@ c/.build/
 
 # Go
 go/cmd/wid/wid
+wid
 
 # Zig
 zig/.zig-cache/
