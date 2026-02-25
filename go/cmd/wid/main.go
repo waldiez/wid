@@ -1309,7 +1309,7 @@ func runSelftest() int {
 func printCompletion(shell string) {
 	switch shell {
 	case "bash":
-		fmt.Print(`_wid_complete() {
+		os.Stdout.WriteString(`_wid_complete() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local cmds="next stream healthcheck validate parse help-actions bench selftest completion"
   if [[ "$cur" == *=* ]]; then
@@ -1332,7 +1332,7 @@ func printCompletion(shell string) {
 complete -o nospace -F _wid_complete wid
 `)
 	case "zsh":
-		fmt.Print(`#compdef wid
+		os.Stdout.WriteString(`#compdef wid
 _wid_complete() {
   local cur="${words[-1]}"
   local -a cmds=(next stream healthcheck validate parse help-actions bench selftest completion)
@@ -1355,7 +1355,7 @@ _wid_complete() {
 _wid_complete "$@"
 `)
 	case "fish":
-		fmt.Print(`complete -c wid -e
+		os.Stdout.WriteString(`complete -c wid -e
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a next -d 'Emit one WID'
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a stream -d 'Stream WIDs continuously'
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a healthcheck -d 'Generate and validate a sample WID'
