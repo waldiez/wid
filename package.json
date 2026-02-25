@@ -2,14 +2,14 @@
   "name": "@waldiez/wid",
   "version": "1.0.0",
   "description": "WID — time-ordered, collision-resistant identifier",
-  "main": "typescript/dist/index.js",
-  "module": "typescript/dist/index.mjs",
-  "types": "typescript/dist/index.d.ts",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
   "bin": {
-    "wid-ts": "typescript/dist/cli.js"
+    "wid-ts": "dist/cli.js"
   },
   "files": [
-    "typescript/dist/",
+    "dist/",
     "typescript/src/"
   ],
   "scripts": {

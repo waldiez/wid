@@ -9,7 +9,7 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
-  outDir: "typescript/dist",
+  outDir: "dist",
   target: "es2020",
   shims: true,
 });
