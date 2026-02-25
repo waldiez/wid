@@ -1301,6 +1301,88 @@ run_selftest() {
     return 0
 }
 
+_wid_completion_script() {
+    local shell="${1:-}"
+    case "$shell" in
+    bash)
+        cat <<'BASH_COMPLETION'
+_wid_complete() {
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  local cmds="next stream healthcheck validate parse help-actions bench selftest completion"
+  if [[ "$cur" == *=* ]]; then
+    local key="${cur%%=*}" val="${cur#*=}" vals=""
+    case "$key" in
+      A) vals="next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions" ;;
+      T) vals="sec ms" ;;
+      I) vals="auto sh bash" ;;
+      E) vals="state stateless sql" ;;
+      R) vals="auto mqtt ws redis null stdout" ;;
+      M) vals="true false" ;;
+    esac
+    local IFS=$'\n'
+    COMPREPLY=($(for v in $vals; do [[ "$v" == "$val"* ]] && printf '%s\n' "${key}=${v}"; done))
+  else
+    local kv="A= W= Z= T= N= L= D= I= E= R= M="
+    COMPREPLY=($(compgen -W "$cmds $kv" -- "$cur"))
+  fi
+}
+complete -o nospace -F _wid_complete wid
+BASH_COMPLETION
+        ;;
+    zsh)
+        cat <<'ZSH_COMPLETION'
+#compdef wid
+_wid_complete() {
+  local cur="${words[-1]}"
+  local -a cmds=(next stream healthcheck validate parse help-actions bench selftest completion)
+  if [[ "$cur" == *=* ]]; then
+    local key="${cur%%=*}"
+    local -a vals=()
+    case "$key" in
+      A) vals=(next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions) ;;
+      T) vals=(sec ms) ;;
+      I) vals=(auto sh bash) ;;
+      E) vals=(state stateless sql) ;;
+      R) vals=(auto mqtt ws redis null stdout) ;;
+      M) vals=(true false) ;;
+    esac
+    compadd -P "${key}=" -- "${vals[@]}"
+  else
+    compadd -- "${cmds[@]}" A= W= Z= T= N= L= D= I= E= R= M=
+  fi
+}
+_wid_complete "$@"
+ZSH_COMPLETION
+        ;;
+    fish)
+        cat <<'FISH_COMPLETION'
+complete -c wid -e
+complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a next -d 'Emit one WID'
+complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a stream -d 'Stream WIDs continuously'
+complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a healthcheck -d 'Generate and validate a sample WID'
+complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a validate -d 'Validate a WID string'
+complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a parse -d 'Parse a WID string'
+complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a help-actions -d 'Show canonical action matrix'
+complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a completion -d 'Print shell completion script'
+complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=start A=stop A=status A=logs A=help-actions' -d 'Action'
+complete -c wid -f -a 'T=sec T=ms' -d 'Time unit'
+complete -c wid -f -a 'I=auto I=sh I=bash' -d 'Input source'
+complete -c wid -f -a 'E=state E=stateless E=sql' -d 'State mode'
+complete -c wid -f -a 'R=auto R=mqtt R=ws R=redis R=null R=stdout' -d 'Transport'
+complete -c wid -f -a 'M=true M=false' -d 'Milliseconds mode'
+complete -c wid -f -a 'W=' -d 'Sequence width'
+complete -c wid -f -a 'Z=' -d 'Padding length'
+complete -c wid -f -a 'N=' -d 'Count'
+complete -c wid -f -a 'L=' -d 'Interval seconds'
+FISH_COMPLETION
+        ;;
+    *)
+        printf 'usage: wid completion bash|zsh|fish\n' >&2
+        return 1
+        ;;
+    esac
+}
+
 main() {
     if [[ $# -gt 0 && "${1:-}" == "__daemon" ]]; then
         shift
@@ -1407,6 +1489,15 @@ main() {
         [[ "$time_unit" == "sec" || "$time_unit" == "ms" ]] || die "time-unit must be sec or ms"
         [[ "$kind" == "wid" || "$kind" == "hlc" ]] || die "kind must be wid or hlc"
         run_selftest "$n" "$procs" "$per" "$kind" "$W" "$Z" "$time_unit"
+        exit $?
+    fi
+
+    if [[ "$cmd" == "completion" ]]; then
+        if [[ $# -lt 1 ]]; then
+            printf 'usage: wid completion bash|zsh|fish\n' >&2
+            exit 1
+        fi
+        _wid_completion_script "$1"
         exit $?
     fi
 

@@ -1329,6 +1329,82 @@ static int run_selftest(void) {
     return 0;
 }
 
+static void print_completion(const char *shell) {
+    if (strcmp(shell, "bash") == 0) {
+        printf(
+            "_wid_complete() {\n"
+            "  local cur=\"${COMP_WORDS[COMP_CWORD]}\"\n"
+            "  local cmds=\"next stream healthcheck validate parse help-actions bench selftest completion\"\n"
+            "  if [[ \"$cur\" == *=* ]]; then\n"
+            "    local key=\"${cur%%%%=*}\" val=\"${cur#*=}\" vals=\"\"\n"
+            "    case \"$key\" in\n"
+            "      A) vals=\"next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions\" ;;\n"
+            "      T) vals=\"sec ms\" ;;\n"
+            "      I) vals=\"auto sh bash\" ;;\n"
+            "      E) vals=\"state stateless sql\" ;;\n"
+            "      R) vals=\"auto mqtt ws redis null stdout\" ;;\n"
+            "      M) vals=\"true false\" ;;\n"
+            "    esac\n"
+            "    local IFS=$'\\n'\n"
+            "    COMPREPLY=($(for v in $vals; do [[ \"$v\" == \"$val\"* ]] && printf '%%s\\n' \"${key}=${v}\"; done))\n"
+            "  else\n"
+            "    local kv=\"A= W= Z= T= N= L= D= I= E= R= M=\"\n"
+            "    COMPREPLY=($(compgen -W \"$cmds $kv\" -- \"$cur\"))\n"
+            "  fi\n"
+            "}\n"
+            "complete -o nospace -F _wid_complete wid\n"
+        );
+    } else if (strcmp(shell, "zsh") == 0) {
+        printf(
+            "#compdef wid\n"
+            "_wid_complete() {\n"
+            "  local cur=\"${words[-1]}\"\n"
+            "  local -a cmds=(next stream healthcheck validate parse help-actions bench selftest completion)\n"
+            "  if [[ \"$cur\" == *=* ]]; then\n"
+            "    local key=\"${cur%%%%=*}\"\n"
+            "    local -a vals=()\n"
+            "    case \"$key\" in\n"
+            "      A) vals=(next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions) ;;\n"
+            "      T) vals=(sec ms) ;;\n"
+            "      I) vals=(auto sh bash) ;;\n"
+            "      E) vals=(state stateless sql) ;;\n"
+            "      R) vals=(auto mqtt ws redis null stdout) ;;\n"
+            "      M) vals=(true false) ;;\n"
+            "    esac\n"
+            "    compadd -P \"${key}=\" -- \"${vals[@]}\"\n"
+            "  else\n"
+            "    compadd -- \"${cmds[@]}\" A= W= Z= T= N= L= D= I= E= R= M=\n"
+            "  fi\n"
+            "}\n"
+            "_wid_complete \"$@\"\n"
+        );
+    } else if (strcmp(shell, "fish") == 0) {
+        printf(
+            "complete -c wid -e\n"
+            "complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a next -d 'Emit one WID'\n"
+            "complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a stream -d 'Stream WIDs continuously'\n"
+            "complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a healthcheck -d 'Generate and validate a sample WID'\n"
+            "complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a validate -d 'Validate a WID string'\n"
+            "complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a parse -d 'Parse a WID string'\n"
+            "complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a help-actions -d 'Show canonical action matrix'\n"
+            "complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a completion -d 'Print shell completion script'\n"
+            "complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=start A=stop A=status A=logs A=help-actions' -d 'Action'\n"
+            "complete -c wid -f -a 'T=sec T=ms' -d 'Time unit'\n"
+            "complete -c wid -f -a 'I=auto I=sh I=bash' -d 'Input source'\n"
+            "complete -c wid -f -a 'E=state E=stateless E=sql' -d 'State mode'\n"
+            "complete -c wid -f -a 'R=auto R=mqtt R=ws R=redis R=null R=stdout' -d 'Transport'\n"
+            "complete -c wid -f -a 'M=true M=false' -d 'Milliseconds mode'\n"
+            "complete -c wid -f -a 'W=' -d 'Sequence width'\n"
+            "complete -c wid -f -a 'Z=' -d 'Padding length'\n"
+            "complete -c wid -f -a 'N=' -d 'Count'\n"
+            "complete -c wid -f -a 'L=' -d 'Interval seconds'\n"
+        );
+    } else {
+        fprintf(stderr, "error: unknown shell '%s'. Use: wid completion bash|zsh|fish\n", shell);
+        exit(1);
+    }
+}
+
 int main(int argc, char **argv) {
     srand((unsigned int)time(NULL));
 
@@ -1350,6 +1426,15 @@ int main(int argc, char **argv) {
     }
 
     if (strcmp(argv[1], "selftest") == 0) return run_selftest();
+
+    if (strcmp(argv[1], "completion") == 0) {
+        if (argc < 3) {
+            fprintf(stderr, "usage: wid completion bash|zsh|fish\n");
+            return 1;
+        }
+        print_completion(argv[2]);
+        return 0;
+    }
 
     cli_opts_t opts;
 
