@@ -18,7 +18,8 @@
     "lint": "eslint typescript/src --ext .ts",
     "typecheck": "tsc -p typescript/tsconfig.json --noEmit",
     "check": "npm run lint && npm run typecheck && npm run test",
-    "all": "npm run check && npm run build"
+    "all": "npm run check && npm run build",
+    "gen:preview": "node -e \"const{chromium}=require('playwright');(async()=>{const b=await chromium.launch();const p=await b.newPage();await p.setViewportSize({width:1280,height:640});await p.goto('file://'+require('path').resolve('docs/social-preview.html'));await p.screenshot({path:'docs/social-preview.png'});await b.close();})();\""
   },
   "repository": {
     "type": "git",
