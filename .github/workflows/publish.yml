@@ -25,6 +25,8 @@ jobs:
 
   publish-npm:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: actions/setup-node@v6.2.0
@@ -40,8 +42,6 @@ jobs:
           fi
       - run: npm run build
       - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-crates:
     runs-on: ubuntu-latest

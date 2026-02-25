@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="WID — Time-ordered, human-readable, collision-resistant identifiers for distributed systems.">
+<link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" href="favicon.png"/>
+<link rel="manifest" href="manifest.json">
 <title>WID — Time-ordered identifiers</title>
 <style>
 /* ─── reset ─────────────────────────────────────────────── */
@@ -85,6 +90,13 @@ nav{
   max-width:920px;margin:0 auto;
   padding:5.5rem 2rem 3.5rem;
   position:relative;
+}
+.hero-inner{display:flex;align-items:flex-start;gap:2.5rem}
+.hero-text{flex:1;min-width:0}
+.hero-logo{flex-shrink:0;padding-top:.5rem;opacity:.92}
+@media(max-width:760px){
+  .hero-inner{flex-direction:column}
+  .hero-logo{display:none}
 }
 .hero::after{
   content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
@@ -357,6 +369,8 @@ footer a:hover{text-decoration:underline}
 
 <!-- ── HERO ────────────────────────────────────────────────── -->
 <div class="hero">
+<div class="hero-inner">
+<div class="hero-text">
   <p class="hero-eyebrow">v1.0.0 &nbsp;·&nbsp; MIT License &nbsp;·&nbsp; 6 implementations</p>
   <h1>WID</h1>
   <p class="hero-sub">Time-ordered, human-readable, collision-resistant identifiers for distributed systems.</p>
@@ -397,6 +411,11 @@ footer a:hover{text-decoration:underline}
     <a class="btn-s" href="https://github.com/waldiez/wid/blob/main/spec/SPEC.md" target="_blank" rel="noopener">Spec</a>
     <a class="btn-s" href="https://github.com/waldiez/wid/blob/main/spec/CRYPTO_SPEC.md" target="_blank" rel="noopener">Crypto Spec</a>
   </div>
+</div><!-- /.hero-text -->
+<div class="hero-logo reveal">
+<svg class="waldiez-loader" viewBox="0 0 200 120" width="240" height="144" fill="none" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-label="Waldiez loading logo" role="img"><style>svg.waldiez-loader{--cycle:18s;--start-delay:2.2s;--cw1:#6366f1;--cw2:#8b5cf6;--cw3:#ec4899;--glow:rgba(99,102,241,0.55);--orbit:rgba(255,255,255,0.8);--moon:rgba(255,255,255,0.9);display:block;overflow:visible;filter:drop-shadow(0 0 20px var(--glow));animation:logoPulse 2.2s ease-in-out 1.5s infinite}svg.waldiez-loader[waldiez-theme="light"],[waldiez-theme="light"] svg.waldiez-loader{--cw1:#4338ca;--cw2:#7c3aed;--cw3:#db2777;--glow:rgba(124,58,237,0.30);--orbit:rgba(0,0,0,0.22);--moon:rgba(0,0,0,0.35)}svg.waldiez-loader .auto{animation:themeCycle var(--cycle) ease-in-out infinite;animation-delay:var(--start-delay);animation-fill-mode:both}svg.waldiez-loader[waldiez-theme] .auto,[waldiez-theme] svg.waldiez-loader .auto{animation:none}@keyframes themeCycle{0%,20%{--cw1:#6366f1;--cw2:#8b5cf6;--cw3:#ec4899}40%,60%{--cw1:#4338ca;--cw2:#7c3aed;--cw3:#db2777}80%,100%{--cw1:#5eead4;--cw2:#38bdf8;--cw3:#818cf8}}@keyframes logoPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}.w-stroke{stroke-dasharray:100;stroke-dashoffset:100;animation:drawStroke 1.5s ease-out forwards}.w-stroke-1{animation-delay:0s}.w-stroke-2{animation-delay:0.1s}.w-stroke-3{animation-delay:0.2s}.w-stroke-4{animation-delay:0.3s}.w-stroke-5{animation-delay:0.4s}.w-stroke-6{animation-delay:0.5s}@keyframes drawStroke{0%{stroke-dashoffset:100}85%{stroke-dashoffset:0}100%{stroke-dashoffset:0}}.bg{opacity:1;filter:blur(0px);animation:bgFade var(--cycle) ease-in-out infinite;animation-delay:var(--start-delay);animation-fill-mode:both}svg.waldiez-loader[waldiez-theme] .bg,[waldiez-theme] svg.waldiez-loader .bg{animation:none;opacity:1;filter:blur(0px)}@keyframes bgFade{0%,20%{opacity:1;filter:blur(0px)}30%{opacity:0.88;filter:blur(0.5px)}40%,60%{opacity:1;filter:blur(0px)}70%{opacity:0.88;filter:blur(0.5px)}80%,100%{opacity:1;filter:blur(0px)}}.orbit{opacity:0.18;stroke:var(--orbit);stroke-width:0.6;stroke-dasharray:1.5 2.5}.spin{transform-origin:100px 60px;animation:spin 18s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.planet{opacity:0.28;filter:url(#softGlow)}.moon{fill:var(--moon);opacity:0.18}@media(prefers-reduced-motion:reduce){svg.waldiez-loader,.spin,.w-stroke,.bg,.auto{animation:none!important}.w-stroke{stroke-dashoffset:0}}</style><defs><linearGradient id="g1"><stop offset="0%" stop-color="var(--cw1)"/><stop offset="100%" stop-color="var(--cw2)"/></linearGradient><linearGradient id="g2"><stop offset="0%" stop-color="var(--cw2)"/><stop offset="100%" stop-color="var(--cw3)"/></linearGradient><linearGradient id="g3"><stop offset="0%" stop-color="var(--cw3)"/><stop offset="100%" stop-color="var(--cw1)"/></linearGradient><filter id="softGlow"><feGaussianBlur stdDeviation="1.4"/></filter></defs><g class="auto"><g class="bg"><ellipse class="orbit" cx="100" cy="62" rx="66" ry="34"/><g class="spin"><circle class="planet" cx="152" cy="52" r="6.2" fill="url(#g1)"/><circle class="planet" cx="62" cy="88" r="4.6" fill="url(#g2)"/><circle class="planet" cx="78" cy="34" r="3.6" fill="url(#g3)"/><circle class="moon" cx="160" cy="60" r="1.8"/></g></g><path class="w-stroke w-stroke-1" d="M 20 20 L 50 100" stroke="url(#g1)" stroke-width="8" stroke-linecap="round"/><path class="w-stroke w-stroke-2" d="M 50 100 L 80 40" stroke="url(#g1)" stroke-width="8" stroke-linecap="round"/><path class="w-stroke w-stroke-3" d="M 80 40 L 100 80" stroke="url(#g2)" stroke-width="8" stroke-linecap="round"/><path class="w-stroke w-stroke-4" d="M 100 80 L 120 40" stroke="url(#g2)" stroke-width="8" stroke-linecap="round"/><path class="w-stroke w-stroke-5" d="M 120 40 L 150 100" stroke="url(#g3)" stroke-width="8" stroke-linecap="round"/><path class="w-stroke w-stroke-6" d="M 150 100 L 180 20" stroke="url(#g3)" stroke-width="8" stroke-linecap="round"/></g></svg>
+</div><!-- /.hero-logo -->
+</div><!-- /.hero-inner -->
 </div>
 
 <!-- ── WHY WID ──────────────────────────────────────────────── -->
@@ -650,6 +669,8 @@ function applyTheme(t) {
   localStorage.setItem('wid-theme', t);
   btn.textContent = t === 'dark' ? '☀' : '●';
   btn.title = t === 'dark' ? 'Switch to light' : 'Switch to dark';
+  const svg = document.querySelector('svg.waldiez-loader');
+  if (svg) svg.setAttribute('waldiez-theme', t);
 }
 
 applyTheme(localStorage.getItem('wid-theme') || 'dark');
