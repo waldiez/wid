@@ -39,7 +39,7 @@ sql = [
     "aiosqlite",
 ]
 
-[tool.hatch.build.targets.wheel]
+[tool.hatch.build]
 packages = ["python/wid"]
 
 [tool.ruff]
