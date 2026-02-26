@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="WID — Time-ordered, human-readable, collision-resistant identifiers for distributed systems.">
+<link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" href="favicon.png"/>
+<link rel="manifest" href="manifest.json">
+<title>WID — Time-ordered identifiers</title>
+<style>
+/* ─── reset ─────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;font-size:16px}
+
+/* ─── tokens ─────────────────────────────────────────────── */
+:root{
+  --mono:'JetBrains Mono','Fira Code','Cascadia Code','Consolas','SF Mono',ui-monospace,monospace;
+  --sans:-apple-system,'Segoe UI',system-ui,sans-serif;
+  --dur:0.28s;
+}
+[data-theme="dark"]{
+  --bg:#0d1117;--surface:#161b22;--surface2:#1c2128;
+  --border:#30363d;--border2:#21262d;
+  --fg:#e6edf3;--muted:#8b949e;--faint:#484f58;
+  --accent:#22d3ee;--accent-dim:rgba(34,211,238,.12);--accent-glow:rgba(34,211,238,.18);
+  --green:#4ade80;--yellow:#fbbf24;--amber:#f87171;
+  --yes:#22d3ee;--wid-yes:#4ade80;--no:#374151;
+  --shadow:0 8px 32px rgba(0,0,0,.55);
+  --code-bg:#0a0e13;
+}
+[data-theme="light"]{
+  --bg:#ffffff;--surface:#f6f8fa;--surface2:#eef1f5;
+  --border:#d0d7de;--border2:#e0e4ea;
+  --fg:#1f2328;--muted:#636c76;--faint:#b0b8c1;
+  --accent:#0284c7;--accent-dim:rgba(2,132,199,.08);--accent-glow:rgba(2,132,199,.14);
+  --green:#16a34a;--yellow:#d97706;--amber:#dc2626;
+  --yes:#0284c7;--wid-yes:#16a34a;--no:#d1d5db;
+  --shadow:0 8px 32px rgba(0,0,0,.08);
+  --code-bg:#f0f4f8;
+}
+
+/* ─── base ───────────────────────────────────────────────── */
+body{
+  background:var(--bg);color:var(--fg);
+  font-family:var(--mono);line-height:1.65;
+  transition:background var(--dur),color var(--dur);
+  min-height:100vh;
+}
+[data-theme="light"] body{font-family:var(--sans)}
+[data-theme="light"] h1,[data-theme="light"] h2,[data-theme="light"] h3{font-family:var(--sans);font-weight:800}
+a{color:inherit;text-decoration:none}
+
+/* ─── nav ────────────────────────────────────────────────── */
+nav{
+  position:sticky;top:0;z-index:200;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.75rem 2rem;
+  background:rgba(13,17,23,.82);
+  border-bottom:1px solid var(--border2);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  transition:background var(--dur),border-color var(--dur);
+}
+[data-theme="light"] nav{background:rgba(255,255,255,.88)}
+.nav-logo{
+  font-family:var(--mono);font-size:1.1rem;font-weight:700;
+  color:var(--accent);letter-spacing:.06em;
+}
+.nav-logo span{color:var(--muted);font-weight:400}
+.nav-end{display:flex;align-items:center;gap:.6rem}
+.nav-badge img{height:20px;vertical-align:middle;border-radius:3px}
+.nav-link{
+  font-family:var(--mono);font-size:.75rem;
+  color:var(--muted);border:1px solid var(--border);border-radius:5px;
+  padding:.3rem .65rem;transition:border-color var(--dur),color var(--dur);
+}
+.nav-link:hover,.nav-link:focus{border-color:var(--accent);color:var(--accent)}
+#themeBtn{
+  background:none;border:1px solid var(--border);border-radius:5px;
+  color:var(--muted);cursor:pointer;font-size:.95rem;
+  padding:.3rem .55rem;line-height:1;
+  transition:border-color var(--dur),color var(--dur),transform .15s;
+}
+#themeBtn:hover{border-color:var(--accent);color:var(--accent);transform:rotate(20deg)}
+
+/* ─── hero ───────────────────────────────────────────────── */
+.hero{
+  max-width:920px;margin:0 auto;
+  padding:5.5rem 2rem 3.5rem;
+  position:relative;
+}
+.hero-inner{display:flex;align-items:flex-start;gap:2.5rem}
+.hero-text{flex:1;min-width:0}
+.hero-logo{flex-shrink:0;padding-top:.5rem;opacity:.92}
+@media(max-width:760px){
+  .hero-inner{flex-direction:column}
+  .hero-logo{display:none}
+}
+.hero::after{
+  content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:120%;height:100%;pointer-events:none;
+  background:radial-gradient(ellipse 70% 45% at 50% -5%,var(--accent-glow),transparent 70%);
+}
+.hero-eyebrow{
+  font-family:var(--mono);font-size:.7rem;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:.9rem;
+  display:flex;align-items:center;gap:.6rem;
+}
+.hero-eyebrow::before{content:'';display:inline-block;width:20px;height:1px;background:var(--accent)}
+h1{
+  font-family:var(--mono);font-size:clamp(3.5rem,9vw,6.5rem);
+  font-weight:900;line-height:.95;letter-spacing:-.03em;
+  color:var(--accent);margin-bottom:1.5rem;
+}
+[data-theme="dark"] h1{text-shadow:0 0 60px rgba(34,211,238,.25)}
+.hero-sub{
+  font-size:1.05rem;color:var(--muted);max-width:500px;
+  line-height:1.7;margin-bottom:2.8rem;
+}
+[data-theme="light"] .hero-sub{font-family:var(--sans)}
+
+/* ─── terminal ───────────────────────────────────────────── */
+.terminal{
+  background:var(--code-bg);border:1px solid var(--border);border-radius:10px;
+  max-width:540px;overflow:hidden;
+  box-shadow:var(--shadow);margin-bottom:2rem;
+  transition:background var(--dur),border-color var(--dur),box-shadow var(--dur);
+}
+[data-theme="dark"] .terminal{box-shadow:var(--shadow),0 0 0 1px rgba(34,211,238,.04)}
+.term-bar{
+  display:flex;align-items:center;gap:6px;
+  padding:.6rem 1rem;border-bottom:1px solid var(--border2);
+  background:var(--surface);
+}
+.dot{width:11px;height:11px;border-radius:50%}
+.dr{background:#ff5f57}.dy{background:#febc2e}.dg{background:#28c841}
+.term-bar-title{font-size:.68rem;color:var(--faint);margin-left:auto;font-family:var(--mono)}
+.term-body{padding:1.1rem 1.4rem;font-family:var(--mono);font-size:.88rem;line-height:2}
+.tl{display:flex;align-items:center;gap:.5rem}
+.tp{color:var(--accent);user-select:none}
+.tc{color:var(--fg)}
+.to{
+  font-size:.95rem;font-weight:600;letter-spacing:.025em;
+  background:linear-gradient(90deg,var(--accent),var(--green));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+[data-theme="light"] .to{
+  background:linear-gradient(90deg,var(--accent),var(--green));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.cursor{
+  display:inline-block;width:.5em;height:1em;
+  background:var(--accent);vertical-align:text-bottom;
+  animation:blink 1.05s step-end infinite;margin-left:1px;
+  -webkit-text-fill-color:var(--accent);
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ─── anatomy ─────────────────────────────────────────────── */
+.anatomy{max-width:540px;margin-bottom:2.5rem}
+.anat-id{
+  font-family:var(--mono);font-size:clamp(.8rem,2.2vw,1rem);
+  letter-spacing:.035em;margin-bottom:.8rem;
+  white-space:nowrap;overflow-x:auto;padding-bottom:.2rem;
+}
+.pts{color:var(--accent)}
+.pdo{color:var(--faint)}
+.psq{color:var(--green)}
+.pz {color:var(--yellow)}
+.pda{color:var(--faint)}
+.ppd{color:var(--amber)}
+.anat-row{display:flex;flex-wrap:wrap;gap:.6rem 1.4rem;margin-top:.5rem}
+.anat-item{
+  font-family:var(--mono);font-size:.68rem;color:var(--muted);
+  display:flex;align-items:center;gap:.35rem;
+}
+.anat-item::before{
+  content:'';display:inline-block;width:7px;height:7px;border-radius:2px;flex-shrink:0;
+}
+.ai-ts::before{background:var(--accent)}
+.ai-sq::before{background:var(--green)}
+.ai-z::before {background:var(--yellow)}
+.ai-pd::before{background:var(--amber)}
+
+/* ─── ctas ───────────────────────────────────────────────── */
+.ctas{display:flex;gap:.65rem;flex-wrap:wrap}
+.btn-p{
+  font-family:var(--mono);font-size:.8rem;font-weight:700;
+  background:var(--accent);color:#0d1117;border:none;
+  border-radius:6px;padding:.55rem 1.15rem;cursor:pointer;
+  text-decoration:none;transition:opacity var(--dur),transform .15s;letter-spacing:.02em;
+}
+.btn-p:hover{opacity:.85;transform:translateY(-1px)}
+.btn-s{
+  font-family:var(--mono);font-size:.8rem;font-weight:600;
+  color:var(--accent);background:none;border:1px solid var(--accent);
+  border-radius:6px;padding:.55rem 1.15rem;cursor:pointer;
+  text-decoration:none;transition:background var(--dur),transform .15s;letter-spacing:.02em;
+}
+.btn-s:hover{background:var(--accent-dim);transform:translateY(-1px)}
+
+/* ─── sections ───────────────────────────────────────────── */
+.section{
+  max-width:920px;margin:0 auto;
+  padding:4rem 2rem;
+  border-top:1px solid var(--border2);
+}
+.sec-eye{
+  font-family:var(--mono);font-size:.68rem;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:.4rem;
+}
+.sec-title{
+  font-family:var(--mono);font-size:1.7rem;font-weight:700;
+  color:var(--fg);margin-bottom:2rem;
+}
+
+/* ─── comparison table ───────────────────────────────────── */
+.tbl-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.8rem}
+thead tr{background:var(--surface);border-bottom:2px solid var(--border)}
+th{
+  padding:.7rem .9rem;text-align:center;
+  color:var(--muted);font-weight:600;white-space:nowrap;position:relative;
+}
+th:first-child{text-align:left;min-width:200px}
+.th-wid{color:var(--accent)}
+.th-hlc{color:var(--green)}
+.th-wid::after,.th-hlc::after{
+  content:'';position:absolute;bottom:0;left:6px;right:6px;
+  height:2px;border-radius:2px;
+}
+.th-wid::after{background:var(--accent)}
+.th-hlc::after{background:var(--green)}
+td{
+  padding:.6rem .9rem;text-align:center;border-top:1px solid var(--border2);
+  color:var(--muted);transition:background var(--dur);
+}
+td:first-child{text-align:left;color:var(--fg)}
+tr:hover td{background:var(--accent-dim)}
+.y{color:var(--yes);font-weight:700}
+.n{color:var(--no)}
+.wy{color:var(--wid-yes);font-weight:800}
+.hy{color:var(--green);font-weight:800}
+.hn{color:var(--no)}
+.tc-wid{background:rgba(34,211,238,.025)}
+.tc-hlc{background:rgba(74,222,128,.025)}
+[data-theme="light"] .tc-wid{background:rgba(2,132,199,.03)}
+[data-theme="light"] .tc-hlc{background:rgba(22,163,74,.03)}
+
+/* ─── impl grid ──────────────────────────────────────────── */
+.impl-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;
+}
+.impl-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:1.25rem 1.4rem;cursor:default;position:relative;overflow:hidden;
+  transition:border-color var(--dur),transform .2s,box-shadow .2s;
+}
+.impl-card::before{
+  content:'';position:absolute;inset:0 0 auto 0;height:2px;
+  background:var(--accent);transform:scaleX(0);transform-origin:left;
+  transition:transform .22s ease;
+}
+.impl-card:hover::before{transform:scaleX(1)}
+.impl-card:hover{
+  border-color:var(--accent);transform:translateY(-2px);
+  box-shadow:0 4px 20px var(--accent-dim);
+}
+.impl-name{
+  font-family:var(--mono);font-size:1rem;font-weight:700;
+  color:var(--accent);margin-bottom:.35rem;
+}
+.impl-desc{font-size:.82rem;color:var(--muted);line-height:1.55;margin-bottom:.8rem}
+[data-theme="light"] .impl-desc{font-family:var(--sans)}
+.tags{display:flex;flex-wrap:wrap;gap:.3rem}
+.tag{
+  font-family:var(--mono);font-size:.62rem;
+  color:var(--faint);border:1px solid var(--border2);
+  border-radius:4px;padding:.12rem .38rem;
+}
+
+/* ─── install ────────────────────────────────────────────── */
+.tabs{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.9rem}
+.tab{
+  font-family:var(--mono);font-size:.75rem;
+  background:none;border:1px solid var(--border);border-radius:6px;
+  color:var(--muted);cursor:pointer;padding:.32rem .7rem;
+  transition:all var(--dur);
+}
+.tab:hover,.tab.on{
+  border-color:var(--accent);color:var(--accent);
+  background:var(--accent-dim);
+}
+.pane{display:none}
+.pane.on{display:block}
+.codeblock{
+  background:var(--code-bg);border:1px solid var(--border);border-radius:10px;
+  overflow:hidden;transition:background var(--dur),border-color var(--dur);
+}
+.cb-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.5rem 1rem;border-bottom:1px solid var(--border2);
+  background:var(--surface);
+}
+.cb-lang{font-family:var(--mono);font-size:.68rem;color:var(--faint)}
+.cpybtn{
+  font-family:var(--mono);font-size:.68rem;background:none;
+  border:1px solid var(--border);border-radius:4px;
+  color:var(--muted);cursor:pointer;padding:.18rem .45rem;
+  transition:all var(--dur);
+}
+.cpybtn:hover{border-color:var(--accent);color:var(--accent)}
+.cpybtn.ok{border-color:var(--green);color:var(--green)}
+pre{
+  padding:1.15rem 1.4rem;font-family:var(--mono);font-size:.83rem;
+  line-height:1.75;overflow-x:auto;color:var(--fg);
+}
+.k{color:var(--accent)}.v{color:var(--green)}.s{color:var(--yellow)}.cm{color:var(--faint)}
+
+/* ─── footer ─────────────────────────────────────────────── */
+footer{
+  border-top:1px solid var(--border2);
+  padding:1.75rem 2rem;
+  font-family:var(--mono);font-size:.74rem;color:var(--muted);
+}
+.ft-inner{
+  max-width:920px;margin:0 auto;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;
+}
+footer a{color:var(--accent)}
+footer a:hover{text-decoration:underline}
+
+/* ─── reveal ─────────────────────────────────────────────── */
+.reveal{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
+.reveal.in{opacity:1;transform:none}
+
+/* ─── responsive ─────────────────────────────────────────── */
+@media(max-width:640px){
+  nav{padding:.65rem 1rem}
+  .nav-badge{display:none}
+  .hero{padding:3.5rem 1rem 2.5rem}
+  .section{padding:2.5rem 1rem}
+  h1{font-size:3rem}
+  .ft-inner{flex-direction:column;text-align:center}
+}
+
+/* ─── scrollbar ──────────────────────────────────────────── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+</style>
+</head>
+<body>
+
+<!-- ── NAV ─────────────────────────────────────────────────── -->
+<nav>
+  <a class="nav-logo" href="#"><span>&gt; </span>wid</a>
+  <div class="nav-end">
+    <a class="nav-badge" href="https://github.com/waldiez/wid/actions/workflows/ci.yml" target="_blank" rel="noopener" aria-label="CI status">
+      <img src="https://github.com/waldiez/wid/actions/workflows/ci.yml/badge.svg" alt="CI">
+    </a>
+    <a class="nav-link" href="https://github.com/waldiez/wid" target="_blank" rel="noopener">GitHub ↗</a>
+    <button id="themeBtn" aria-label="Toggle theme" title="Toggle theme">☀</button>
+  </div>
+</nav>
+
+<!-- ── HERO ────────────────────────────────────────────────── -->
+<div class="hero">
+<div class="hero-inner">
+<div class="hero-text">
+  <p class="hero-eyebrow">v1.0.0 &nbsp;·&nbsp; MIT License &nbsp;·&nbsp; 6 implementations</p>
+  <h1>WID</h1>
+  <p class="hero-sub">Time-ordered, human-readable, collision-resistant identifiers for distributed systems.</p>
+
+  <!-- terminal -->
+  <div class="terminal reveal">
+    <div class="term-bar">
+      <span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span>
+      <span class="term-bar-title">wid &mdash; bash</span>
+    </div>
+    <div class="term-body">
+      <div class="tl"><span class="tp">$</span><span class="tc">wid next</span></div>
+      <div class="tl">
+        <span class="tp" style="color:var(--muted)">›</span>
+        <span class="to" id="liveWid">20260217T143052.0000Z-a3f91c</span><span class="cursor"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- anatomy -->
+  <div class="anatomy reveal">
+    <div class="anat-id">
+      <span class="pts">20260217T143052</span><span class="pdo">.</span><span
+           class="psq">0000</span><span class="pz">Z</span><span
+           class="pda">-</span><span class="ppd">a3f91c</span>
+    </div>
+    <div class="anat-row">
+      <span class="anat-item ai-ts">TIMESTAMP &mdash; UTC, human-readable, sortable</span>
+      <span class="anat-item ai-sq">SEQ &mdash; zero-padded counter (width W)</span>
+      <span class="anat-item ai-z">Z &mdash; UTC marker + separator</span>
+      <span class="anat-item ai-pd">PAD &mdash; random hex (length Z param)</span>
+    </div>
+  </div>
+
+  <!-- CTAs -->
+  <div class="ctas reveal">
+    <a class="btn-p" href="https://github.com/waldiez/wid" target="_blank" rel="noopener">View on GitHub</a>
+    <a class="btn-s" href="https://github.com/waldiez/wid/blob/main/spec/SPEC.md" target="_blank" rel="noopener">Spec</a>
+    <a class="btn-s" href="https://github.com/waldiez/wid/blob/main/spec/CRYPTO_SPEC.md" target="_blank" rel="noopener">Crypto Spec</a>
+  </div>
+</div><!-- /.hero-text -->
+<div class="hero-logo reveal">
+<svg class="waldiez-loader" viewBox="0 0 200 120" width="240" height="144" fill="none" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" aria-label="Waldiez loading logo" role="img"><style>svg.waldiez-loader{--cycle:18s;--start-delay:2.2s;--cw1:#6366f1;--cw2:#8b5cf6;--cw3:#ec4899;--glow:rgba(99,102,241,0.55);--orbit:rgba(255,255,255,0.8);--moon:rgba(255,255,255,0.9);display:block;overflow:visible;filter:drop-shadow(0 0 20px var(--glow));animation:logoPulse 2.2s ease-in-out 1.5s infinite}svg.waldiez-loader[waldiez-theme="light"],[waldiez-theme="light"] svg.waldiez-loader{--cw1:#4338ca;--cw2:#7c3aed;--cw3:#db2777;--glow:rgba(124,58,237,0.30);--orbit:rgba(0,0,0,0.22);--moon:rgba(0,0,0,0.35)}svg.waldiez-loader .auto{animation:themeCycle var(--cycle) ease-in-out infinite;animation-delay:var(--start-delay);animation-fill-mode:both}svg.waldiez-loader[waldiez-theme] .auto,[waldiez-theme] svg.waldiez-loader .auto{animation:none}@keyframes themeCycle{0%,20%{--cw1:#6366f1;--cw2:#8b5cf6;--cw3:#ec4899}40%,60%{--cw1:#4338ca;--cw2:#7c3aed;--cw3:#db2777}80%,100%{--cw1:#5eead4;--cw2:#38bdf8;--cw3:#818cf8}}@keyframes logoPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}.w-stroke{stroke-dasharray:100;stroke-dashoffset:100;animation:drawStroke 1.5s ease-out forwards}.w-stroke-1{animation-delay:0s}.w-stroke-2{animation-delay:0.1s}.w-stroke-3{animation-delay:0.2s}.w-stroke-4{animation-delay:0.3s}.w-stroke-5{animation-delay:0.4s}.w-stroke-6{animation-delay:0.5s}@keyframes drawStroke{0%{stroke-dashoffset:100}85%{stroke-dashoffset:0}100%{stroke-dashoffset:0}}.bg{opacity:1;filter:blur(0px);animation:bgFade var(--cycle) ease-in-out infinite;animation-delay:var(--start-delay);animation-fill-mode:both}svg.waldiez-loader[waldiez-theme] .bg,[waldiez-theme] svg.waldiez-loader .bg{animation:none;opacity:1;filter:blur(0px)}@keyframes bgFade{0%,20%{opacity:1;filter:blur(0px)}30%{opacity:0.88;filter:blur(0.5px)}40%,60%{opacity:1;filter:blur(0px)}70%{opacity:0.88;filter:blur(0.5px)}80%,100%{opacity:1;filter:blur(0px)}}.orbit{opacity:0.18;stroke:var(--orbit);stroke-width:0.6;stroke-dasharray:1.5 2.5}.spin{transform-origin:100px 60px;animation:spin 18s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.planet{opacity:0.28;filter:url(#softGlow)}.moon{fill:var(--moon);opacity:0.18}@media(prefers-reduced-motion:reduce){svg.waldiez-loader,.spin,.w-stroke,.bg,.auto{animation:none!important}.w-stroke{stroke-dashoffset:0}}</style><defs><linearGradient id="g1"><stop offset="0%" stop-color="var(--cw1)"/><stop offset="100%" stop-color="var(--cw2)"/></linearGradient><linearGradient id="g2"><stop offset="0%" stop-color="var(--cw2)"/><stop offset="100%" stop-color="var(--cw3)"/></linearGradient><linearGradient id="g3"><stop offset="0%" stop-color="var(--cw3)"/><stop offset="100%" stop-color="var(--cw1)"/></linearGradient><filter id="softGlow"><feGaussianBlur stdDeviation="1.4"/></filter></defs><g class="auto"><g class="bg"><ellipse class="orbit" cx="100" cy="62" rx="66" ry="34"/><g class="spin"><circle class="planet" cx="152" cy="52" r="6.2" fill="url(#g1)"/><circle class="planet" cx="62" cy="88" r="4.6" fill="url(#g2)"/><circle class="planet" cx="78" cy="34" r="3.6" fill="url(#g3)"/><circle class="moon" cx="160" cy="60" r="1.8"/></g></g><path class="w-stroke w-stroke-1" d="M 20 20 L 50 100" stroke="url(#g1)" stroke-width="8" stroke-linecap="round"/><path class="w-stroke w-stroke-2" d="M 50 100 L 80 40" stroke="url(#g1)" stroke-width="8" stroke-linecap="round"/><path class="w-stroke w-stroke-3" d="M 80 40 L 100 80" stroke="url(#g2)" stroke-width="8" stroke-linecap="round"/><path class="w-stroke w-stroke-4" d="M 100 80 L 120 40" stroke="url(#g2)" stroke-width="8" stroke-linecap="round"/><path class="w-stroke w-stroke-5" d="M 120 40 L 150 100" stroke="url(#g3)" stroke-width="8" stroke-linecap="round"/><path class="w-stroke w-stroke-6" d="M 150 100 L 180 20" stroke="url(#g3)" stroke-width="8" stroke-linecap="round"/></g></svg>
+</div><!-- /.hero-logo -->
+</div><!-- /.hero-inner -->
+</div>
+
+<!-- ── WHY WID ──────────────────────────────────────────────── -->
+<div class="section" id="why">
+  <p class="sec-eye">// comparison</p>
+  <h2 class="sec-title">Why WID?</h2>
+  <div class="tbl-wrap reveal">
+    <table>
+      <thead>
+        <tr>
+          <th>Property</th>
+          <th>UUID v4</th>
+          <th>UUID v7</th>
+          <th>ULID</th>
+          <th>KSUID</th>
+          <th class="th-wid">WID</th>
+          <th class="th-hlc">HLC-WID</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Time-sortable</td>
+          <td class="n">✗</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
+          <td class="wy tc-wid">✓</td><td class="hy tc-hlc">✓</td>
+        </tr>
+        <tr>
+          <td>Human-readable timestamp</td>
+          <td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td>
+          <td class="wy tc-wid">✓</td><td class="hy tc-hlc">✓</td>
+        </tr>
+        <tr>
+          <td>Collision-resistant</td>
+          <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
+          <td class="wy tc-wid">✓</td><td class="hy tc-hlc">✓</td>
+        </tr>
+        <tr>
+          <td>No coordination needed</td>
+          <td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td>
+          <td class="wy tc-wid">✓</td><td class="hy tc-hlc">✓</td>
+        </tr>
+        <tr>
+          <td>Distributed causal ordering</td>
+          <td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td>
+          <td class="hn tc-wid">✗</td><td class="hy tc-hlc">✓</td>
+        </tr>
+        <tr>
+          <td>Configurable precision</td>
+          <td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td>
+          <td class="wy tc-wid">✓</td><td class="hy tc-hlc">✓</td>
+        </tr>
+        <tr>
+          <td>Debuggable at a glance</td>
+          <td class="n">✗</td><td class="n">✗</td><td class="n">✗</td><td class="n">✗</td>
+          <td class="wy tc-wid">✓</td><td class="hy tc-hlc">✓</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── IMPLEMENTATIONS ──────────────────────────────────────── -->
+<div class="section" id="implementations">
+  <p class="sec-eye">// implementations</p>
+  <h2 class="sec-title">Six Languages. One Spec.</h2>
+  <div class="impl-grid">
+    <div class="impl-card reveal">
+      <div class="impl-name">Rust</div>
+      <div class="impl-desc">Reference implementation. Ships as Docker image. Full CLI with all canonical actions.</div>
+      <div class="tags">
+        <span class="tag">reference</span><span class="tag">docker</span><span class="tag">crypto</span>
+      </div>
+    </div>
+    <div class="impl-card reveal">
+      <div class="impl-name">Python</div>
+      <div class="impl-desc">Async generators, <code>aiosqlite</code> state persistence, full canonical action matrix.</div>
+      <div class="tags">
+        <span class="tag">async</span><span class="tag">aiosqlite</span><span class="tag">crypto</span>
+      </div>
+    </div>
+    <div class="impl-card reveal">
+      <div class="impl-name">C</div>
+      <div class="impl-desc">Single-header library. Drop <code>wid.h</code> into your project. Zero dependencies.</div>
+      <div class="tags">
+        <span class="tag">single-header</span><span class="tag">embedded</span><span class="tag">crypto</span>
+      </div>
+    </div>
+    <div class="impl-card reveal">
+      <div class="impl-name">TypeScript</div>
+      <div class="impl-desc">ESM + CJS dual build. Browser-ready. Works in Node, Deno, Bun, and the browser.</div>
+      <div class="tags">
+        <span class="tag">esm+cjs</span><span class="tag">browser</span><span class="tag">crypto</span>
+      </div>
+    </div>
+    <div class="impl-card reveal">
+      <div class="impl-name">Go</div>
+      <div class="impl-desc">Thread-safe generator. Stdlib only — no external dependencies whatsoever.</div>
+      <div class="tags">
+        <span class="tag">thread-safe</span><span class="tag">stdlib-only</span><span class="tag">crypto</span>
+      </div>
+    </div>
+    <div class="impl-card reveal">
+      <div class="impl-name">sh</div>
+      <div class="impl-desc">POSIX shell orchestrator. Canonical test harness. Runs anywhere bash is present.</div>
+      <div class="tags">
+        <span class="tag">posix</span><span class="tag">orchestrator</span><span class="tag">portable</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── INSTALL ───────────────────────────────────────────────── -->
+<div class="section" id="install">
+  <p class="sec-eye">// install</p>
+  <h2 class="sec-title">Get Started</h2>
+
+  <div class="tabs">
+    <button class="tab on" data-t="rust">Rust</button>
+    <button class="tab" data-t="python">Python</button>
+    <button class="tab" data-t="typescript">TypeScript</button>
+    <button class="tab" data-t="go">Go</button>
+    <button class="tab" data-t="c">C</button>
+    <button class="tab" data-t="docker">Docker</button>
+  </div>
+
+  <div class="pane on" id="p-rust">
+    <div class="codeblock">
+      <div class="cb-head"><span class="cb-lang">bash</span>
+        <button class="cpybtn" data-c="cargo install --git https://github.com/waldiez/wid">copy</button>
+      </div>
+      <pre><span class="k">cargo install</span> <span class="v">--git</span> <span class="s">https://github.com/waldiez/wid</span>
+
+<span class="cm"># Generate one ID</span>
+<span class="k">wid</span> next
+
+<span class="cm"># Stream 10 IDs, 1s apart</span>
+<span class="k">wid</span> stream <span class="v">--count</span> 10
+
+<span class="cm"># Canonical key=value form</span>
+<span class="k">wid</span> A=next W=4 Z=6 T=sec</pre>
+    </div>
+  </div>
+
+  <div class="pane" id="p-python">
+    <div class="codeblock">
+      <div class="cb-head"><span class="cb-lang">bash</span>
+        <button class="cpybtn" data-c="pip install git+https://github.com/waldiez/wid">copy</button>
+      </div>
+      <pre><span class="k">pip install</span> <span class="s">git+https://github.com/waldiez/wid</span>
+
+<span class="cm"># CLI</span>
+<span class="k">python -m wid</span> A=next W=4 Z=6 T=sec
+<span class="k">python -m wid</span> A=stream N=10 L=1
+
+<span class="cm"># Library</span>
+<span class="v">from</span> wid <span class="v">import</span> WidGen
+gen = WidGen()
+print(gen.next())</pre>
+    </div>
+  </div>
+
+  <div class="pane" id="p-typescript">
+    <div class="codeblock">
+      <div class="cb-head"><span class="cb-lang">bash / ts</span>
+        <button class="cpybtn" data-c="npm install github:waldiez/wid">copy</button>
+      </div>
+      <pre><span class="k">npm install</span> <span class="s">github:waldiez/wid</span>
+
+<span class="cm">// ESM</span>
+<span class="v">import</span> { WidGen } <span class="v">from</span> <span class="s">'@waldiez/wid'</span>;
+<span class="v">const</span> gen = <span class="v">new</span> WidGen();
+console.log(gen.next());
+
+<span class="cm">// CLI (after npm run build)</span>
+<span class="k">node</span> typescript/dist/cli.js A=next W=4 Z=6</pre>
+    </div>
+  </div>
+
+  <div class="pane" id="p-go">
+    <div class="codeblock">
+      <div class="cb-head"><span class="cb-lang">bash / go</span>
+        <button class="cpybtn" data-c="go install github.com/waldiez/wid/go/cmd/wid@latest">copy</button>
+      </div>
+      <pre><span class="k">go install</span> <span class="s">github.com/waldiez/wid/go/cmd/wid@latest</span>
+
+<span class="cm">// As a library</span>
+<span class="v">import</span> wid <span class="s">"github.com/waldiez/wid/go"</span>
+
+g := wid.NewWidGen(4, 6)
+fmt.Println(g.Next())</pre>
+    </div>
+  </div>
+
+  <div class="pane" id="p-c">
+    <div class="codeblock">
+      <div class="cb-head"><span class="cb-lang">c</span>
+        <button class="cpybtn" data-c='#include "wid.h"'>copy</button>
+      </div>
+      <pre><span class="cm">// Copy c/include/wid.h into your project — that's it.</span>
+<span class="v">#include</span> <span class="s">"wid.h"</span>
+
+wid_gen_t gen;
+wid_gen_init(&amp;gen, <span class="cm">/*W=*/</span>4, <span class="cm">/*Z=*/</span>6);
+
+<span class="v">char</span> buf[64];
+wid_next(&amp;gen, buf, <span class="v">sizeof</span>(buf));
+printf(<span class="s">"%s\n"</span>, buf);</pre>
+    </div>
+  </div>
+
+  <div class="pane" id="p-docker">
+    <div class="codeblock">
+      <div class="cb-head"><span class="cb-lang">bash</span>
+        <button class="cpybtn" data-c="docker build -t wid . && docker run --rm wid next">copy</button>
+      </div>
+      <pre><span class="cm"># Build (uses Rust reference implementation)</span>
+<span class="k">docker build</span> <span class="v">-t</span> wid .
+
+<span class="cm"># Run</span>
+<span class="k">docker run</span> <span class="v">--rm</span> wid next
+<span class="k">docker run</span> <span class="v">--rm</span> wid A=stream N=5 L=1</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ── FOOTER ───────────────────────────────────────────────── -->
+<footer>
+  <div class="ft-inner">
+    <span>
+      <a href="https://github.com/waldiez/wid" target="_blank" rel="noopener">waldiez/wid</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/waldiez/wid/blob/main/LICENSE" target="_blank" rel="noopener">MIT</a>
+    </span>
+    <span>
+      <a href="https://github.com/waldiez/wid/blob/main/spec/SPEC.md" target="_blank" rel="noopener">Spec</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/waldiez/wid/blob/main/spec/CRYPTO_SPEC.md" target="_blank" rel="noopener">Crypto Spec</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/waldiez/wid/blob/main/spec/conformance/" target="_blank" rel="noopener">Conformance</a>
+    </span>
+    <span style="color:var(--faint)">All implementations conform to a single spec.</span>
+  </div>
+</footer>
+
+<script>
+/* ── THEME ───────────────────────────────────────────────── */
+const root = document.documentElement;
+const btn  = document.getElementById('themeBtn');
+
+function applyTheme(t) {
+  root.setAttribute('data-theme', t);
+  localStorage.setItem('wid-theme', t);
+  btn.textContent = t === 'dark' ? '☀' : '●';
+  btn.title = t === 'dark' ? 'Switch to light' : 'Switch to dark';
+  const svg = document.querySelector('svg.waldiez-loader');
+  if (svg) svg.setAttribute('waldiez-theme', t);
+}
+
+applyTheme(localStorage.getItem('wid-theme') || 'dark');
+btn.addEventListener('click', () =>
+  applyTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark')
+);
+
+/* ── LIVE WID ────────────────────────────────────────────── */
+const widEl = document.getElementById('liveWid');
+let busy = false;
+
+function makeWid() {
+  const n = new Date();
+  const p = v => String(v).padStart(2,'0');
+  const ts = `${n.getUTCFullYear()}${p(n.getUTCMonth()+1)}${p(n.getUTCDate())}` +
+             `T${p(n.getUTCHours())}${p(n.getUTCMinutes())}${p(n.getUTCSeconds())}`;
+  const seq = String(Math.floor(Math.random()*10000)).padStart(4,'0');
+  const pad = Array.from({length:6},()=>Math.floor(Math.random()*16).toString(16)).join('');
+  return `${ts}.${seq}Z-${pad}`;
+}
+
+async function cycleWid() {
+  if (busy) return;
+  busy = true;
+  const next = makeWid();
+
+  /* fade out */
+  widEl.style.transition = 'opacity .14s ease';
+  widEl.style.opacity = '0';
+  await new Promise(r => setTimeout(r, 150));
+
+  /* type in */
+  widEl.textContent = '';
+  widEl.style.opacity = '1';
+  widEl.style.transition = '';
+  for (const ch of next) {
+    widEl.textContent += ch;
+    await new Promise(r => setTimeout(r, 16));
+  }
+  busy = false;
+}
+
+setInterval(cycleWid, 3200);
+
+/* ── TABS ────────────────────────────────────────────────── */
+document.querySelectorAll('.tab').forEach(tab =>
+  tab.addEventListener('click', () => {
+    const id = tab.dataset.t;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+    document.querySelectorAll('.pane').forEach(p => p.classList.remove('on'));
+    tab.classList.add('on');
+    document.getElementById('p-' + id).classList.add('on');
+  })
+);
+
+/* ── COPY ────────────────────────────────────────────────── */
+document.querySelectorAll('.cpybtn').forEach(b =>
+  b.addEventListener('click', async () => {
+    const txt = b.dataset.c;
+    try { await navigator.clipboard.writeText(txt); }
+    catch {
+      const ta = Object.assign(document.createElement('textarea'),
+        {value:txt, style:'position:fixed;opacity:0'});
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    b.textContent = 'copied!'; b.classList.add('ok');
+    setTimeout(() => { b.textContent = 'copy'; b.classList.remove('ok'); }, 1800);
+  })
+);
+
+/* ── SCROLL REVEAL ───────────────────────────────────────── */
+new IntersectionObserver(
+  entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('in'); }),
+  { threshold: 0.08, rootMargin: '0px 0px -30px 0px' }
+).observe = (() => {
+  const orig = IntersectionObserver.prototype.observe;
+  return function(el) { return orig.call(this, el); };
+})();
+
+const io = new IntersectionObserver(
+  entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('in'); }),
+  { threshold: 0.08, rootMargin: '0px 0px -30px 0px' }
+);
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+</script>
+</body>
+</html>
