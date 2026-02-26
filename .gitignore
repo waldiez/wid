@@ -54,6 +54,7 @@ obj/
 
 # Build artifacts
 wid-web.zip
+*.zip
 
 # General
 .local/
