@@ -40,10 +40,10 @@
   "homepage": "https://waldiez.github.io/wid",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^25.3.0",
+    "@types/node": "^25.3.3",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
-    "eslint": "^10.0.1",
+    "eslint": "^10.0.2",
     "playwright": "^1.58.2",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
