@@ -50,10 +50,10 @@ class HLCWidGen:
         **kwargs: Any,
     ) -> None:
         """Initialize the generator."""
-        # Backwards-compatible keyword names: accept `w`/`w` from callers
+        # Backwards-compatible keyword names: accept `w`/`z` from callers
         if "w" in kwargs:
             W = int(kwargs.pop("w"))  # pyright: ignore[reportConstantRedefinition]
-        if "Z" in kwargs:
+        if "z" in kwargs:
             Z = int(kwargs.pop("z"))  # pyright: ignore[reportConstantRedefinition]
 
         if not node or any(c.isspace() for c in node) or "-" in node:
