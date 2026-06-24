@@ -35,7 +35,10 @@ c/.build/
 
 # Go
 go/cmd/wid/wid
-wid
+
+# Root-level compiled `wid` binary (anchored so it doesn't match
+# source dirs like python/wid, sh/wid, go/cmd/wid)
+/wid
 
 # Zig
 zig/.zig-cache/
