@@ -22,6 +22,7 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/pem.h>
+#include <sqlite3.h>
 
 #include "wid.h"
 
@@ -345,73 +346,11 @@ static int sql_state_path(const canon_opts_t *c, char out[PATH_MAX]) {
     return join_path(out, PATH_MAX, dd, "/wid_state.sqlite");
 }
 
-static int sqlite_exec_capture(const char *db_path, const char *sql, char *out, size_t out_len) {
-    char cmd[8192];
-    snprintf(cmd, sizeof(cmd), "sqlite3 -cmd \".timeout 5000\" '%s' \"%s\"", db_path, sql);
-    FILE *fp = popen(cmd, "r");
-    if (!fp) return -1;
-    if (out && out_len > 0) {
-        out[0] = '\0';
-        if (fgets(out, (int)out_len, fp)) {
-            size_t n = strlen(out);
-            while (n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r')) {
-                out[n - 1] = '\0';
-                n--;
-            }
-        }
-    }
-    int rc = pclose(fp);
-    return rc == 0 ? 0 : -1;
-}
-
-static int sql_load_state(const char *db_path, const char *key, int64_t *tick_out, int64_t *seq_out) {
-    char sql[1024];
-    char out[256];
-    snprintf(sql, sizeof(sql), "SELECT last_tick || '|' || last_seq FROM wid_state WHERE k='%s';", key);
-    if (sqlite_exec_capture(db_path, sql, out, sizeof(out)) != 0) return -1;
-    long long tick = 0;
-    long long seq = -1;
-    if (sscanf(out, "%lld|%lld", &tick, &seq) != 2) return -1;
-    *tick_out = (int64_t)tick;
-    *seq_out = (int64_t)seq;
-    return 0;
-}
-
-static int sql_ensure_state(const char *db_path, const char *key) {
-    char sql[1024];
-    snprintf(sql,
-             sizeof(sql),
-             "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_tick INTEGER NOT NULL, last_seq "
-             "INTEGER NOT NULL);"
-             "INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES('%s',0,-1);",
-             key);
-    return sqlite_exec_capture(db_path, sql, NULL, 0);
-}
-
-static int sql_compare_and_swap_state(
-    const char *db_path,
-    const char *key,
-    int64_t old_tick,
-    int64_t old_seq,
-    int64_t tick,
-    int64_t seq
-) {
-    char sql[2048];
-    char out[256];
-    snprintf(sql,
-             sizeof(sql),
-             "UPDATE wid_state SET last_tick=%lld,last_seq=%lld "
-             "WHERE k='%s' AND last_tick=%lld AND last_seq=%lld;"
-             "SELECT changes();",
-             (long long)tick,
-             (long long)seq,
-             key,
-             (long long)old_tick,
-             (long long)old_seq);
-    if (sqlite_exec_capture(db_path, sql, out, sizeof(out)) != 0) return -1;
-    return strcmp(out, "1") == 0 ? 1 : 0;
-}
-
+/* Allocate the next WID atomically using the bundled libsqlite3 C API (no
+ * external `sqlite3` binary). The read-modify-write of the persisted generator
+ * state runs inside a single BEGIN IMMEDIATE transaction so concurrent
+ * processes cannot interleave; the busy timeout absorbs lock contention. All
+ * values are bound as parameters (no SQL string interpolation). */
 static int sql_allocate_next_wid(
     const canon_opts_t *c,
     wid_time_unit_t unit,
@@ -421,23 +360,77 @@ static int sql_allocate_next_wid(
     if (sql_state_path(c, db_path) != 0) return -1;
     char key[128];
     snprintf(key, sizeof(key), "wid:c:%d:%d:%s", c->W, c->Z, c->T);
-    if (sql_ensure_state(db_path, key) != 0) return -1;
 
-    for (int attempt = 0; attempt < 64; attempt++) {
-        int64_t last_tick = 0;
-        int64_t last_seq = -1;
-        if (sql_load_state(db_path, key, &last_tick, &last_seq) != 0) return -1;
-
-        wid_gen_t g;
-        wid_gen_init_ex(&g, c->W, c->Z, unit);
-        g.last_tick = last_tick;
-        g.last_seq = last_seq;
-        wid_gen_next(&g, out, WID_MAX_LEN);
-
-        int cas = sql_compare_and_swap_state(db_path, key, last_tick, last_seq, g.last_tick, g.last_seq);
-        if (cas < 0) return -1;
-        if (cas == 1) return 0;
+    sqlite3 *db = NULL;
+    if (sqlite3_open(db_path, &db) != SQLITE_OK) {
+        sqlite3_close(db);
+        return -1;
     }
+    sqlite3_busy_timeout(db, 5000);
+
+    int rc = -1;
+    if (sqlite3_exec(db,
+                     "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, "
+                     "last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL);",
+                     NULL,
+                     NULL,
+                     NULL) != SQLITE_OK) {
+        sqlite3_close(db);
+        return -1;
+    }
+    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) {
+        sqlite3_close(db);
+        return -1;
+    }
+
+    int64_t last_tick = 0;
+    int64_t last_seq = -1;
+    sqlite3_stmt *sel = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT last_tick, last_seq FROM wid_state WHERE k=?1;", -1, &sel, NULL) !=
+        SQLITE_OK) {
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        sqlite3_close(db);
+        return -1;
+    }
+    sqlite3_bind_text(sel, 1, key, -1, SQLITE_TRANSIENT);
+    int step = sqlite3_step(sel);
+    if (step == SQLITE_ROW) {
+        last_tick = sqlite3_column_int64(sel, 0);
+        last_seq = sqlite3_column_int64(sel, 1);
+    } else if (step != SQLITE_DONE) {
+        sqlite3_finalize(sel);
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        sqlite3_close(db);
+        return -1;
+    }
+    sqlite3_finalize(sel);
+
+    wid_gen_t g;
+    wid_gen_init_ex(&g, c->W, c->Z, unit);
+    g.last_tick = last_tick;
+    g.last_seq = last_seq;
+    wid_gen_next(&g, out, WID_MAX_LEN);
+
+    sqlite3_stmt *up = NULL;
+    if (sqlite3_prepare_v2(db,
+                           "INSERT INTO wid_state(k, last_tick, last_seq) VALUES(?1, ?2, ?3) "
+                           "ON CONFLICT(k) DO UPDATE SET last_tick=?2, last_seq=?3;",
+                           -1,
+                           &up,
+                           NULL) == SQLITE_OK) {
+        sqlite3_bind_text(up, 1, key, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(up, 2, g.last_tick);
+        sqlite3_bind_int64(up, 3, g.last_seq);
+        if (sqlite3_step(up) == SQLITE_DONE) rc = 0;
+        sqlite3_finalize(up);
+    }
+
+    if (rc == 0 && sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK) {
+        sqlite3_close(db);
+        return 0;
+    }
+    sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+    sqlite3_close(db);
     return -1;
 }
 

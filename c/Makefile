@@ -7,6 +7,11 @@ BUILD_DIR = .build
 CRYPTO_CFLAGS ?= $(shell pkg-config --cflags libcrypto 2>/dev/null)
 CRYPTO_LIBS ?= $(shell pkg-config --libs libcrypto 2>/dev/null || echo -lcrypto)
 
+# SQLite (libsqlite3) is used for E=sql generator-state persistence. Resolved
+# via pkg-config when available, else -lsqlite3.
+SQLITE_CFLAGS ?= $(shell pkg-config --cflags sqlite3 2>/dev/null)
+SQLITE_LIBS ?= $(shell pkg-config --libs sqlite3 2>/dev/null || echo -lsqlite3)
+
 .PHONY: setup test lint fmt check clean next stream healthcheck bench coverage
 
 setup: $(BUILD_DIR)/wid $(BUILD_DIR)/wid_tests
@@ -15,7 +20,7 @@ $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
 $(BUILD_DIR)/wid: src/main.c include/wid.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(CRYPTO_CFLAGS) -I include -o $@ src/main.c $(CRYPTO_LIBS)
+	$(CC) $(CFLAGS) $(CRYPTO_CFLAGS) $(SQLITE_CFLAGS) -I include -o $@ src/main.c $(CRYPTO_LIBS) $(SQLITE_LIBS)
 
 $(BUILD_DIR)/wid_tests: tests/wid_tests.c include/wid.h | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -I include -o $@ tests/wid_tests.c
@@ -25,7 +30,7 @@ test: $(BUILD_DIR)/wid $(BUILD_DIR)/wid_tests
 	$(BUILD_DIR)/wid selftest
 
 lint:
-	$(CC) $(CFLAGS) $(CRYPTO_CFLAGS) -Werror -I include -fsyntax-only src/main.c
+	$(CC) $(CFLAGS) $(CRYPTO_CFLAGS) $(SQLITE_CFLAGS) -Werror -I include -fsyntax-only src/main.c
 
 fmt:
 	@command -v clang-format >/dev/null 2>&1 && \

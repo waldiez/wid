@@ -1165,27 +1165,6 @@ fn run_wotp(c: &CanonOpts) -> Result<(), String> {
     Err("OTP invalid.".to_string())
 }
 
-fn sql_escape_single(s: &str) -> String {
-    s.replace('\'', "''")
-}
-
-fn sqlite_exec(db_path: &Path, sql: &str) -> Result<String, String> {
-    let out = Command::new("sqlite3")
-        .arg("-cmd")
-        .arg(".timeout 5000")
-        .arg(db_path)
-        .arg(sql)
-        .output()
-        .map_err(|_| "sqlite3 command not found (required for E=sql)".to_string())?;
-    if !out.status.success() {
-        return Err(format!(
-            "sqlite3 failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-}
-
 fn sql_state_path(c: &CanonOpts) -> PathBuf {
     let root = workspace_root();
     resolve_data_dir(&root, &c.d).join("wid_state.sqlite")
@@ -1195,71 +1174,68 @@ fn sql_state_key(c: &CanonOpts) -> String {
     format!("wid:rust:{}:{}:{}", c.w, c.z, c.t.as_str())
 }
 
-fn sql_ensure_state(db_path: &Path, key: &str) -> Result<(), String> {
-    let escaped = sql_escape_single(key);
-    let sql = format!(
-        "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL);\
-         INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES('{escaped}',0,-1);"
-    );
-    sqlite_exec(db_path, &sql).map(|_| ())
-}
-
-fn sql_load_state(db_path: &Path, key: &str) -> Result<(i64, i64), String> {
-    let escaped = sql_escape_single(key);
-    let sql = format!("SELECT last_tick || '|' || last_seq FROM wid_state WHERE k='{escaped}';");
-    let raw = sqlite_exec(db_path, &sql)?;
-    let (tick_s, seq_s) = raw
-        .split_once('|')
-        .ok_or_else(|| "invalid sql state row".to_string())?;
-    let tick = tick_s
-        .parse::<i64>()
-        .map_err(|_| "invalid sql tick".to_string())?;
-    let seq = seq_s
-        .parse::<i64>()
-        .map_err(|_| "invalid sql seq".to_string())?;
-    Ok((tick, seq))
-}
-
-fn sql_compare_and_swap_state(
-    db_path: &Path,
-    key: &str,
-    old_tick: i64,
-    old_seq: i64,
-    tick: i64,
-    seq: i64,
-) -> Result<bool, String> {
-    let escaped = sql_escape_single(key);
-    let sql = format!(
-        "UPDATE wid_state SET last_tick={tick},last_seq={seq} WHERE k='{escaped}' AND last_tick={old_tick} AND last_seq={old_seq};\
-         SELECT changes();"
-    );
-    let raw = sqlite_exec(db_path, &sql)?;
-    Ok(raw.trim() == "1")
-}
-
-fn sql_allocate_next_wid(c: &CanonOpts) -> Result<String, String> {
+/// Open the SQL state database (bundled SQLite; no external `sqlite3` binary),
+/// set a busy timeout for cross-process contention, and ensure the schema.
+fn sql_open(c: &CanonOpts) -> Result<rusqlite::Connection, String> {
     let db_path = sql_state_path(c);
-    let key = sql_state_key(c);
-    sql_ensure_state(&db_path, &key)?;
-    for _ in 0..64 {
-        let (last_tick, last_seq) = sql_load_state(&db_path, &key)?;
-        let mut generator =
-            WidGen::new_with_time_unit(c.w, c.z, None, c.t).map_err(|e| e.to_string())?;
-        generator.restore_state(last_tick, last_seq);
-        let id = generator.next_wid();
-        let (next_tick, next_seq) = generator.state();
-        if sql_compare_and_swap_state(&db_path, &key, last_tick, last_seq, next_tick, next_seq)? {
-            return Ok(id);
-        }
-    }
-    Err("sql allocation contention: retry budget exhausted".to_string())
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("failed to open sql state db: {e}"))?;
+    conn.busy_timeout(Duration::from_millis(5000))
+        .map_err(|e| format!("sql busy_timeout failed: {e}"))?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS wid_state (\
+             k TEXT PRIMARY KEY, last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL);",
+    )
+    .map_err(|e| format!("sql init failed: {e}"))?;
+    Ok(conn)
+}
+
+/// Allocate the next WID atomically: read-modify-write the persisted generator
+/// state inside a single `IMMEDIATE` transaction so concurrent processes cannot
+/// interleave. All values are bound as parameters (no SQL string interpolation).
+fn sql_allocate_next_wid(
+    conn: &mut rusqlite::Connection,
+    c: &CanonOpts,
+    key: &str,
+) -> Result<String, String> {
+    use rusqlite::OptionalExtension;
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("sql begin failed: {e}"))?;
+
+    let (last_tick, last_seq): (i64, i64) = tx
+        .query_row(
+            "SELECT last_tick, last_seq FROM wid_state WHERE k=?1",
+            [key],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| format!("sql load failed: {e}"))?
+        .unwrap_or((0, -1));
+
+    let mut generator =
+        WidGen::new_with_time_unit(c.w, c.z, None, c.t).map_err(|e| e.to_string())?;
+    generator.restore_state(last_tick, last_seq);
+    let id = generator.next_wid();
+    let (next_tick, next_seq) = generator.state();
+
+    tx.execute(
+        "INSERT INTO wid_state(k, last_tick, last_seq) VALUES(?1, ?2, ?3)\
+         ON CONFLICT(k) DO UPDATE SET last_tick=?2, last_seq=?3",
+        rusqlite::params![key, next_tick, next_seq],
+    )
+    .map_err(|e| format!("sql update failed: {e}"))?;
+    tx.commit().map_err(|e| format!("sql commit failed: {e}"))?;
+    Ok(id)
 }
 
 fn run_canonical_sql_next(c: &CanonOpts) -> Result<(), String> {
     let root = workspace_root();
     let dd = resolve_data_dir(&root, &c.d);
     fs::create_dir_all(&dd).map_err(|e| format!("failed to create data dir: {e}"))?;
-    let id = sql_allocate_next_wid(c)?;
+    let mut conn = sql_open(c)?;
+    let key = sql_state_key(c);
+    let id = sql_allocate_next_wid(&mut conn, c, &key)?;
     println!("{id}");
     Ok(())
 }
@@ -1268,12 +1244,15 @@ fn run_canonical_sql_stream(c: &CanonOpts) -> Result<(), String> {
     let root = workspace_root();
     let dd = resolve_data_dir(&root, &c.d);
     fs::create_dir_all(&dd).map_err(|e| format!("failed to create data dir: {e}"))?;
+    let mut conn = sql_open(c)?;
+    let key = sql_state_key(c);
     let mut emitted = 0usize;
     loop {
         if c.n > 0 && emitted >= c.n {
             break;
         }
-        println!("{}", sql_allocate_next_wid(c)?);
+        let id = sql_allocate_next_wid(&mut conn, c, &key)?;
+        println!("{id}");
         io::stdout().flush().map_err(|e| e.to_string())?;
         emitted += 1;
     }

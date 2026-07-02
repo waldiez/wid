@@ -31,6 +31,7 @@ ed25519-dalek = { version = "2.2.0", features = ["pem", "pkcs8"] }
 hmac = "0.12.1"
 base64 = "0.22.1"
 subtle = "2.6.1"
+rusqlite = { version = "0.37", features = ["bundled"] }
 
 [dev-dependencies]
 nanoid = "0.4"
