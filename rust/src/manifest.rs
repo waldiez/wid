@@ -148,7 +148,7 @@ impl SynapseFile {
         } else {
             fs::write(path, &self.payload)?;
             let ext = path.extension().unwrap_or_default().to_string_lossy();
-            let manifest_path = path.with_extension(format!("{}.manifest.json", ext));
+            let manifest_path = path.with_extension(format!("{ext}.manifest.json"));
             fs::write(manifest_path, self.manifest.to_json()?)?;
         }
         Ok(())
@@ -160,7 +160,7 @@ impl SynapseFile {
             return Self::from_bytes(&data);
         }
         let ext = path.extension().unwrap_or_default().to_string_lossy();
-        let manifest_path = path.with_extension(format!("{}.manifest.json", ext));
+        let manifest_path = path.with_extension(format!("{ext}.manifest.json"));
         if manifest_path.exists() {
             let manifest = Manifest::from_json(&fs::read_to_string(manifest_path)?)?;
             return Ok(Self {
@@ -312,7 +312,7 @@ mod tests {
         assert_eq!(loaded.payload, b"data");
 
         let ext = path.extension().unwrap_or_default().to_string_lossy();
-        let manifest_path = path.with_extension(format!("{}.manifest.json", ext));
+        let manifest_path = path.with_extension(format!("{ext}.manifest.json"));
         let _ = fs::remove_file(path);
         let _ = fs::remove_file(manifest_path);
     }

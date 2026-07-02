@@ -75,21 +75,18 @@ static WID_PATTERN_W4_Z6_SEC: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^(\d{8})T(\d{6})\.(\d{4})Z(?:-([0-9a-f]{6}))?$").unwrap());
 
 fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
-    let seq_part = format!(r"(\d{{{}}})", w);
+    let seq_part = format!(r"(\d{{{w}}})");
     let time_digits = match time_unit {
         TimeUnit::Sec => 6,
         TimeUnit::Ms => 9,
     };
     let pad_part = if z > 0 {
-        format!(r"(?:-([0-9a-f]{{{}}}))?$", z)
+        format!(r"(?:-([0-9a-f]{{{z}}}))?$")
     } else {
         r"$".to_string()
     };
 
-    let pattern = format!(
-        r"^(\d{{8}})T(\d{{{}}})\.{}Z{}",
-        time_digits, seq_part, pad_part
-    );
+    let pattern = format!(r"^(\d{{8}})T(\d{{{time_digits}}})\.{seq_part}Z{pad_part}");
     Regex::new(&pattern).unwrap()
 }
 
@@ -283,7 +280,7 @@ impl WidGen {
         let ts = self.ts_for_tick(tick).to_string();
         let seq_str = format!("{:0width$}", seq, width = self.w);
 
-        let mut wid = format!("{}.{}Z", ts, seq_str);
+        let mut wid = format!("{ts}.{seq_str}Z");
 
         if self.z > 0 {
             const HEX: &[u8; 16] = b"0123456789abcdef";

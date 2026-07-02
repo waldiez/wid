@@ -1334,7 +1334,7 @@ complete -c wid -f -a 'L=' -d 'Interval seconds'
 "#
         ),
         _ => {
-            eprintln!("error: unknown shell '{}'. Use: wid completion bash|zsh|fish", shell);
+            eprintln!("error: unknown shell '{shell}'. Use: wid completion bash|zsh|fish");
             process::exit(1);
         }
     }
@@ -1407,11 +1407,11 @@ fn main() {
             }
             Err(e) => Err(e.to_string()),
         },
-        _ => Err(format!("unknown command: {}", cmd)),
+        _ => Err(format!("unknown command: {cmd}")),
     };
 
     if let Err(err) = res {
-        eprintln!("error: {}", err);
+        eprintln!("error: {err}");
         process::exit(1);
     }
 }

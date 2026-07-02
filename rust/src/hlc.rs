@@ -24,20 +24,17 @@ static HLC_PATTERN_W4_Z0_SEC: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^(\d{8})T(\d{6})\.(\d{4})Z-([A-Za-z0-9_]+)$").unwrap());
 
 fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
-    let lc_part = format!(r"(\d{{{}}})", w);
+    let lc_part = format!(r"(\d{{{w}}})");
     let time_digits = match time_unit {
         TimeUnit::Sec => 6,
         TimeUnit::Ms => 9,
     };
     let pad_part = if z > 0 {
-        format!(r"(?:-([0-9a-f]{{{}}}))?$", z)
+        format!(r"(?:-([0-9a-f]{{{z}}}))?$")
     } else {
         r"$".to_string()
     };
-    let pattern = format!(
-        r"^(\d{{8}})T(\d{{{}}})\.{}Z-([A-Za-z0-9_]+){}",
-        time_digits, lc_part, pad_part
-    );
+    let pattern = format!(r"^(\d{{8}})T(\d{{{time_digits}}})\.{lc_part}Z-([A-Za-z0-9_]+){pad_part}");
     Regex::new(&pattern).unwrap()
 }
 
