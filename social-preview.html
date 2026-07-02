@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1280px;height:640px;overflow:hidden}
+body{
+  background:#0d1117;
+  font-family:'JetBrains Mono','Fira Code','Cascadia Code','Consolas',ui-monospace,monospace;
+  color:#e6edf3;
+  display:flex;
+  align-items:stretch;
+  position:relative;
+}
+
+/* ── glow backdrop ── */
+body::before{
+  content:'';
+  position:absolute;
+  top:-120px;left:-80px;
+  width:700px;height:500px;
+  background:radial-gradient(ellipse,rgba(34,211,238,.09) 0%,transparent 70%);
+  pointer-events:none;
+}
+body::after{
+  content:'';
+  position:absolute;
+  bottom:-60px;right:200px;
+  width:500px;height:400px;
+  background:radial-gradient(ellipse,rgba(99,102,241,.07) 0%,transparent 70%);
+  pointer-events:none;
+}
+
+/* ── left panel ── */
+.left{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding:60px 56px;
+  gap:0;
+  position:relative;
+  z-index:1;
+}
+
+.logo-line{
+  font-size:15px;
+  color:#22d3ee;
+  letter-spacing:.12em;
+  margin-bottom:28px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.logo-line .slash{color:#484f58}
+
+h1{
+  font-size:128px;
+  font-weight:900;
+  line-height:.9;
+  letter-spacing:-.04em;
+  background:linear-gradient(135deg,#22d3ee 0%,#6366f1 55%,#ec4899 100%);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+  margin-bottom:28px;
+  text-shadow:none;
+}
+
+.tagline{
+  font-size:18px;
+  color:#8b949e;
+  line-height:1.55;
+  max-width:480px;
+  margin-bottom:36px;
+}
+.tagline strong{color:#c9d1d9;font-weight:600}
+
+.sample-id{
+  font-size:19px;
+  font-weight:600;
+  letter-spacing:.02em;
+  margin-bottom:36px;
+  display:flex;
+  align-items:center;
+  gap:0;
+}
+.sid-ts{color:#22d3ee}
+.sid-dot{color:#30363d}
+.sid-seq{color:#4ade80}
+.sid-z{color:#fbbf24}
+.sid-dash{color:#30363d}
+.sid-pad{color:#f472b6}
+
+.langs{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.lang{
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:.08em;
+  padding:5px 13px;
+  border-radius:20px;
+  border:1px solid;
+  text-transform:uppercase;
+}
+.l-rust{color:#f97316;border-color:rgba(249,115,22,.35);background:rgba(249,115,22,.07)}
+.l-py  {color:#3b82f6;border-color:rgba(59,130,246,.35);background:rgba(59,130,246,.07)}
+.l-ts  {color:#22d3ee;border-color:rgba(34,211,238,.35);background:rgba(34,211,238,.07)}
+.l-go  {color:#06b6d4;border-color:rgba(6,182,212,.35);background:rgba(6,182,212,.07)}
+.l-c   {color:#a78bfa;border-color:rgba(167,139,250,.35);background:rgba(167,139,250,.07)}
+.l-sh  {color:#4ade80;border-color:rgba(74,222,128,.35);background:rgba(74,222,128,.07)}
+
+/* ── divider ── */
+.divider{
+  width:1px;
+  background:linear-gradient(to bottom,transparent,#30363d 20%,#30363d 80%,transparent);
+  margin:40px 0;
+  flex-shrink:0;
+}
+
+/* ── right panel ── */
+.right{
+  width:420px;
+  flex-shrink:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:40px 48px 40px 40px;
+  position:relative;
+  z-index:1;
+  gap:32px;
+}
+
+.badge-row{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:12px;
+}
+.badge{
+  font-size:11px;
+  color:#8b949e;
+  border:1px solid #21262d;
+  border-radius:6px;
+  padding:5px 12px;
+  background:#161b22;
+  letter-spacing:.04em;
+  white-space:nowrap;
+}
+.badge span{color:#22d3ee;font-weight:700}
+
+/* ── bottom strip ── */
+.strip{
+  position:absolute;
+  bottom:0;left:0;right:0;
+  height:3px;
+  background:linear-gradient(90deg,#22d3ee,#6366f1,#ec4899);
+}
+</style>
+</head>
+<body>
+
+<div class="left">
+  <div class="logo-line">
+    <span>&gt; waldiez</span><span class="slash">/</span><span>wid</span>
+    <span class="slash">&nbsp;·&nbsp;</span>
+    <span style="color:#484f58">v1.0.0</span>
+    <span class="slash">&nbsp;·&nbsp;</span>
+    <span style="color:#484f58">MIT</span>
+  </div>
+
+  <h1>WID</h1>
+
+  <p class="tagline">
+    <strong>Time-ordered, human-readable,</strong><br>
+    collision-resistant identifiers<br>for distributed systems.
+  </p>
+
+  <div class="sample-id">
+    <span class="sid-ts">20260225T081147</span><span
+    class="sid-dot">.</span><span
+    class="sid-seq">0000</span><span
+    class="sid-z">Z</span><span
+    class="sid-dash">-</span><span
+    class="sid-pad">a3f91c</span>
+  </div>
+
+  <div class="langs">
+    <span class="lang l-rust">Rust</span>
+    <span class="lang l-py">Python</span>
+    <span class="lang l-ts">TypeScript</span>
+    <span class="lang l-go">Go</span>
+    <span class="lang l-c">C</span>
+    <span class="lang l-sh">sh</span>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="right">
+  <svg viewBox="0 0 200 120" width="260" height="156" fill="none"
+       xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#6366f1"/>
+        <stop offset="100%" stop-color="#8b5cf6"/>
+      </linearGradient>
+      <linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#8b5cf6"/>
+        <stop offset="100%" stop-color="#ec4899"/>
+      </linearGradient>
+      <linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#ec4899"/>
+        <stop offset="100%" stop-color="#6366f1"/>
+      </linearGradient>
+      <filter id="glow">
+        <feGaussianBlur stdDeviation="1.4"/>
+      </filter>
+    </defs>
+    <!-- orbit -->
+    <ellipse cx="100" cy="62" rx="66" ry="34"
+             fill="none" stroke="rgba(255,255,255,0.12)"
+             stroke-width="0.6" stroke-dasharray="1.5 2.5"/>
+    <!-- planets -->
+    <circle cx="152" cy="52" r="6.2" fill="url(#g1)" opacity="0.5" filter="url(#glow)"/>
+    <circle cx="62"  cy="88" r="4.6" fill="url(#g2)" opacity="0.5" filter="url(#glow)"/>
+    <circle cx="78"  cy="34" r="3.6" fill="url(#g3)" opacity="0.5" filter="url(#glow)"/>
+    <circle cx="160" cy="60" r="1.8" fill="rgba(255,255,255,0.35)"/>
+    <!-- W strokes -->
+    <path d="M 20 20 L 50 100" stroke="url(#g1)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 50 100 L 80 40"  stroke="url(#g1)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 80 40 L 100 80"  stroke="url(#g2)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 100 80 L 120 40" stroke="url(#g2)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 120 40 L 150 100" stroke="url(#g3)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 150 100 L 180 20" stroke="url(#g3)" stroke-width="8" stroke-linecap="round"/>
+  </svg>
+
+  <div class="badge-row">
+    <div class="badge">6 implementations · <span>one spec</span></div>
+    <div class="badge">HLC-WID · distributed causal ordering</div>
+    <div class="badge">crypto · sign · verify · w-otp</div>
+  </div>
+</div>
+
+<div class="strip"></div>
+</body>
+</html>
