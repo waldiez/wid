@@ -2,7 +2,7 @@
 name = "waldiez-wid"
 version = "1.0.0"
 edition = "2024"
-rust-version = "1.93.0"
+rust-version = "1.88"
 license = "MIT"
 description = "WID — time-ordered, human-readable, collision-resistant identifier"
 repository = "https://github.com/waldiez/wid"

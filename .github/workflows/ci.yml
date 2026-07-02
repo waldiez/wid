@@ -39,7 +39,7 @@ jobs:
           cache: false
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93.0"
+          toolchain: "1.88"
       - run: make stream-conformance
 
   hardening-spec:
@@ -93,7 +93,7 @@ jobs:
           cache: false
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93.0"
+          toolchain: "1.88"
       - run: WOTP_PARITY_STRICT=1 WOTP_PYTHON=python3 WOTP_PARITY_LANGS=sh,python,typescript,go,rust,c make wotp-parity-check
 
   rust:
@@ -105,7 +105,7 @@ jobs:
         run: /bin/sh tools/ensure_bash.sh
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: "1.93.0"
+          toolchain: "1.88"
           components: clippy
       - run: make rust-check
 
