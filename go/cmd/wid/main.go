@@ -623,6 +623,52 @@ func resolveWOtpSecret(raw string) (string, error) {
 	return raw, nil
 }
 
+// wotpWidTickMs extracts epoch-milliseconds from the leading timestamp of a WID,
+// for the w-otp time-window (freshness) check only. It is deliberately lenient
+// and independent of W/Z and of whether the WID is plain or HLC: the timestamp
+// prefix is always YYYYMMDDThhmmss (seconds) or YYYYMMDDThhmmssSSS (milliseconds).
+// Using the strict WID parser here made verify reject WIDs that gen had just
+// accepted, and disagreed with the other language implementations.
+func wotpWidTickMs(widValue string) (int64, error) {
+	invalid := errors.New("WID timestamp is invalid for time-window verification")
+	ts := widValue
+	if i := strings.IndexByte(ts, '.'); i >= 0 {
+		ts = ts[:i]
+	}
+	tIdx := strings.IndexByte(ts, 'T')
+	if tIdx < 0 {
+		return 0, invalid
+	}
+	date, tm := ts[:tIdx], ts[tIdx+1:]
+	if len(date) != 8 || (len(tm) != 6 && len(tm) != 9) {
+		return 0, invalid
+	}
+	allDigits := func(s string) bool {
+		for i := 0; i < len(s); i++ {
+			if s[i] < '0' || s[i] > '9' {
+				return false
+			}
+		}
+		return true
+	}
+	if !allDigits(date) || !allDigits(tm) {
+		return 0, invalid
+	}
+	t, err := time.ParseInLocation("20060102T150405", date+"T"+tm[:6], time.UTC)
+	if err != nil {
+		return 0, invalid
+	}
+	ms := int64(0)
+	if len(tm) == 9 {
+		msPart, err := strconv.Atoi(tm[6:9])
+		if err != nil {
+			return 0, invalid
+		}
+		ms = int64(msPart)
+	}
+	return t.UnixMilli() + ms, nil
+}
+
 func computeWOtp(secret, widValue string, digits int) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(widValue))
@@ -694,13 +740,12 @@ func runWOtp(c canon) int {
 		return 1
 	}
 	if c.maxAgeSec > 0 || c.maxFutureSec > 0 {
-		parsed, err := wid.ParseWidWithUnit(widValue, c.w, c.z, c.t)
+		widMs, err := wotpWidTickMs(widValue)
 		if err != nil {
 			errln("WID timestamp is invalid for time-window verification")
 			return 1
 		}
 		nowMs := time.Now().UTC().UnixMilli()
-		widMs := parsed.Timestamp.UnixMilli()
 		delta := nowMs - widMs
 		if delta < 0 {
 			if -delta > int64(c.maxFutureSec)*1000 {

@@ -1114,6 +1114,39 @@ fn compute_wotp(secret: &str, wid: &str, digits: usize) -> Result<String, String
     Ok(format!("{:0width$}", v % m, width = digits))
 }
 
+/// Extract epoch-milliseconds from the leading timestamp of a WID, for the
+/// w-otp time-window (freshness) check only. This is deliberately lenient and
+/// independent of `W`/`Z` and of whether the WID is plain or HLC: the timestamp
+/// prefix is always `YYYYMMDDThhmmss` (seconds) or `YYYYMMDDThhmmssSSS`
+/// (milliseconds). Using the strict WID parser here made `verify` reject WIDs
+/// that `gen` had just accepted, and disagreed with the other language
+/// implementations (which all use this same lenient extraction).
+fn wotp_wid_tick_ms(wid: &str) -> Result<i64, String> {
+    let err = || "WID timestamp is invalid for time-window verification".to_string();
+    let ts = wid.split('.').next().unwrap_or("");
+    let (date, time) = ts.split_once('T').ok_or_else(err)?;
+    if date.len() != 8 || !(time.len() == 6 || time.len() == 9) {
+        return Err(err());
+    }
+    if !date.bytes().all(|b| b.is_ascii_digit()) || !time.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(err());
+    }
+    let num = |s: &str| s.parse::<u32>().map_err(|_| err());
+    let year: i32 = date[0..4].parse().map_err(|_| err())?;
+    let month = num(&date[4..6])?;
+    let day = num(&date[6..8])?;
+    let hour = num(&time[0..2])?;
+    let minute = num(&time[2..4])?;
+    let second = num(&time[4..6])?;
+    let millis: i64 = if time.len() == 9 { time[6..9].parse().map_err(|_| err())? } else { 0 };
+    use chrono::TimeZone;
+    let dt = chrono::Utc
+        .with_ymd_and_hms(year, month, day, hour, minute, second)
+        .single()
+        .ok_or_else(err)?;
+    Ok(dt.timestamp_millis() + millis)
+}
+
 fn run_wotp(c: &CanonOpts) -> Result<(), String> {
     let mode = {
         let m = c.mode.trim().to_ascii_lowercase();
@@ -1148,10 +1181,8 @@ fn run_wotp(c: &CanonOpts) -> Result<(), String> {
         return Err("CODE=<otp_code> required for A=w-otp MODE=verify".to_string());
     }
     if c.max_age_sec > 0 || c.max_future_sec > 0 {
-        let parsed = parse_wid_with_unit(&wid, c.w, c.z, c.t)
-            .map_err(|_| "WID timestamp is invalid for time-window verification".to_string())?;
+        let wid_ms = wotp_wid_tick_ms(&wid)?;
         let now_ms = chrono::Utc::now().timestamp_millis();
-        let wid_ms = parsed.timestamp.timestamp_millis();
         let delta = now_ms - wid_ms;
         if delta < 0 {
             if -delta > (c.max_future_sec as i64) * 1000 {
