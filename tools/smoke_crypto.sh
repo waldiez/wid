@@ -117,7 +117,7 @@ else
   say "Node Ed25519 support missing; TypeScript CLI crypto check will be skipped."
 fi
 
-if [[ -f typescript/dist/cli.js ]]; then
+if [[ -f dist/cli.js ]]; then
   :
 elif command -v npm >/dev/null 2>&1; then
   if ! npm run build >/dev/null; then
@@ -146,8 +146,8 @@ if command -v make >/dev/null 2>&1; then
 fi
 
 WID_SAMPLE=""
-if [[ -f typescript/dist/cli.js ]]; then
-  WID_SAMPLE="$(node typescript/dist/cli.js A=next W=4 Z=0 T=sec 2>/dev/null | head -n 1 || true)"
+if [[ -f dist/cli.js ]]; then
+  WID_SAMPLE="$(node dist/cli.js A=next W=4 Z=0 T=sec 2>/dev/null | head -n 1 || true)"
 fi
 if [[ -z "$WID_SAMPLE" ]]; then
   WID_SAMPLE="$(bash sh/wid A=next I=sh W=4 Z=0 T=sec 2>/dev/null | head -n 1 || true)"
@@ -254,10 +254,10 @@ else
   mark_skip "python" "python>=3.10 not found"
 fi
 
-if [[ -f typescript/dist/cli.js ]]; then
-  run_case "typescript" node node typescript/dist/cli.js
+if [[ -f dist/cli.js ]]; then
+  run_case "typescript" node node dist/cli.js
 else
-  mark_skip "typescript" "typescript/dist/cli.js missing"
+  mark_skip "typescript" "dist/cli.js missing"
 fi
 
 if [[ -x go/cmd/wid/wid ]]; then

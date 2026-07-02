@@ -23,21 +23,21 @@ if rg -n -e "/Users/[A-Za-z0-9._-]+" -e "/home/[A-Za-z0-9._-]+" README.md docs s
 fi
 
 echo "[hardening] packaging hygiene"
-if [ ! -f "typescript/dist/cli.js" ]; then
-  echo "[hardening] FAIL: typescript/dist/cli.js missing (run: npm run build)"
+if [ ! -f "dist/cli.js" ]; then
+  echo "[hardening] FAIL: dist/cli.js missing (run: npm run build)"
   exit 1
 fi
 
 echo "[hardening] service semantics spot-check"
-lines="$(node typescript/dist/cli.js A=stream N=3 L=0 W=4 Z=0 T=sec | wc -l | tr -d ' ')"
+lines="$(node dist/cli.js A=stream N=3 L=0 W=4 Z=0 T=sec | wc -l | tr -d ' ')"
 if [ "$lines" != "3" ]; then
   echo "[hardening] FAIL: expected 3 lines from bounded stream; got $lines"
   exit 1
 fi
 
 echo "[hardening] sql persistence spot-check"
-a="$(node typescript/dist/cli.js A=next E=sql D=.local/sql-hardening W=4 Z=0 T=sec)"
-b="$(node typescript/dist/cli.js A=next E=sql D=.local/sql-hardening W=4 Z=0 T=sec)"
+a="$(node dist/cli.js A=next E=sql D=.local/sql-hardening W=4 Z=0 T=sec)"
+b="$(node dist/cli.js A=next E=sql D=.local/sql-hardening W=4 Z=0 T=sec)"
 if [ "$a" = "$b" ]; then
   echo "[hardening] FAIL: consecutive SQL IDs are equal"
   exit 1

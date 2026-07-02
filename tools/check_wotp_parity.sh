@@ -190,13 +190,13 @@ elif should_run "python"; then
 fi
 
 if should_run "typescript" && command -v node >/dev/null 2>&1; then
-  if [[ ! -f typescript/dist/cli.js ]] && command -v npm >/dev/null 2>&1; then
+  if [[ ! -f dist/cli.js ]] && command -v npm >/dev/null 2>&1; then
     npm run -s build >/dev/null 2>&1 || true
   fi
-  if [[ -f typescript/dist/cli.js ]]; then
-    run_case "typescript" node typescript/dist/cli.js
+  if [[ -f dist/cli.js ]]; then
+    run_case "typescript" node dist/cli.js
   else
-    mark_skip "typescript" "typescript/dist/cli.js missing"
+    mark_skip "typescript" "dist/cli.js missing"
   fi
 elif should_run "typescript"; then
   mark_skip "typescript" "node missing"

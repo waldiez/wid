@@ -100,7 +100,7 @@ def main() -> int:
         "rust": (["target/debug/wid"], None),
         "c": (["c/.build/wid"], None),
         "go": ([str(ROOT / "go" / "cmd" / "wid" / "wid")], go_env),
-        "typescript": (["node", "typescript/dist/cli.js"], None),
+        "typescript": (["node", "dist/cli.js"], None),
         "python": (py_cmd + ["-m", "wid"], {**os.environ, "PYTHONPATH": "python", "PYTHONUNBUFFERED": "1"}),
     }
     impls: dict[str, tuple[list[str], dict[str, str] | None]] = {}

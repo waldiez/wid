@@ -56,7 +56,7 @@ make -C c test
 ### Canonical stream semantics
 
 ```bash
-node typescript/dist/cli.js A=stream N=3 L=0 W=4 Z=0 T=sec | wc -l
+node dist/cli.js A=stream N=3 L=0 W=4 Z=0 T=sec | wc -l
 ```
 
 Expected: `3`
@@ -64,8 +64,8 @@ Expected: `3`
 ### SQL persistence
 
 ```bash
-node typescript/dist/cli.js A=next E=sql D=.local/sql-qa W=4 Z=0 T=sec
-node typescript/dist/cli.js A=next E=sql D=.local/sql-qa W=4 Z=0 T=sec
+node dist/cli.js A=next E=sql D=.local/sql-qa W=4 Z=0 T=sec
+node dist/cli.js A=next E=sql D=.local/sql-qa W=4 Z=0 T=sec
 ```
 
 Expected: second ID is later than first.

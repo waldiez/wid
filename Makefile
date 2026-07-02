@@ -215,13 +215,13 @@ ts-build:
 ts-check: ts-lint ts-test
 
 ts-clean:
-	rm -rf node_modules typescript/dist
+	rm -rf node_modules
 
 ts-bench:
-	node typescript/dist/cli.js bench --count $(or $(BENCH_N),50000)
+	node dist/cli.js bench --count $(or $(BENCH_N),50000)
 
 ts-next:
-	node typescript/dist/cli.js next
+	node dist/cli.js next
 
 # ─── Go ───────────────────────────────────────────────────────────────
 

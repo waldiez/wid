@@ -22,9 +22,11 @@ htmlcov/
 # Node/TypeScript
 node_modules/
 
-# Keep published TypeScript artifacts in git (package.json main/bin/files point here)
-!dist/
-!dist/**
+# Keep published TypeScript artifacts in git (package.json main/bin/files point here).
+# Anchored to the repo-root dist/ only, so a stray nested build dir (e.g. a
+# tool writing to some/dir/dist/) stays ignored and cannot be committed.
+!/dist/
+!/dist/**
 
 # C
 c/.build/
