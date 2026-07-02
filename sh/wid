@@ -845,7 +845,10 @@ run_canonical() {
         command -v sqlite3 >/dev/null 2>&1 || die "sqlite3 is required for E=sql"
         local db="$data_dir/wid_state.sqlite"
         local key
-        key="$(sql_escape "wid:sh:${W}:${Z}:${T}")"
+        # Deliberately language-agnostic (wid:W:Z:T, no implementation tag):
+        # all six implementations share one row per generator shape, so mixing
+        # languages on the same database cannot mint duplicate WIDs.
+        key="$(sql_escape "wid:${W}:${Z}:${T}")"
         mkdir -p "$data_dir"
         sqlite3 -cmd ".timeout 5000" "$db" \
             "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL);INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES('$key',0,-1);" >/dev/null

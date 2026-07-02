@@ -651,8 +651,13 @@ function sqlStatePath(c: Canon): string {
   return resolve(dataDir(c), "wid_state.sqlite");
 }
 
+/**
+ * The state key is deliberately language-agnostic (`wid:W:Z:T`, no
+ * implementation tag): all six implementations share one row per generator
+ * shape, so mixing languages on the same database cannot mint duplicate WIDs.
+ */
 function sqlStateKey(c: Canon): string {
-  return `wid:ts:${c.W}:${c.Z}:${c.T}`;
+  return `wid:${c.W}:${c.Z}:${c.T}`;
 }
 
 function sqlAllocateNextWid(c: Canon): string {

@@ -784,8 +784,11 @@ func sqlStatePath(c canon) string {
 	return filepath.Join(dataDir(c), "wid_state.sqlite")
 }
 
+// The state key is deliberately language-agnostic (wid:W:Z:T, no
+// implementation tag): all six implementations share one row per generator
+// shape, so mixing languages on the same database cannot mint duplicate WIDs.
 func sqlStateKey(c canon) string {
-	return fmt.Sprintf("wid:go:%d:%d:%s", c.w, c.z, c.t)
+	return fmt.Sprintf("wid:%d:%d:%s", c.w, c.z, c.t)
 }
 
 func sqlEnsureState(dbPath string, key string) error {

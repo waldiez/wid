@@ -439,7 +439,10 @@ def _sql_state_path(data_dir: Path) -> Path:
 
 
 def _sql_state_key(w_val: int, z_val: int, time_unit: str) -> str:
-    return f"wid:py:{w_val}:{z_val}:{time_unit}"
+    # Deliberately language-agnostic (wid:W:Z:T, no implementation tag): all
+    # six implementations share one row per generator shape, so mixing
+    # languages on the same database cannot mint duplicate WIDs.
+    return f"wid:{w_val}:{z_val}:{time_unit}"
 
 
 def _sql_allocate_next_wid(

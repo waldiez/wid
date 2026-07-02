@@ -525,7 +525,7 @@ function sqlStatePath(c) {
   return resolve(dataDir(c), "wid_state.sqlite");
 }
 function sqlStateKey(c) {
-  return `wid:ts:${c.W}:${c.Z}:${c.T}`;
+  return `wid:${c.W}:${c.Z}:${c.T}`;
 }
 function sqlAllocateNextWid(c) {
   const DatabaseSync = resolveNodeSqliteDatabaseSync();

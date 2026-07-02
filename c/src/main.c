@@ -359,7 +359,10 @@ static int sql_allocate_next_wid(
     char db_path[PATH_MAX];
     if (sql_state_path(c, db_path) != 0) return -1;
     char key[128];
-    snprintf(key, sizeof(key), "wid:c:%d:%d:%s", c->W, c->Z, c->T);
+    /* Deliberately language-agnostic (wid:W:Z:T, no implementation tag): all
+     * six implementations share one row per generator shape, so mixing
+     * languages on the same database cannot mint duplicate WIDs. */
+    snprintf(key, sizeof(key), "wid:%d:%d:%s", c->W, c->Z, c->T);
 
     sqlite3 *db = NULL;
     if (sqlite3_open(db_path, &db) != SQLITE_OK) {

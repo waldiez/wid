@@ -1204,8 +1204,11 @@ fn sql_state_path(c: &CanonOpts) -> PathBuf {
     resolve_data_dir(&root, &c.d).join("wid_state.sqlite")
 }
 
+/// The state key is deliberately language-agnostic (`wid:W:Z:T`, no
+/// implementation tag): all six implementations share one row per generator
+/// shape, so mixing languages on the same database cannot mint duplicate WIDs.
 fn sql_state_key(c: &CanonOpts) -> String {
-    format!("wid:rust:{}:{}:{}", c.w, c.z, c.t.as_str())
+    format!("wid:{}:{}:{}", c.w, c.z, c.t.as_str())
 }
 
 /// Open the SQL state database (bundled SQLite; no external `sqlite3` binary),
