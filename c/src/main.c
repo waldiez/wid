@@ -1435,8 +1435,9 @@ static void print_completion(const char *shell) {
 }
 
 int main(int argc, char **argv) {
-    srand((unsigned int)time(NULL));
-
+    /* Padding entropy is handled entirely inside wid_random_hex()
+     * (arc4random_buf / /dev/urandom, with a self-seeding last-resort
+     * fallback), so the CLI no longer needs to seed rand() itself. */
     if (argc > 1 && is_kv_arg(argv[1])) {
         canon_opts_t c;
         if (!parse_canonical(argc, argv, &c)) return 2;

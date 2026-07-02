@@ -437,18 +437,49 @@ static inline void wid_random_hex(char *buf, int len) {
      * WID_MAX_Z bytes (Z is clamped to WID_MAX_Z, not rejected). */
     unsigned char raw[WID_MAX_Z + 1];
     if (len > WID_MAX_Z) len = WID_MAX_Z;
+    if (len < 0) len = 0;
     int filled = 0;
-#if defined(__linux__) || defined(__APPLE__)
-    FILE *f = fopen("/dev/urandom", "r");
-    if (f) {
-        filled = (int)fread(raw, 1, (size_t)len, f);
-        fclose(f);
-    }
+
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+    defined(__NetBSD__) || defined(__DragonFly__)
+    /* arc4random_buf is a CSPRNG that is always present on macOS and the BSDs,
+     * never fails, and needs no file descriptor -- so it is also correct in
+     * header-only use, where the CLI's srand() is never called. */
+    arc4random_buf(raw, (size_t)len);
+    filled = len;
 #endif
-    /* Fill any shortfall (short read or no /dev/urandom) so no byte is left
-     * uninitialized. This fallback is not cryptographically strong; padding is
-     * collision defense, not a security boundary. */
-    for (int i = filled; i < len; i++) raw[i] = (unsigned char)rand();
+
+    /* Portable CSPRNG: /dev/urandom exists on essentially every POSIX system
+     * (Linux, the BSDs, Solaris, AIX, ...). It is deliberately NOT gated behind
+     * an OS allow-list, so non-Linux/Apple targets still get real entropy
+     * instead of silently degrading to rand(). */
+    if (filled < len) {
+        FILE *f = fopen("/dev/urandom", "rb");
+        if (f) {
+            filled += (int)fread(raw + filled, 1, (size_t)(len - filled), f);
+            fclose(f);
+        }
+    }
+
+    /* Last-resort fallback if no CSPRNG was reachable at all (e.g. a chroot
+     * with no /dev/urandom). Padding is collision defense, not a security
+     * boundary, but it must at least vary between processes: a header-only
+     * caller never calls srand(), so plain rand() would emit a *fixed*
+     * deterministic sequence. Seed once from time + clock + an address (ASLR)
+     * so even this degraded path differs across runs. */
+    if (filled < len) {
+        static int seeded = 0;
+        if (!seeded) {
+            unsigned s = (unsigned)time(NULL);
+            s ^= (unsigned)clock() * 2654435761u;
+            s ^= (unsigned)(uintptr_t)&raw;
+            s ^= (unsigned)(uintptr_t)buf << 1;
+            srand(s ? s : 1u);
+            seeded = 1;
+        }
+        for (int i = filled; i < len; i++) raw[i] = (unsigned char)rand();
+    }
+
     for (int i = 0; i < len; i++) buf[i] = hex[raw[i] & 0x0f];
     buf[len] = '\0';
 }
