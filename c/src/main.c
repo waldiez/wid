@@ -279,6 +279,13 @@ static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
     }
 
     if (o->W <= 0 || o->Z < 0 || o->N < 0 || o->L < 0) return false;
+    /* Reject out-of-range W/Z instead of silently clamping: W > 18 overflows
+     * an int64 sequence, so all six implementations refuse it uniformly (the
+     * subcommand parser in parse_opts already does). */
+    if (o->W > WID_MAX_W || o->Z > WID_MAX_Z) {
+        fprintf(stderr, "error: W must be 1..%d and Z must be 0..%d\n", WID_MAX_W, WID_MAX_Z);
+        return false;
+    }
     if (o->MAX_AGE_SEC < 0 || o->MAX_FUTURE_SEC < 0) return false;
     if (!is_transport(o->R)) return false;
     return true;

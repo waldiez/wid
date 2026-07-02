@@ -157,6 +157,20 @@
       "type": "hlc",
       "params": {"W": 4, "Z": 6},
       "reason": "Padding, when present, must be exactly Z lowercase-hex chars"
+    },
+    {
+      "id": "wid_w_out_of_range",
+      "wid": "20260212T091530.0000000000000000000Z",
+      "type": "wid",
+      "params": {"W": 19, "Z": 0},
+      "reason": "W > 18 is out of range: 10^19 - 1 overflows an int64 sequence"
+    },
+    {
+      "id": "wid_z_out_of_range",
+      "wid": "20260212T091530.0000Z-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "type": "wid",
+      "params": {"W": 4, "Z": 65},
+      "reason": "Z > 64 is out of range (exceeds WID_MAX_Z)"
     }
   ]
 }

@@ -12,12 +12,21 @@ use regex::Regex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
+/// Maximum sequence/logical-counter width. `10^18 - 1` is the largest
+/// all-nines sequence that fits in an `i64` (`10^19` overflows), so `W > 18`
+/// cannot be represented by the i64-based implementations and is rejected
+/// uniformly across all six languages.
+pub const MAX_W: usize = 18;
+/// Maximum padding width in hex chars, shared with the C implementation's
+/// `WID_MAX_Z` so every implementation accepts and produces the same range.
+pub const MAX_Z: usize = 64;
+
 /// Errors that can occur during WID operations.
 #[derive(Error, Debug)]
 pub enum WidError {
-    #[error("Invalid W parameter: must be > 0")]
+    #[error("Invalid W parameter: must be between 1 and 18")]
     InvalidW,
-    #[error("Invalid Z parameter: must be >= 0")]
+    #[error("Invalid Z parameter: must be between 0 and 64")]
     InvalidZ,
     #[error("Scope is not supported for plain WID")]
     InvalidScope,
@@ -132,8 +141,11 @@ pub fn parse_wid_with_unit(
     z: usize,
     time_unit: TimeUnit,
 ) -> Result<ParsedWid, WidError> {
-    if w == 0 {
+    if w == 0 || w > MAX_W {
         return Err(WidError::InvalidW);
+    }
+    if z > MAX_Z {
+        return Err(WidError::InvalidZ);
     }
 
     let pattern = if w == 4 && z == 6 && time_unit == TimeUnit::Sec {
@@ -200,8 +212,12 @@ impl WidGen {
         scope: Option<String>,
         time_unit: TimeUnit,
     ) -> Result<Self, WidError> {
-        if w == 0 {
+        // W > MAX_W would overflow the i64 sequence below (10^19 > i64::MAX).
+        if w == 0 || w > MAX_W {
             return Err(WidError::InvalidW);
+        }
+        if z > MAX_Z {
+            return Err(WidError::InvalidZ);
         }
 
         if scope.is_some() {
@@ -359,6 +375,10 @@ mod tests {
     #[test]
     fn test_new_rejects_invalid_params() {
         assert!(matches!(WidGen::new(0, 0, None), Err(WidError::InvalidW)));
+        // W=19 used to panic (10_i64.pow(19) overflow); it must be a clean error.
+        assert!(matches!(WidGen::new(19, 0, None), Err(WidError::InvalidW)));
+        assert!(matches!(WidGen::new(4, 65, None), Err(WidError::InvalidZ)));
+        assert!(WidGen::new(18, 64, None).is_ok());
         assert!(matches!(
             WidGen::new(4, 0, Some("invalid scope".to_string())),
             Err(WidError::InvalidScope)

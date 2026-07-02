@@ -32,6 +32,6 @@ pub use hlc::{
 };
 pub use manifest::{DataType, MANIFEST_MAGIC, MANIFEST_VERSION, Manifest, SynapseFile};
 pub use wid::{
-    ParsedWid, TimeUnit, WidError, WidGen, parse_wid, parse_wid_with_unit, validate_wid,
-    validate_wid_with_unit,
+    MAX_W, MAX_Z, ParsedWid, TimeUnit, WidError, WidGen, parse_wid, parse_wid_with_unit,
+    validate_wid, validate_wid_with_unit,
 };

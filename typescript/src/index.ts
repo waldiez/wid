@@ -17,7 +17,7 @@ export {
   createNodeSqliteWidStateStore,
 } from './wid';
 /** Convenience exports for parsing and validation. */
-export { validateWid, parseWid, type ParsedWid } from './wid';
+export { validateWid, parseWid, MAX_W, MAX_Z, type ParsedWid } from './wid';
 
 /** Time utilities re-exported for external callers. */
 export { type TimeUnit, parseTimeUnit } from './time';

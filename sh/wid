@@ -264,6 +264,9 @@ validate_wid() {
     local id=$1 W=$2 Z=$3 time_unit=${4:-sec}
     [[ $W =~ ^[1-9][0-9]*$ ]] || return 1
     [[ $Z =~ ^[0-9]+$ ]] || return 1
+    # Bounds match all six implementations: W > 18 would overflow an int64
+    # sequence/counter; Z > 64 exceeds the C implementation's WID_MAX_Z.
+    ((W <= 18 && Z <= 64)) || return 1
 
     [[ "$time_unit" == "sec" || "$time_unit" == "ms" ]] || return 1
 
@@ -300,6 +303,9 @@ validate_hlc_wid() {
     local id=$1 W=$2 Z=$3 time_unit=${4:-sec}
     [[ $W =~ ^[1-9][0-9]*$ ]] || return 1
     [[ $Z =~ ^[0-9]+$ ]] || return 1
+    # Bounds match all six implementations: W > 18 would overflow an int64
+    # sequence/counter; Z > 64 exceeds the C implementation's WID_MAX_Z.
+    ((W <= 18 && Z <= 64)) || return 1
 
     [[ "$time_unit" == "sec" || "$time_unit" == "ms" ]] || return 1
 
@@ -1510,8 +1516,8 @@ main() {
         ((n > 0)) || die "n must be > 0"
         ((procs >= 0)) || die "procs must be >= 0"
         ((per > 0)) || die "per must be > 0"
-        ((W > 0)) || die "W must be > 0"
-        ((Z >= 0)) || die "Z must be >= 0"
+        ((W > 0 && W <= 18)) || die "W must be between 1 and 18"
+        ((Z >= 0 && Z <= 64)) || die "Z must be between 0 and 64"
         [[ "$time_unit" == "sec" || "$time_unit" == "ms" ]] || die "time-unit must be sec or ms"
         [[ "$kind" == "wid" || "$kind" == "hlc" ]] || die "kind must be wid or hlc"
         run_selftest "$n" "$procs" "$per" "$kind" "$W" "$Z" "$time_unit"
@@ -1585,8 +1591,8 @@ main() {
     [[ "$kind" == "wid" || "$kind" == "hlc" ]] || die "kind must be wid or hlc"
     is_int "$W" || die "W must be an integer"
     is_int "$Z" || die "Z must be an integer"
-    ((W > 0)) || die "W must be > 0"
-    ((Z >= 0)) || die "Z must be >= 0"
+    ((W > 0 && W <= 18)) || die "W must be between 1 and 18"
+    ((Z >= 0 && Z <= 64)) || die "Z must be between 0 and 64"
     [[ "$time_unit" == "sec" || "$time_unit" == "ms" ]] || die "time-unit must be sec or ms"
 
     if [[ "$kind" == "hlc" ]]; then

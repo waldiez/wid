@@ -7,6 +7,15 @@ declare function parseTimeUnit(input: string): TimeUnit;
  * Format: YYYYMMDDTHHMMSS[mmm].<seqW>Z[-<padZ>]
  */
 
+/**
+ * Maximum sequence/logical-counter width. 10^18 - 1 is the largest all-nines
+ * value that fits in an int64 (10^19 overflows), so W > 18 cannot be
+ * represented by the i64-based implementations and is rejected uniformly
+ * across all six languages.
+ */
+declare const MAX_W = 18;
+/** Maximum padding width (hex chars); matches the C implementation's WID_MAX_Z. */
+declare const MAX_Z = 64;
 /** Parsed WID components after a successful parse. */
 interface ParsedWid {
     /** Raw identifier string that was parsed. */
@@ -206,4 +215,4 @@ declare class SynapseFile {
     verify(): Promise<boolean>;
 }
 
-export { type AsyncWidStreamOptions, DataType, type HLCState, HLCWidGen, type HLCWidGenOptions, MANIFEST_MAGIC, MANIFEST_VERSION, Manifest, MemoryWidStateStore, type ParsedHlcWid, type ParsedWid, SynapseFile, type TimeUnit, WidGen, type WidGenOptions, type WidStateSnapshot, type WidStateStore, asyncHlcWidStream, asyncNextHlcWid, asyncNextWid, asyncWidStream, createBrowserWidStateStore, createNodeSqliteWidStateStore, parseHlcWid, parseTimeUnit, parseWid, validateHlcWid, validateWid };
+export { type AsyncWidStreamOptions, DataType, type HLCState, HLCWidGen, type HLCWidGenOptions, MANIFEST_MAGIC, MANIFEST_VERSION, MAX_W, MAX_Z, Manifest, MemoryWidStateStore, type ParsedHlcWid, type ParsedWid, SynapseFile, type TimeUnit, WidGen, type WidGenOptions, type WidStateSnapshot, type WidStateStore, asyncHlcWidStream, asyncNextHlcWid, asyncNextWid, asyncWidStream, createBrowserWidStateStore, createNodeSqliteWidStateStore, parseHlcWid, parseTimeUnit, parseWid, validateHlcWid, validateWid };

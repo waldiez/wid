@@ -84,8 +84,11 @@ pub fn parse_hlc_wid_with_unit(
     z: usize,
     time_unit: TimeUnit,
 ) -> Result<ParsedHlcWid, WidError> {
-    if w == 0 {
+    if w == 0 || w > crate::wid::MAX_W {
         return Err(WidError::InvalidW);
+    }
+    if z > crate::wid::MAX_Z {
+        return Err(WidError::InvalidZ);
     }
 
     let pattern = if w == 4 && z == 0 && time_unit == TimeUnit::Sec {
@@ -164,8 +167,12 @@ impl HLCWidGen {
         z: usize,
         time_unit: TimeUnit,
     ) -> Result<Self, WidError> {
-        if w == 0 {
+        // W > MAX_W would overflow the i64 logical counter (10^19 > i64::MAX).
+        if w == 0 || w > crate::wid::MAX_W {
             return Err(WidError::InvalidW);
+        }
+        if z > crate::wid::MAX_Z {
+            return Err(WidError::InvalidZ);
         }
         if !is_valid_node(&node) {
             return Err(WidError::InvalidNode);

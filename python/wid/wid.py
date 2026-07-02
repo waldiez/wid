@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, final
 
+from .parse import MAX_W, MAX_Z
+
 
 @dataclass(frozen=True, slots=True)
 class WidGenState:
@@ -150,10 +152,12 @@ class WidGen:
         elif "Z" in kwargs:
             Z = int(kwargs.pop("Z"))
 
-        if W <= 0:
-            raise ValueError("W must be > 0")
-        if Z < 0:
-            raise ValueError("Z must be >= 0")
+        # Bounds match all six implementations: W > 18 would overflow an
+        # int64 sequence; Z > 64 exceeds the C implementation's WID_MAX_Z.
+        if W <= 0 or W > MAX_W:
+            raise ValueError("W must be between 1 and 18")
+        if Z < 0 or Z > MAX_Z:
+            raise ValueError("Z must be between 0 and 64")
         if time_unit not in {"sec", "ms"}:
             raise ValueError("time_unit must be 'sec' or 'ms'")
 

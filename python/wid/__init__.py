@@ -9,6 +9,8 @@ from .async_api import (
 )
 from .hlc import HLCWidGen
 from .parse import (
+    MAX_W,
+    MAX_Z,
     ParsedHlcWid,
     ParsedWid,
     parse_hlc_wid,
@@ -24,6 +26,8 @@ from .wid import (
 )
 
 __all__ = [
+    "MAX_W",
+    "MAX_Z",
     "HLCWidGen",
     "ParsedHlcWid",
     "ParsedWid",

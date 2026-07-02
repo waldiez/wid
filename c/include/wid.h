@@ -560,6 +560,9 @@ static inline void wid_gen_init_ex(wid_gen_t *gen, int W, int Z, wid_time_unit_t
     gen->Z = Z >= 0 ? Z : WID_DEFAULT_Z;
     gen->time_unit = unit;
 
+    /* This void-returning init cannot report an error, so out-of-range values
+     * are clamped as a last resort. Callers should validate W in [1,18] and
+     * Z in [0,64] up front (the CLI does, and rejects with an error). */
     if (gen->W > WID_MAX_W) gen->W = WID_MAX_W;
     if (gen->Z > WID_MAX_Z) gen->Z = WID_MAX_Z;
 

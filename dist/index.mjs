@@ -3,6 +3,8 @@ import {
   HLCWidGen,
   MANIFEST_MAGIC,
   MANIFEST_VERSION,
+  MAX_W,
+  MAX_Z,
   Manifest,
   MemoryWidStateStore,
   SynapseFile,
@@ -18,12 +20,14 @@ import {
   parseWid,
   validateHlcWid,
   validateWid
-} from "./chunk-YTMVKODD.mjs";
+} from "./chunk-MMSXEV4M.mjs";
 export {
   DataType,
   HLCWidGen,
   MANIFEST_MAGIC,
   MANIFEST_VERSION,
+  MAX_W,
+  MAX_Z,
   Manifest,
   MemoryWidStateStore,
   SynapseFile,

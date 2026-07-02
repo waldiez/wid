@@ -24,6 +24,8 @@ __export(src_exports, {
   HLCWidGen: () => HLCWidGen,
   MANIFEST_MAGIC: () => MANIFEST_MAGIC,
   MANIFEST_VERSION: () => MANIFEST_VERSION,
+  MAX_W: () => MAX_W,
+  MAX_Z: () => MAX_Z,
   Manifest: () => Manifest,
   MemoryWidStateStore: () => MemoryWidStateStore,
   SynapseFile: () => SynapseFile,
@@ -54,6 +56,8 @@ function timeDigits(unit) {
 }
 
 // typescript/src/wid.ts
+var MAX_W = 18;
+var MAX_Z = 64;
 var MemoryWidStateStore = class {
   constructor() {
     this.memory = /* @__PURE__ */ new Map();
@@ -205,7 +209,7 @@ function parseTimestamp(dateStr, timeStr, timeUnit) {
   return timestamp;
 }
 function parseCore(wid, W, Z, timeUnit) {
-  if (W <= 0 || Z < 0) return null;
+  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) return null;
   const match = widBaseRe(W, timeUnit).exec(wid);
   if (!match) return null;
   const [, dateStr, timeStr, seqStr, suffixRaw] = match;
@@ -259,8 +263,8 @@ var WidGen = class {
       stateKey = "wid",
       autoPersist = false
     } = options;
-    if (W <= 0) throw new Error("W must be > 0");
-    if (Z < 0) throw new Error("Z must be >= 0");
+    if (W <= 0 || W > MAX_W) throw new Error("W must be between 1 and 18");
+    if (Z < 0 || Z > MAX_Z) throw new Error("Z must be between 0 and 64");
     this.W = W;
     this.Z = Z;
     this.timeUnit = timeUnit;
@@ -389,7 +393,7 @@ function validateHlcWid(wid, W = 4, Z = 0, timeUnit = "sec") {
   return parseHlcWid(wid, W, Z, timeUnit) !== null;
 }
 function parseHlcWid(wid, W = 4, Z = 0, timeUnit = "sec") {
-  if (W <= 0 || Z < 0) return null;
+  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) return null;
   const match = hlcBaseRe(W, timeUnit).exec(wid);
   if (!match) return null;
   const [, dateStr, timeStr, lcStr, node, suffixRaw] = match;
@@ -415,8 +419,8 @@ var HLCWidGen = class {
     this.cachedTick = -1;
     this.cachedTs = "";
     const { node, W = 4, Z = 0, timeUnit = "sec" } = options;
-    if (W <= 0) throw new Error("W must be > 0");
-    if (Z < 0) throw new Error("Z must be >= 0");
+    if (W <= 0 || W > MAX_W) throw new Error("W must be between 1 and 18");
+    if (Z < 0 || Z > MAX_Z) throw new Error("Z must be between 0 and 64");
     if (!isValidNode(node)) {
       throw new Error("node must match [A-Za-z0-9_]+");
     }
@@ -637,6 +641,8 @@ var SynapseFile = class _SynapseFile {
   HLCWidGen,
   MANIFEST_MAGIC,
   MANIFEST_VERSION,
+  MAX_W,
+  MAX_Z,
   Manifest,
   MemoryWidStateStore,
   SynapseFile,

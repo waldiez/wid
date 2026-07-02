@@ -16,6 +16,13 @@ _HLC_BASE_RE_CACHE: dict[tuple[int, str], re.Pattern[str]] = {}
 
 _NODE_RE = re.compile(r"^\S+\Z")  # no whitespace; \Z (not $) rejects a trailing newline
 
+# Maximum sequence/logical-counter width: 10^18 - 1 is the largest all-nines
+# value that fits in an int64 (10^19 overflows), so W > 18 cannot be
+# represented by the i64-based implementations and is rejected uniformly
+# across all six languages. MAX_Z matches the C implementation's WID_MAX_Z.
+MAX_W = 18
+MAX_Z = 64
+
 
 @dataclass(frozen=True, slots=True)
 class ParsedWid:
@@ -116,7 +123,7 @@ def parse_wid(
     wid: str, W: int = 4, Z: int = 6, time_unit: Literal["sec", "ms"] = "sec"
 ) -> ParsedWid | None:
     """Try to parse a possible wid."""
-    if W <= 0 or Z < 0 or time_unit not in {"sec", "ms"}:
+    if W <= 0 or W > MAX_W or Z < 0 or Z > MAX_Z or time_unit not in {"sec", "ms"}:
         return None
 
     m = _wid_base_re(W, time_unit).match(wid)
@@ -165,7 +172,7 @@ def parse_hlc_wid(
     wid: str, W: int = 4, Z: int = 0, time_unit: Literal["sec", "ms"] = "sec"
 ) -> ParsedHlcWid | None:
     """Parse an HLC WID."""
-    if W <= 0 or Z < 0 or time_unit not in {"sec", "ms"}:
+    if W <= 0 or W > MAX_W or Z < 0 or Z > MAX_Z or time_unit not in {"sec", "ms"}:
         return None
 
     m = _hlc_base_re(W, time_unit).match(wid)

@@ -13,9 +13,18 @@ import (
 	"time"
 )
 
+// MaxW is the maximum sequence/logical-counter width: 10^18-1 is the largest
+// all-nines value that fits in an int64 (10^19 overflows), so W > 18 cannot be
+// represented by the i64-based implementations and is rejected uniformly
+// across all six languages. MaxZ matches the C implementation's WID_MAX_Z.
+const (
+	MaxW = 18
+	MaxZ = 64
+)
+
 var (
-	ErrInvalidW            = errors.New("W must be > 0")
-	ErrInvalidZ            = errors.New("Z must be >= 0")
+	ErrInvalidW            = errors.New("W must be between 1 and 18")
+	ErrInvalidZ            = errors.New("Z must be between 0 and 64")
 	ErrInvalidNode         = errors.New("node must be non-empty, no whitespace or hyphens")
 	ErrInvalidFormat       = errors.New("invalid WID format")
 	ErrInvalidTimestamp    = errors.New("invalid timestamp in WID")
@@ -221,10 +230,10 @@ func ParseWid(wid string, w, z int) (*ParsedWid, error) {
 
 // ParseWidWithUnit extracts components from a WID using the requested time unit.
 func ParseWidWithUnit(wid string, w, z int, unit TimeUnit) (*ParsedWid, error) {
-	if w <= 0 {
+	if w <= 0 || w > MaxW {
 		return nil, ErrInvalidW
 	}
-	if z < 0 {
+	if z < 0 || z > MaxZ {
 		return nil, ErrInvalidZ
 	}
 	if unit != TimeUnitSec && unit != TimeUnitMs {
@@ -265,10 +274,10 @@ func ParseHlcWid(wid string, w, z int) (*ParsedHlcWid, error) {
 
 // ParseHlcWidWithUnit parses an HLC-WID with the chosen time unit.
 func ParseHlcWidWithUnit(wid string, w, z int, unit TimeUnit) (*ParsedHlcWid, error) {
-	if w <= 0 {
+	if w <= 0 || w > MaxW {
 		return nil, ErrInvalidW
 	}
-	if z < 0 {
+	if z < 0 || z > MaxZ {
 		return nil, ErrInvalidZ
 	}
 	if unit != TimeUnitSec && unit != TimeUnitMs {
@@ -323,10 +332,10 @@ func NewWidGen(w, z int) (*WidGen, error) {
 
 // NewWidGenWithUnit creates a generator with a specific time-unit.
 func NewWidGenWithUnit(w, z int, unit TimeUnit) (*WidGen, error) {
-	if w <= 0 {
+	if w <= 0 || w > MaxW {
 		return nil, ErrInvalidW
 	}
-	if z < 0 {
+	if z < 0 || z > MaxZ {
 		return nil, ErrInvalidZ
 	}
 	if unit != TimeUnitSec && unit != TimeUnitMs {
@@ -401,10 +410,10 @@ func NewHLCWidGen(node string, w, z int) (*HLCWidGen, error) {
 
 // NewHLCWidGenWithUnit invests the generator with a custom time precision.
 func NewHLCWidGenWithUnit(node string, w, z int, unit TimeUnit) (*HLCWidGen, error) {
-	if w <= 0 {
+	if w <= 0 || w > MaxW {
 		return nil, ErrInvalidW
 	}
-	if z < 0 {
+	if z < 0 || z > MaxZ {
 		return nil, ErrInvalidZ
 	}
 	if !isValidNode(node) {

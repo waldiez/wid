@@ -45,11 +45,17 @@ HLC-WID ::= TIMESTAMP "." LC "Z" "-" NODE [ "-" PAD ]
 
 ### Parameters
 
-| Parameter | Default | Description |
-| :--------- | :------- | :----------- |
-| W | 4 | Sequence/LC width (digits). Supports 10^W IDs per second |
-| Z | 6 | Padding length (hex chars). 0 disables padding |
-| time_unit | sec | Timestamp precision mode: `sec` or `ms` |
+| Parameter | Default | Range | Description |
+| :--------- | :------- | :----- | :----------- |
+| W | 4 | 1–18 | Sequence/LC width (digits). Supports 10^W IDs per second |
+| Z | 6 | 0–64 | Padding length (hex chars). 0 disables padding |
+| time_unit | sec | — | Timestamp precision mode: `sec` or `ms` |
+
+Implementations MUST reject out-of-range `W`/`Z` (in both generation and
+validation) rather than clamping. The `W` bound is arithmetic, not stylistic:
+`10^18 - 1` is the largest all-nines sequence that fits in a signed 64-bit
+integer, so `W > 18` cannot be represented by the int64-based implementations.
+The `Z` bound matches the C implementation's fixed `WID_MAX_Z` buffers.
 
 ## Examples
 

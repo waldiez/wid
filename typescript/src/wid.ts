@@ -5,6 +5,16 @@
 
 import { type TimeUnit, timeDigits } from "./time";
 
+/**
+ * Maximum sequence/logical-counter width. 10^18 - 1 is the largest all-nines
+ * value that fits in an int64 (10^19 overflows), so W > 18 cannot be
+ * represented by the i64-based implementations and is rejected uniformly
+ * across all six languages.
+ */
+export const MAX_W = 18;
+/** Maximum padding width (hex chars); matches the C implementation's WID_MAX_Z. */
+export const MAX_Z = 64;
+
 /** Parsed WID components after a successful parse. */
 export interface ParsedWid {
   /** Raw identifier string that was parsed. */
@@ -278,7 +288,7 @@ function parseTimestamp(dateStr: string, timeStr: string, timeUnit: TimeUnit): D
 }
 
 function parseCore(wid: string, W: number, Z: number, timeUnit: TimeUnit): ParsedWid | null {
-  if (W <= 0 || Z < 0) return null;
+  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) return null;
 
   const match = widBaseRe(W, timeUnit).exec(wid);
   if (!match) return null;
@@ -356,8 +366,10 @@ export class WidGen {
       autoPersist = false,
     } = options;
 
-    if (W <= 0) throw new Error("W must be > 0");
-    if (Z < 0) throw new Error("Z must be >= 0");
+    // Bounds match all six implementations: W > 18 would overflow an int64
+    // sequence; Z > 64 exceeds the C implementation's WID_MAX_Z.
+    if (W <= 0 || W > MAX_W) throw new Error("W must be between 1 and 18");
+    if (Z < 0 || Z > MAX_Z) throw new Error("Z must be between 0 and 64");
 
     this.W = W;
     this.Z = Z;

@@ -4,6 +4,7 @@
  */
 
 import { type TimeUnit, timeDigits } from "./time";
+import { MAX_W, MAX_Z } from "./wid";
 
 /** Parsed components of an HLC-WID after a successful parse. */
 export interface ParsedHlcWid {
@@ -113,7 +114,7 @@ export function parseHlcWid(
   Z = 0,
   timeUnit: TimeUnit = "sec"
 ): ParsedHlcWid | null {
-  if (W <= 0 || Z < 0) return null;
+  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) return null;
 
   const match = hlcBaseRe(W, timeUnit).exec(wid);
   if (!match) return null;
@@ -154,8 +155,10 @@ export class HLCWidGen {
 
   constructor(options: HLCWidGenOptions) {
     const { node, W = 4, Z = 0, timeUnit = "sec" } = options;
-    if (W <= 0) throw new Error("W must be > 0");
-    if (Z < 0) throw new Error("Z must be >= 0");
+    // Bounds match all six implementations: W > 18 would overflow an int64
+    // logical counter; Z > 64 exceeds the C implementation's WID_MAX_Z.
+    if (W <= 0 || W > MAX_W) throw new Error("W must be between 1 and 18");
+    if (Z < 0 || Z > MAX_Z) throw new Error("Z must be between 0 and 64");
     if (!isValidNode(node)) {
       throw new Error("node must match [A-Za-z0-9_]+");
     }
