@@ -79,6 +79,18 @@ class TestValidateWid:
         assert not validate_wid("20260212T091530.0000Z-node01", W=4, Z=0)
         assert not validate_wid("20260212T091530.0000Z-node01-abcdef", W=4, Z=6)
 
+    def test_rejects_trailing_newline(self) -> None:
+        # A bare `$` anchor matches before a trailing newline; the other five
+        # implementations reject it, so Python must too (uses `\Z`).
+        assert not validate_wid("20260212T091530.0000Z\n", W=4, Z=0)
+        assert not validate_wid("20260212T091530.0000Z-abcdef\n", W=4, Z=6)
+
+    def test_rejects_unicode_digits(self) -> None:
+        # `\d` matches Unicode decimal digits (e.g. fullwidth U+FF12) which
+        # int() then parses; the timestamp/sequence must be ASCII [0-9] only.
+        assert not validate_wid("２" + "0260212T091530.0000Z", W=4, Z=0)
+        assert not validate_wid("20260212T091530.０000Z", W=4, Z=0)
+
 
 class TestValidateHlcWid:
     """Tests for validate_hlc_wid function (HLC-WID with node)."""
@@ -113,6 +125,12 @@ class TestValidateHlcWid:
         # Node cannot contain hyphens (would be ambiguous with padding)
         # "node-01" would be parsed as node="node", pad="01" which is wrong length
         assert not validate_hlc_wid("20260212T091530.0000Z-node-01", W=4, Z=0)
+
+    def test_rejects_trailing_newline(self) -> None:
+        assert not validate_hlc_wid("20260212T091530.0000Z-node01\n", W=4, Z=0)
+
+    def test_rejects_unicode_digits(self) -> None:
+        assert not validate_hlc_wid("２" + "0260212T091530.0000Z-node01", W=4, Z=0)
 
 
 class TestParseWid:

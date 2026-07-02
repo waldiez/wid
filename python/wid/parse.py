@@ -14,7 +14,7 @@ _HEX_LOWER_RE_CACHE: dict[int, re.Pattern[str]] = {}
 _WID_BASE_RE_CACHE: dict[tuple[int, str], re.Pattern[str]] = {}
 _HLC_BASE_RE_CACHE: dict[tuple[int, str], re.Pattern[str]] = {}
 
-_NODE_RE = re.compile(r"^\S+$")  # no whitespace
+_NODE_RE = re.compile(r"^\S+\Z")  # no whitespace; \Z (not $) rejects a trailing newline
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +41,7 @@ class ParsedHlcWid:
 def _hex_re(z: int) -> re.Pattern[str]:
     p = _HEX_LOWER_RE_CACHE.get(z)
     if p is None:
-        p = re.compile(rf"^[0-9a-f]{{{z}}}$")
+        p = re.compile(rf"^[0-9a-f]{{{z}}}\Z")
         _HEX_LOWER_RE_CACHE[z] = p
     return p
 
@@ -52,7 +52,12 @@ def _wid_base_re(W: int, time_unit: Literal["sec", "ms"]) -> re.Pattern[str]:
     p = _WID_BASE_RE_CACHE.get(key)
     if p is None:
         time_digits = 9 if time_unit == "ms" else 6
-        p = re.compile(rf"^(\d{{8}})T(\d{{{time_digits}}})\.(\d{{{W}}})Z(.*)?$")
+        # Use [0-9] not \d (\d matches Unicode decimal digits, which int() then
+        # happily parses) and \Z not $ (a bare $ matches before a trailing
+        # newline). Both would let this impl accept WIDs the other five reject.
+        p = re.compile(
+            rf"^([0-9]{{8}})T([0-9]{{{time_digits}}})\.([0-9]{{{W}}})Z(.*)?\Z"
+        )
         _WID_BASE_RE_CACHE[key] = p
     return p
 
@@ -63,8 +68,9 @@ def _hlc_base_re(W: int, time_unit: Literal["sec", "ms"]) -> re.Pattern[str]:
     p = _HLC_BASE_RE_CACHE.get(key)
     if p is None:
         time_digits = 9 if time_unit == "ms" else 6
+        # [0-9]/\Z rather than \d/$ for the same reasons as _wid_base_re.
         p = re.compile(
-            rf"^(\d{{8}})T(\d{{{time_digits}}})\.(\d{{{W}}})Z-([^\s-]+)(.*)?$"
+            rf"^([0-9]{{8}})T([0-9]{{{time_digits}}})\.([0-9]{{{W}}})Z-([^\s-]+)(.*)?\Z"
         )
         _HLC_BASE_RE_CACHE[key] = p
     return p
