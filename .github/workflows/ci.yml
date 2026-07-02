@@ -178,6 +178,20 @@ jobs:
         run: /bin/sh tools/ensure_bash.sh
       - run: make sh-check
 
+  # The C and sh implementations have macOS/BSD-specific code paths
+  # (arc4random_buf padding entropy, BSD `date -j`) that a Linux-only CI
+  # never executes. Run the platform-sensitive checks on macOS too.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Point pkg-config at Homebrew OpenSSL
+        run: |
+          brew list openssl@3 >/dev/null 2>&1 || brew install openssl@3
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> "$GITHUB_ENV"
+      - run: make c-check
+      - run: make sh-check
+
   docker:
     runs-on: ubuntu-latest
     needs: rust

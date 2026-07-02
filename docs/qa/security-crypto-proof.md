@@ -22,7 +22,7 @@ separate here because conflating them overstates coverage:
 | Claim | Proof Command | Observed (2026-07-02) |
 |---|---|---|
 | `A=sign` / `A=verify` interoperate across all six implementations, and tampered WID/data and wrong keys are rejected | `SMOKE_CRYPTO_STRICT=1 bash tools/smoke_crypto.sh` | `pass=6 fail=0 skip=0` |
-| `A=w-otp` (WID-bound HMAC-SHA256 OTP) produces identical codes across all six implementations | `bash tools/check_wotp_parity.sh` | `pass=6 fail=0 skip=0` |
+| `A=w-otp` (WID-bound HMAC-SHA256 OTP) produces identical codes — and identical verify decisions with the time-window active — across all six implementations, for plain, HLC, and padded WIDs | `bash tools/check_wotp_parity.sh` | `pass=6 fail=0 skip=0` |
 
 Implemented cryptographic CLI actions are exactly: **`A=sign`, `A=verify`,
 `A=w-otp`**. There is intentionally **no** `encrypt`, `decrypt`, or `hash`

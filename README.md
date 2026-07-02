@@ -94,11 +94,14 @@ HLC-WID   TIMESTAMP . LC  Z - NODE [ - PAD ]
 **Parameters**
 <!-- markdownlint-enable MD036 -->
 
-| Param | Default | Description                             |
-|:-----:|:-------:|:----------------------------------------|
-| **W** | 4       | Sequence width — supports 10^W IDs/tick |
-| **Z** | 6       | Hex padding length (0 disables)         |
-| **T** | `sec`   | Time unit: `sec` or `ms`               |
+| Param | Default | Range | Description                             |
+|:-----:|:-------:|:-----:|:----------------------------------------|
+| **W** | 4       | 1–18  | Sequence width — supports 10^W IDs/tick |
+| **Z** | 6       | 0–64  | Hex padding length (0 disables)         |
+| **T** | `sec`   | —     | Time unit: `sec` or `ms`               |
+
+Out-of-range `W`/`Z` are rejected (never clamped) by every implementation;
+`10^18 - 1` is the largest sequence that fits in a signed 64-bit integer.
 
 Full specification with EBNF grammar: [spec/SPEC.md](spec/SPEC.md)
 
@@ -166,6 +169,10 @@ Full specification: [spec/CRYPTO_SPEC.md](spec/CRYPTO_SPEC.md)
 ## SQL Persistence
 
 When using `E=sql`, generator state (`last_tick`, `last_seq`) is persisted per key and resumed across restarts.
+
+The state key is language-agnostic (`wid:W:Z:T`), so all six implementations
+coordinate through the same row per generator shape: different languages can
+safely share one `wid_state.sqlite` without minting duplicate WIDs.
 
 State modes:
 
