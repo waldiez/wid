@@ -698,19 +698,26 @@ static int run_native_orchestration(const canon_opts_t *c) {
     return 1;
 }
 
-/* Build the sign/verify message in memory: WID bytes followed by optional
- * DATA-file bytes. On success sets *out (malloc'd, caller frees) and *out_len.
- * No temporary files are created. Returns 0 on success, 1 on error. */
+/* Build the canonical sign/verify message in memory:
+ *   "wid-sig-v1:" || len(WID) || ":" || WID || DATA
+ * The domain-separation prefix and explicit WID byte-length frame the WID/DATA
+ * boundary so no bytes can shift between them (plain WID||DATA is ambiguous).
+ * On success sets *out (malloc'd, caller frees) and *out_len. No temporary
+ * files are created. Returns 0 on success, 1 on error. */
 static int build_message_buf(const canon_opts_t *c, unsigned char **out, size_t *out_len) {
     if (!c->WID[0]) {
         fprintf(stderr, "error: WID=<wid_string> required\n");
         return 1;
     }
     size_t wid_len = strlen(c->WID);
-    size_t total = wid_len;
-    unsigned char *buf = malloc(wid_len > 0 ? wid_len : 1);
+    char header[64];
+    int hn = snprintf(header, sizeof(header), "wid-sig-v1:%zu:", wid_len);
+    if (hn < 0 || (size_t)hn >= sizeof(header)) return 1;
+    size_t total = (size_t)hn + wid_len;
+    unsigned char *buf = malloc(total > 0 ? total : 1);
     if (!buf) return 1;
-    memcpy(buf, c->WID, wid_len);
+    memcpy(buf, header, (size_t)hn);
+    memcpy(buf + hn, c->WID, wid_len);
     if (c->DATA[0]) {
         FILE *in = fopen(c->DATA, "rb");
         if (!in) {

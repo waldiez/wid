@@ -774,7 +774,9 @@ function b64urlDecode(s) {
 function buildSignVerifyMessage(c) {
   const wid = c.WID ?? "";
   if (!wid) throw new Error("WID=<wid_string> required");
-  const parts = [Buffer.from(wid, "utf8")];
+  const widBuf = Buffer.from(wid, "utf8");
+  const header = Buffer.from(`wid-sig-v1:${widBuf.length}:`, "ascii");
+  const parts = [header, widBuf];
   if (c.DATA && c.DATA.length > 0) {
     if (!(0, import_node_fs.existsSync)(c.DATA)) throw new Error(`data file not found: ${c.DATA}`);
     parts.push((0, import_node_fs.readFileSync)(c.DATA));

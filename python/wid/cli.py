@@ -513,7 +513,10 @@ def _run_sign_mode(canon: dict[str, str]) -> None:
     if not isinstance(private_key, ed25519.Ed25519PrivateKey):
         raise TypeError("Loaded key is not an Ed25519 private key.")
 
-    message = wid_str.encode("utf-8")
+    # Canonical message: "wid-sig-v1:" + len(WID) + ":" + WID + DATA. The domain
+    # prefix and explicit WID byte-length frame the WID/DATA boundary.
+    wid_bytes = wid_str.encode("utf-8")
+    message = f"wid-sig-v1:{len(wid_bytes)}:".encode("ascii") + wid_bytes
     if data_path_str:
         data_path = Path(data_path_str).expanduser().resolve()
         if not data_path.exists():
@@ -551,7 +554,10 @@ def _run_verify_mode(canon: dict[str, str]) -> None:
     if not isinstance(public_key, ed25519.Ed25519PublicKey):
         raise TypeError("Loaded key is not an Ed25519 public key.")
 
-    message = wid_str.encode("utf-8")
+    # Canonical message: "wid-sig-v1:" + len(WID) + ":" + WID + DATA. The domain
+    # prefix and explicit WID byte-length frame the WID/DATA boundary.
+    wid_bytes = wid_str.encode("utf-8")
+    message = f"wid-sig-v1:{len(wid_bytes)}:".encode("ascii") + wid_bytes
     if data_path_str:
         data_path = Path(data_path_str).expanduser().resolve()
         if not data_path.exists():

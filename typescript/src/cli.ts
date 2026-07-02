@@ -479,7 +479,11 @@ function b64urlDecode(s: string): Buffer {
 function buildSignVerifyMessage(c: Canon): Buffer {
   const wid = c.WID ?? "";
   if (!wid) throw new Error("WID=<wid_string> required");
-  const parts: Buffer[] = [Buffer.from(wid, "utf8")];
+  // Canonical message: "wid-sig-v1:" + len(WID) + ":" + WID + DATA. The domain
+  // prefix and explicit WID byte-length frame the WID/DATA boundary.
+  const widBuf = Buffer.from(wid, "utf8");
+  const header = Buffer.from(`wid-sig-v1:${widBuf.length}:`, "ascii");
+  const parts: Buffer[] = [header, widBuf];
   if (c.DATA && c.DATA.length > 0) {
     if (!existsSync(c.DATA)) throw new Error(`data file not found: ${c.DATA}`);
     parts.push(readFileSync(c.DATA));

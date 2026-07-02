@@ -615,7 +615,10 @@ run_canonical() {
 
     sign_verify_message_file() {
         local msg_file="$1"
-        printf '%s' "$WID" >"$msg_file"
+        # Canonical message: "wid-sig-v1:" + len(WID) + ":" + WID + DATA. The
+        # domain prefix and explicit WID byte-length frame the WID/DATA boundary.
+        # WID is pure ASCII (grammar), so ${#WID} equals its byte length.
+        printf 'wid-sig-v1:%s:%s' "${#WID}" "$WID" >"$msg_file"
         if [[ -n "$DATA" ]]; then
             [[ -f "$DATA" ]] || die "data file not found: $DATA"
             cat "$DATA" >>"$msg_file"

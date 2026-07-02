@@ -497,7 +497,11 @@ func buildSignVerifyMessage(c canon) ([]byte, error) {
 	if strings.TrimSpace(c.wid) == "" {
 		return nil, errors.New("WID=<wid_string> required")
 	}
-	msg := []byte(c.wid)
+	// Canonical message: "wid-sig-v1:" || len(WID) || ":" || WID || DATA.
+	// The domain prefix and explicit WID byte-length frame the WID/DATA
+	// boundary so no bytes can shift between them.
+	msg := []byte(fmt.Sprintf("wid-sig-v1:%d:", len(c.wid)))
+	msg = append(msg, []byte(c.wid)...)
 	if strings.TrimSpace(c.data) != "" {
 		b, err := os.ReadFile(c.data)
 		if err != nil {

@@ -1007,13 +1007,19 @@ fn run_canonical(args: &[String]) -> Result<(), String> {
     }
 }
 
-/// Build the message to sign/verify entirely in memory: WID bytes followed by
-/// optional DATA-file bytes. No temporary files are created.
+/// Build the canonical sign/verify message entirely in memory:
+/// `"wid-sig-v1:" || len(WID) || ":" || WID || DATA`.
+///
+/// The domain-separation prefix and the explicit WID byte-length frame the
+/// WID/DATA boundary so no bytes can shift between them (a plain `WID || DATA`
+/// concatenation is ambiguous). No temporary files are created.
 fn build_sign_verify_message(c: &CanonOpts) -> Result<Vec<u8>, String> {
     if c.wid.trim().is_empty() {
         return Err("WID=<wid_string> required".to_string());
     }
-    let mut msg = c.wid.as_bytes().to_vec();
+    let wid = c.wid.as_bytes();
+    let mut msg = format!("wid-sig-v1:{}:", wid.len()).into_bytes();
+    msg.extend_from_slice(wid);
     if !c.data.trim().is_empty() {
         let data = fs::read(&c.data).map_err(|_| format!("data file not found: {}", c.data))?;
         msg.extend_from_slice(&data);
