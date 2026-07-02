@@ -16,6 +16,11 @@ PASS_NAMES=""
 FAIL_NAMES=""
 SKIP_NAMES=""
 
+# Implementations that passed their self-test, captured for the cross-impl
+# interop matrix (name + invocation command string), parallel arrays.
+XV_NAMES=()
+XV_CMDS=()
+
 say() {
   printf '[crypto-smoke] %s\n' "$*"
 }
@@ -162,6 +167,7 @@ run_case() {
   local name="$1"
   local dep="$2"
   shift 2
+  local cmd_str="$*"
   local sig
   local otp_json
   local otp
@@ -243,6 +249,8 @@ run_case() {
     return 0
   fi
 
+  XV_NAMES+=("$name")
+  XV_CMDS+=("$cmd_str")
   mark_pass "$name"
 }
 
@@ -278,6 +286,36 @@ else
   mark_skip "c" "c binary missing"
 fi
 
+
+# Cross-implementation interop: a signature produced by ANY implementation must
+# verify under EVERY implementation. The per-impl self-tests above only prove
+# each impl agrees with itself, so they cannot catch one impl diverging from the
+# others (e.g. a stale build or a canonical-message mismatch); this matrix does.
+if [[ "${#XV_NAMES[@]}" -ge 2 ]]; then
+  say "Cross-impl interop matrix: ${#XV_NAMES[@]} implementations (${XV_NAMES[*]})"
+  xv_fail=0
+  for i in "${!XV_NAMES[@]}"; do
+    signer="${XV_NAMES[$i]}"
+    scmd="${XV_CMDS[$i]}"
+    if ! xsig="$($scmd A=sign WID="$WID_SAMPLE" KEY="$PRIV_KEY" DATA="$DATA_FILE" 2>/dev/null | tail -n 1)"; then
+      mark_fail "xinterop:$signer(sign)" "signer failed to produce a signature"
+      xv_fail=1
+      continue
+    fi
+    xsig="$(printf '%s' "$xsig" | tr -d '[:space:]')"
+    for j in "${!XV_NAMES[@]}"; do
+      verifier="${XV_NAMES[$j]}"
+      vcmd="${XV_CMDS[$j]}"
+      if ! $vcmd A=verify WID="$WID_SAMPLE" KEY="$PUB_KEY" SIG="$xsig" DATA="$DATA_FILE" >/dev/null 2>&1; then
+        mark_fail "xinterop:$signer->$verifier" "signature from $signer rejected by $verifier"
+        xv_fail=1
+      fi
+    done
+  done
+  if [[ "$xv_fail" -eq 0 ]]; then
+    mark_pass "cross-impl-interop(${#XV_NAMES[@]}x${#XV_NAMES[@]})"
+  fi
+fi
 
 say "Summary: pass=$PASS_COUNT fail=$FAIL_COUNT skip=$SKIP_COUNT"
 if [[ -n "$PASS_NAMES" ]]; then say "Passed: $PASS_NAMES"; fi
