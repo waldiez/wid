@@ -108,6 +108,35 @@ if [[ "$BASELINE_OTP" == "$BAD_CODE" ]]; then
 fi
 say "Baseline OTP: $BASELINE_OTP"
 
+# Regression guards for the strict-parser w-otp bug: gen AND verify must behave
+# identically for HLC-WIDs and for padding widths that differ from the CLI's
+# default Z. (Rust/Go once fed the strict W/Z-sensitive parser into the verify
+# time-window and rejected WIDs the other four implementations accepted.)
+# The default MAX_FUTURE_SEC=5 keeps the time-window branch active here.
+XTRA_WIDS=(
+  "${WID_SAMPLE}-node01"
+  "${WID_SAMPLE}-ab12"
+  "${WID_SAMPLE}-ab12cd"
+)
+XTRA_BASELINES=()
+for xw in "${XTRA_WIDS[@]}"; do
+  xbase=""
+  if [[ -n "${PYTHON_CMD:-}" ]]; then
+    out="$(env PYTHONPATH=python "$PYTHON_CMD" -m wid A=w-otp MODE=gen KEY="$KEY_SAMPLE" WID="$xw" DIGITS="$DIGITS" 2>/dev/null || true)"
+    xbase="$(extract_otp "$out")"
+  fi
+  if [[ -z "$xbase" ]]; then
+    out="$(bash sh/wid A=w-otp MODE=gen KEY="$KEY_SAMPLE" WID="$xw" DIGITS="$DIGITS" 2>/dev/null || true)"
+    xbase="$(extract_otp "$out")"
+  fi
+  if [[ -z "$xbase" ]]; then
+    say "Unable to resolve baseline OTP for sample: $xw"
+    exit 1
+  fi
+  XTRA_BASELINES+=("$xbase")
+  say "Baseline OTP for $xw: $xbase"
+done
+
 run_case() {
   local name="$1"
   shift
@@ -165,6 +194,32 @@ run_case() {
     mark_fail "$name" "verify(time-window) unexpectedly accepted stale WID"
     return 0
   fi
+
+  # HLC-WID / non-default-padding round trips (see XTRA_WIDS above).
+  local i xw xbase xotp xbad
+  for i in "${!XTRA_WIDS[@]}"; do
+    xw="${XTRA_WIDS[$i]}"
+    xbase="${XTRA_BASELINES[$i]}"
+    if ! out="$("$@" A=w-otp MODE=gen KEY="$KEY_SAMPLE" WID="$xw" DIGITS="$DIGITS" 2>"$ERR_FILE")"; then
+      mark_fail "$name" "gen($xw) failed: $(tr '\n' ' ' < "$ERR_FILE")"
+      return 0
+    fi
+    xotp="$(extract_otp "$out")"
+    if [[ "$xotp" != "$xbase" ]]; then
+      mark_fail "$name" "otp mismatch for $xw (expected=$xbase got=$xotp)"
+      return 0
+    fi
+    if ! "$@" A=w-otp MODE=verify KEY="$KEY_SAMPLE" WID="$xw" CODE="$xotp" DIGITS="$DIGITS" > /dev/null 2>"$ERR_FILE"; then
+      mark_fail "$name" "verify($xw) failed: $(tr '\n' ' ' < "$ERR_FILE")"
+      return 0
+    fi
+    xbad="$BAD_CODE"
+    if [[ "$xotp" == "$xbad" ]]; then xbad="999998"; fi
+    if "$@" A=w-otp MODE=verify KEY="$KEY_SAMPLE" WID="$xw" CODE="$xbad" DIGITS="$DIGITS" > /dev/null 2>"$ERR_FILE"; then
+      mark_fail "$name" "verify($xw, bad code) unexpectedly succeeded"
+      return 0
+    fi
+  done
 
   mark_pass "$name"
 }
