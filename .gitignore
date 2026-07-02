@@ -42,21 +42,6 @@ go/cmd/wid/wid
 # source dirs like python/wid, sh/wid, go/cmd/wid)
 /wid
 
-# Zig
-zig/.zig-cache/
-zig/zig-cache/
-zig/zig-out/
-zig/.zig-global-cache/
-
-# Java
-.gradle/
-build/
-*.class
-
-# .NET
-bin/
-obj/
-
 # Build artifacts
 wid-web.zip
 *.zip
