@@ -492,19 +492,16 @@ fn is_local_service_transport(s: &str) -> bool {
     matches!(s, "mqtt" | "ws" | "redis" | "null" | "stdout")
 }
 
+/// Base directory for resolving relative `D=` / data / runtime paths.
+///
+/// Data and runtime files are resolved relative to the current working
+/// directory. An earlier revision walked parent directories looking for an
+/// `implementations/` + `README.md` repo-root marker, but that marker never
+/// matched this repository's layout (top-level `rust/`, `c/`, … — there is no
+/// `implementations/` directory) and always fell through to the cwd, so the
+/// walk was dead code and has been removed.
 fn workspace_root() -> PathBuf {
-    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let mut cur = cwd.as_path();
-    loop {
-        if cur.join("implementations").exists() && cur.join("README.md").exists() {
-            return cur.to_path_buf();
-        }
-        if let Some(parent) = cur.parent() {
-            cur = parent;
-        } else {
-            return cwd;
-        }
-    }
+    env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 fn resolve_data_dir(root: &Path, d: &str) -> PathBuf {
