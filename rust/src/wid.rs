@@ -286,12 +286,8 @@ impl WidGen {
         let mut wid = format!("{}.{}Z", ts, seq_str);
 
         if self.z > 0 {
-            let pad: String = (0..self.z)
-                .map(|_| {
-                    let idx = random_range(0..16);
-                    "0123456789abcdef".chars().nth(idx).unwrap()
-                })
-                .collect();
+            const HEX: &[u8; 16] = b"0123456789abcdef";
+            let pad: String = (0..self.z).map(|_| HEX[random_range(0..16)] as char).collect();
             wid.push('-');
             wid.push_str(&pad);
         }
