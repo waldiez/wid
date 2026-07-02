@@ -41,6 +41,7 @@ jobs:
         with:
           toolchain: "1.88"
       - run: make stream-conformance
+      - run: ID_CONFORMANCE_STRICT=1 make id-conformance
 
   hardening-spec:
     runs-on: ubuntu-latest

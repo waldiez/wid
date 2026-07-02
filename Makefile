@@ -7,7 +7,7 @@
        sh-test sh-next \
        next id stream do healthcheck start stop status sign verify otp otp-gen otp-verify crypto-demo \
        mobile-arcade-fix-links mobile-arcade-zip \
-       conformance bench-matrix docker capabilities-check stream-conformance crypto-smoke signed-envelope-check security-matrix-check key-rotation-drill-check soak-check envelope-compat-check release-check \
+       conformance bench-matrix docker capabilities-check stream-conformance id-conformance crypto-smoke signed-envelope-check security-matrix-check key-rotation-drill-check soak-check envelope-compat-check release-check \
        wotp-parity-check \
        hardening-check
 
@@ -373,6 +373,9 @@ capabilities-check:
 
 stream-conformance:
 	python3 tools/check_stream_conformance.py
+
+id-conformance:
+	python3 tools/check_id_conformance.py
 
 signed-envelope-check:
 	python3 tools/check_signed_envelope_spec.py

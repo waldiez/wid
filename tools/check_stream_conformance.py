@@ -45,7 +45,7 @@ def ensure_builds() -> dict[str, str]:
     if not (ROOT / "c" / ".build" / "wid").exists():
         subprocess.run(["make", "-C", "c", "setup"], cwd=ROOT, check=True)
     # TypeScript dist
-    if shutil.which("node") and shutil.which("npm") and not (ROOT / "typescript" / "dist" / "cli.js").exists():
+    if shutil.which("node") and shutil.which("npm") and not (ROOT / "dist" / "cli.js").exists():
         if not (ROOT / "node_modules").exists():
             subprocess.run(["npm", "install"], cwd=ROOT, check=True)
         subprocess.run(["npm", "run", "build"], cwd=ROOT, check=True)

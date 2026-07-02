@@ -68,7 +68,11 @@ All implementations accept the same flag matrix (`--kind`, `--node`, `--W`, `--Z
 
 <!-- markdownlint-enable MD060 -->
 
-All implementations conform to the same [specification](spec/SPEC.md) and pass the shared conformance fixtures in `spec/conformance/`.
+All implementations conform to the same [specification](spec/SPEC.md). Cross-language conformance is enforced in CI by executable harnesses that drive every implementation against the shared fixtures in `spec/conformance/`:
+
+- `make id-conformance` — `valid.json` / `invalid.json` (identifier accept/reject) across all six
+- `make stream-conformance` — streaming behavior
+- `tools/check_wotp_parity.sh` and `tools/smoke_crypto.sh` — crypto (`sign`/`verify`/`w-otp`) parity and interop
 
 ## Format
 
