@@ -433,13 +433,22 @@ static inline bool hlc_wid_parse(const char *wid, int W, int Z, parsed_hlc_wid_t
 
 static inline void wid_random_hex(char *buf, int len) {
     static const char hex[] = "0123456789abcdef";
-    unsigned char raw[(WID_MAX_Z / 2) + 1];
+    /* One random byte is consumed per hex char, so the buffer must hold up to
+     * WID_MAX_Z bytes (Z is clamped to WID_MAX_Z, not rejected). */
+    unsigned char raw[WID_MAX_Z + 1];
+    if (len > WID_MAX_Z) len = WID_MAX_Z;
+    int filled = 0;
 #if defined(__linux__) || defined(__APPLE__)
     FILE *f = fopen("/dev/urandom", "r");
-    if (f) { fread(raw, 1, (size_t)len, f); fclose(f); }
-    else
+    if (f) {
+        filled = (int)fread(raw, 1, (size_t)len, f);
+        fclose(f);
+    }
 #endif
-    { for (int i = 0; i < len; i++) raw[i] = (unsigned char)rand(); }
+    /* Fill any shortfall (short read or no /dev/urandom) so no byte is left
+     * uninitialized. This fallback is not cryptographically strong; padding is
+     * collision defense, not a security boundary. */
+    for (int i = filled; i < len; i++) raw[i] = (unsigned char)rand();
     for (int i = 0; i < len; i++) buf[i] = hex[raw[i] & 0x0f];
     buf[len] = '\0';
 }
