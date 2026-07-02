@@ -8,7 +8,6 @@
 #include <errno.h>
 #include <limits.h>
 #include <signal.h>
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -18,6 +17,11 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+
+#include <openssl/crypto.h>
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
+#include <openssl/pem.h>
 
 #include "wid.h"
 
@@ -339,30 +343,6 @@ static int sql_state_path(const canon_opts_t *c, char out[PATH_MAX]) {
     char dd[PATH_MAX];
     get_data_dir(c, dd);
     return join_path(out, PATH_MAX, dd, "/wid_state.sqlite");
-}
-
-static int systemf(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    va_list ap2;
-    va_copy(ap2, ap);
-    int n = vsnprintf(NULL, 0, fmt, ap);
-    va_end(ap);
-    if (n < 0) {
-        va_end(ap2);
-        return -1;
-    }
-    size_t needed = (size_t)n + 1;
-    char *cmd = (char *)malloc(needed);
-    if (!cmd) {
-        va_end(ap2);
-        return -1;
-    }
-    (void)vsnprintf(cmd, needed, fmt, ap2);
-    va_end(ap2);
-    int rc = system(cmd);
-    free(cmd);
-    return rc;
 }
 
 static int sqlite_exec_capture(const char *db_path, const char *sql, char *out, size_t out_len) {
@@ -725,33 +705,99 @@ static int run_native_orchestration(const canon_opts_t *c) {
     return 1;
 }
 
-static int build_message_file(const canon_opts_t *c, const char *msg_path) {
+/* Build the sign/verify message in memory: WID bytes followed by optional
+ * DATA-file bytes. On success sets *out (malloc'd, caller frees) and *out_len.
+ * No temporary files are created. Returns 0 on success, 1 on error. */
+static int build_message_buf(const canon_opts_t *c, unsigned char **out, size_t *out_len) {
     if (!c->WID[0]) {
         fprintf(stderr, "error: WID=<wid_string> required\n");
         return 1;
     }
-    FILE *f = fopen(msg_path, "wb");
-    if (!f) return 1;
-    fwrite(c->WID, 1, strlen(c->WID), f);
-    fclose(f);
+    size_t wid_len = strlen(c->WID);
+    size_t total = wid_len;
+    unsigned char *buf = malloc(wid_len > 0 ? wid_len : 1);
+    if (!buf) return 1;
+    memcpy(buf, c->WID, wid_len);
     if (c->DATA[0]) {
         FILE *in = fopen(c->DATA, "rb");
         if (!in) {
             fprintf(stderr, "error: data file not found: %s\n", c->DATA);
+            free(buf);
             return 1;
         }
-        f = fopen(msg_path, "ab");
-        if (!f) {
-            fclose(in);
-            return 1;
-        }
-        char buf[4096];
+        unsigned char tmp[4096];
         size_t n;
-        while ((n = fread(buf, 1, sizeof(buf), in)) > 0) fwrite(buf, 1, n, f);
+        while ((n = fread(tmp, 1, sizeof(tmp), in)) > 0) {
+            unsigned char *nb = realloc(buf, total + n);
+            if (!nb) {
+                free(buf);
+                fclose(in);
+                return 1;
+            }
+            buf = nb;
+            memcpy(buf + total, tmp, n);
+            total += n;
+        }
         fclose(in);
-        fclose(f);
     }
+    *out = buf;
+    *out_len = total;
     return 0;
+}
+
+static const char B64URL_ALPHABET[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/* Encode len bytes as unpadded base64url into out (must hold 4*((len+2)/3)+1). */
+static void b64url_encode(const unsigned char *in, size_t len, char *out) {
+    size_t i = 0, o = 0;
+    while (i + 3 <= len) {
+        unsigned v = ((unsigned)in[i] << 16) | ((unsigned)in[i + 1] << 8) | in[i + 2];
+        out[o++] = B64URL_ALPHABET[(v >> 18) & 63];
+        out[o++] = B64URL_ALPHABET[(v >> 12) & 63];
+        out[o++] = B64URL_ALPHABET[(v >> 6) & 63];
+        out[o++] = B64URL_ALPHABET[v & 63];
+        i += 3;
+    }
+    size_t rem = len - i;
+    if (rem == 1) {
+        unsigned v = (unsigned)in[i] << 16;
+        out[o++] = B64URL_ALPHABET[(v >> 18) & 63];
+        out[o++] = B64URL_ALPHABET[(v >> 12) & 63];
+    } else if (rem == 2) {
+        unsigned v = ((unsigned)in[i] << 16) | ((unsigned)in[i + 1] << 8);
+        out[o++] = B64URL_ALPHABET[(v >> 18) & 63];
+        out[o++] = B64URL_ALPHABET[(v >> 12) & 63];
+        out[o++] = B64URL_ALPHABET[(v >> 6) & 63];
+    }
+    out[o] = '\0';
+}
+
+/* Decode base64url (also tolerates standard base64 and trailing '='). Writes up
+ * to out_cap bytes; returns decoded length or -1 on error/overflow. */
+static int b64url_decode(const char *in, unsigned char *out, size_t out_cap) {
+    signed char table[256];
+    memset(table, -1, sizeof(table));
+    for (int i = 0; i < 64; i++) table[(unsigned char)B64URL_ALPHABET[i]] = (signed char)i;
+    table[(unsigned char)'+'] = 62;
+    table[(unsigned char)'/'] = 63;
+
+    unsigned buf = 0;
+    int bits = 0;
+    size_t o = 0;
+    for (const char *p = in; *p; p++) {
+        if (*p == '=') break;
+        signed char d = table[(unsigned char)*p];
+        if (d < 0) return -1;
+        buf = (buf << 6) | (unsigned)d;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            if (o >= out_cap) return -1;
+            out[o++] = (unsigned char)((buf >> bits) & 0xFF);
+        }
+    }
+    return (int)o;
 }
 
 static int run_sign(const canon_opts_t *c) {
@@ -763,42 +809,48 @@ static int run_sign(const canon_opts_t *c) {
         fprintf(stderr, "error: private key file not found: %s\n", c->KEY);
         return 1;
     }
-    mkdir_p(".local/wid/c");
-    char msg[PATH_MAX], sig[PATH_MAX], txt[PATH_MAX];
-    snprintf(msg, sizeof(msg), ".local/wid/c/sign_msg_%d.bin", (int)getpid());
-    snprintf(sig, sizeof(sig), ".local/wid/c/sign_sig_%d.bin", (int)getpid());
-    snprintf(txt, sizeof(txt), ".local/wid/c/sign_txt_%d.txt", (int)getpid());
-    if (build_message_file(c, msg) != 0) return 1;
-    if (systemf("openssl pkeyutl -sign -inkey '%s' -rawin -in '%s' -out '%s' >/dev/null 2>&1", c->KEY, msg, sig) !=
-        0) {
+
+    unsigned char *msg = NULL;
+    size_t msg_len = 0;
+    if (build_message_buf(c, &msg, &msg_len) != 0) return 1;
+
+    FILE *kf = fopen(c->KEY, "rb");
+    if (!kf) {
+        fprintf(stderr, "error: private key file not found: %s\n", c->KEY);
+        free(msg);
+        return 1;
+    }
+    EVP_PKEY *pkey = PEM_read_PrivateKey(kf, NULL, NULL, NULL);
+    fclose(kf);
+    if (!pkey) {
         fprintf(stderr, "error: sign failed (ensure Ed25519 private key PEM)\n");
-        unlink(msg);
-        unlink(sig);
+        free(msg);
         return 1;
     }
-    if (systemf("openssl base64 -A < '%s' | tr '+/' '-_' | tr -d '=' > '%s'", sig, txt) != 0) {
-        unlink(msg);
-        unlink(sig);
-        unlink(txt);
+
+    unsigned char sig[64];
+    size_t siglen = sizeof(sig);
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+    int ok = ctx != NULL && EVP_DigestSignInit(ctx, NULL, NULL, NULL, pkey) == 1 &&
+             EVP_DigestSign(ctx, sig, &siglen, msg, msg_len) == 1;
+    EVP_MD_CTX_free(ctx);
+    EVP_PKEY_free(pkey);
+    free(msg);
+    if (!ok) {
+        fprintf(stderr, "error: sign failed (ensure Ed25519 private key PEM)\n");
         return 1;
     }
-    FILE *f = fopen(txt, "rb");
-    if (!f) return 1;
-    char out[2048];
-    size_t nr = fread(out, 1, sizeof(out) - 1, f);
-    fclose(f);
-    out[nr] = '\0';
+
+    char enc[128];
+    b64url_encode(sig, siglen, enc);
     if (c->OUT[0]) {
         FILE *of = fopen(c->OUT, "wb");
         if (!of) return 1;
-        fwrite(out, 1, strlen(out), of);
+        fwrite(enc, 1, strlen(enc), of);
         fclose(of);
     } else {
-        printf("%s\n", out);
+        printf("%s\n", enc);
     }
-    unlink(msg);
-    unlink(sig);
-    unlink(txt);
     return 0;
 }
 
@@ -815,47 +867,40 @@ static int run_verify(const canon_opts_t *c) {
         fprintf(stderr, "error: public key file not found: %s\n", c->KEY);
         return 1;
     }
-    mkdir_p(".local/wid/c");
-    char msg[PATH_MAX], sig64[PATH_MAX], sig[PATH_MAX];
-    snprintf(msg, sizeof(msg), ".local/wid/c/verify_msg_%d.bin", (int)getpid());
-    snprintf(sig64, sizeof(sig64), ".local/wid/c/verify_sig64_%d.txt", (int)getpid());
-    snprintf(sig, sizeof(sig), ".local/wid/c/verify_sig_%d.bin", (int)getpid());
-    if (build_message_file(c, msg) != 0) return 1;
-    FILE *f = fopen(sig64, "wb");
-    if (!f) return 1;
-    char std[2048];
-    snprintf(std, sizeof(std), "%s", c->SIG);
-    for (size_t i = 0; std[i]; i++) {
-        if (std[i] == '-') std[i] = '+';
-        else if (std[i] == '_') std[i] = '/';
-    }
-    size_t l = strlen(std);
-    if (l % 4 == 2) strcat(std, "==");
-    else if (l % 4 == 3) strcat(std, "=");
-    else if (l % 4 == 1) {
-        fprintf(stderr, "error: invalid base64url signature length\n");
-        fclose(f);
-        return 1;
-    }
-    fwrite(std, 1, strlen(std), f);
-    fclose(f);
-    if (systemf("openssl base64 -A -d -in '%s' -out '%s' >/dev/null 2>&1", sig64, sig) != 0) {
+
+    unsigned char *msg = NULL;
+    size_t msg_len = 0;
+    if (build_message_buf(c, &msg, &msg_len) != 0) return 1;
+
+    unsigned char sig[128];
+    int siglen = b64url_decode(c->SIG, sig, sizeof(sig));
+    if (siglen < 0) {
         fprintf(stderr, "error: invalid signature encoding\n");
-        unlink(msg);
-        unlink(sig64);
-        unlink(sig);
+        free(msg);
         return 1;
     }
-    int rc = systemf(
-        "openssl pkeyutl -verify -pubin -inkey '%s' -sigfile '%s' -rawin -in '%s' >/dev/null 2>&1",
-        c->KEY,
-        sig,
-        msg
-    );
-    unlink(msg);
-    unlink(sig64);
-    unlink(sig);
-    if (rc == 0) {
+
+    FILE *kf = fopen(c->KEY, "rb");
+    if (!kf) {
+        fprintf(stderr, "error: public key file not found: %s\n", c->KEY);
+        free(msg);
+        return 1;
+    }
+    EVP_PKEY *pkey = PEM_read_PUBKEY(kf, NULL, NULL, NULL);
+    fclose(kf);
+    if (!pkey) {
+        fprintf(stderr, "error: invalid public key (ensure Ed25519 public key PEM)\n");
+        free(msg);
+        return 1;
+    }
+
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+    int rc = ctx != NULL && EVP_DigestVerifyInit(ctx, NULL, NULL, NULL, pkey) == 1 &&
+             EVP_DigestVerify(ctx, sig, (size_t)siglen, msg, msg_len) == 1;
+    EVP_MD_CTX_free(ctx);
+    EVP_PKEY_free(pkey);
+    free(msg);
+    if (rc) {
         puts("Signature valid.");
         return 0;
     }
@@ -880,46 +925,20 @@ static int resolve_wotp_secret(const char *raw, char *out, size_t out_sz) {
 }
 
 static int compute_wotp(const char *secret, const char *wid, int digits, char *otp_out, size_t otp_sz) {
-    if (has_unsafe_shell_char(secret) || has_unsafe_shell_char(wid)) return 1;
-    enum {
-        WOTP_MAX_SECRET = 512,
-        WOTP_MAX_WID = 256
-    };
-    size_t wid_len = strnlen(wid, WOTP_MAX_WID + 1);
-    size_t secret_len = strnlen(secret, WOTP_MAX_SECRET + 1);
-    if (wid_len == 0 || wid_len > WOTP_MAX_WID) return 1;
-    if (secret_len == 0 || secret_len > WOTP_MAX_SECRET) return 1;
-    char wid_safe[WOTP_MAX_WID + 1];
-    char secret_safe[WOTP_MAX_SECRET + 1];
-    memcpy(wid_safe, wid, wid_len);
-    wid_safe[wid_len] = '\0';
-    memcpy(secret_safe, secret, secret_len);
-    secret_safe[secret_len] = '\0';
-
-    char cmd[PATH_MAX];
-    int n = snprintf(cmd,
-                     sizeof(cmd),
-                     "printf '%%s' '%s' | openssl dgst -sha256 -mac HMAC -macopt 'key:%s' 2>/dev/null",
-                     wid_safe,
-                     secret_safe);
-    if (n < 0 || (size_t)n >= sizeof(cmd)) return 1;
-    FILE *p = popen(cmd, "r");
-    if (!p) return 1;
-    char line[256];
-    if (!fgets(line, sizeof(line), p)) {
-        pclose(p);
+    unsigned char mac[EVP_MAX_MD_SIZE];
+    unsigned int maclen = 0;
+    if (HMAC(EVP_sha256(),
+             secret,
+             (int)strlen(secret),
+             (const unsigned char *)wid,
+             strlen(wid),
+             mac,
+             &maclen) == NULL ||
+        maclen < 4) {
         return 1;
     }
-    pclose(p);
-    char *eq = strrchr(line, '=');
-    char *hex = eq ? eq + 1 : line;
-    while (*hex == ' ') hex++;
-    char first8[9] = {0};
-    for (int i = 0; i < 8; i++) {
-        if (!isxdigit((unsigned char)hex[i])) return 1;
-        first8[i] = hex[i];
-    }
-    unsigned long v = strtoul(first8, NULL, 16);
+    unsigned long v = ((unsigned long)mac[0] << 24) | ((unsigned long)mac[1] << 16) |
+                      ((unsigned long)mac[2] << 8) | (unsigned long)mac[3];
     unsigned long mod = 1;
     for (int i = 0; i < digits; i++) mod *= 10;
     snprintf(otp_out, otp_sz, "%0*lu", digits, v % mod);
@@ -1021,7 +1040,9 @@ static int run_wotp(const canon_opts_t *c, wid_time_unit_t unit) {
             return 1;
         }
     }
-    if (strcmp(c->CODE, otp) == 0) {
+    size_t code_len = strlen(c->CODE);
+    size_t otp_len = strlen(otp);
+    if (code_len == otp_len && CRYPTO_memcmp(c->CODE, otp, otp_len) == 0) {
         puts("OTP valid.");
         return 0;
     }
