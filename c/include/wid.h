@@ -431,6 +431,16 @@ static inline bool hlc_wid_parse(const char *wid, int W, int Z, parsed_hlc_wid_t
     return hlc_wid_parse_ex(wid, W, Z, WID_TIME_SEC, out);
 }
 
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+    defined(__NetBSD__) || defined(__DragonFly__)
+/* arc4random_buf always exists in libc on macOS and the BSDs, but its
+ * <stdlib.h> declaration is hidden in strict ISO modes (-std=c11 defines
+ * __STRICT_ANSI__, which Darwin maps to _ANSI_SOURCE). The prototype is
+ * stable and identical on all of these platforms, so declare it ourselves
+ * rather than requiring feature-test macros before including this header. */
+void arc4random_buf(void *buf, size_t nbytes);
+#endif
+
 static inline void wid_random_hex(char *buf, int len) {
     static const char hex[] = "0123456789abcdef";
     /* One random byte is consumed per hex char, so the buffer must hold up to
