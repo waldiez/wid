@@ -6,11 +6,20 @@ use std::process::{self, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use ed25519_dalek::pkcs8::{DecodePrivateKey, DecodePublicKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
+use hmac::{Hmac, Mac};
 use serde_json::json;
+use sha2::Sha256;
+use subtle::ConstantTimeEq;
 use wid::{
     HLCWidGen, TimeUnit, WidGen, parse_hlc_wid_with_unit, parse_wid_with_unit,
     validate_hlc_wid_with_unit, validate_wid_with_unit,
 };
+
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone)]
 struct ValidateOpts {
@@ -998,64 +1007,32 @@ fn run_canonical(args: &[String]) -> Result<(), String> {
     }
 }
 
-fn build_sign_verify_message(c: &CanonOpts, msg_path: &Path) -> Result<(), String> {
+/// Build the message to sign/verify entirely in memory: WID bytes followed by
+/// optional DATA-file bytes. No temporary files are created.
+fn build_sign_verify_message(c: &CanonOpts) -> Result<Vec<u8>, String> {
     if c.wid.trim().is_empty() {
         return Err("WID=<wid_string> required".to_string());
     }
-    fs::write(msg_path, c.wid.as_bytes()).map_err(|e| format!("failed to write message: {e}"))?;
+    let mut msg = c.wid.as_bytes().to_vec();
     if !c.data.trim().is_empty() {
         let data = fs::read(&c.data).map_err(|_| format!("data file not found: {}", c.data))?;
-        let mut f = OpenOptions::new()
-            .append(true)
-            .open(msg_path)
-            .map_err(|e| format!("failed to append data: {e}"))?;
-        f.write_all(&data)
-            .map_err(|e| format!("failed to append data: {e}"))?;
+        msg.extend_from_slice(&data);
     }
-    Ok(())
+    Ok(msg)
 }
 
-fn b64url_encode_file(path: &Path) -> Result<String, String> {
-    let out = Command::new("sh")
-        .arg("-lc")
-        .arg(format!(
-            "openssl base64 -A < '{}' | tr '+/' '-_' | tr -d '='",
-            path.display()
-        ))
-        .output()
-        .map_err(|_| "openssl not found".to_string())?;
-    if !out.status.success() {
-        return Err("failed to encode signature".to_string());
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+fn load_signing_key(path: &str) -> Result<SigningKey, String> {
+    let pem =
+        fs::read_to_string(path).map_err(|_| format!("private key file not found: {path}"))?;
+    SigningKey::from_pkcs8_pem(&pem)
+        .map_err(|_| "sign failed (ensure Ed25519 private key PEM)".to_string())
 }
 
-fn b64url_decode_to_file(sig: &str, out_file: &Path) -> Result<(), String> {
-    let mut std = sig.replace('-', "+").replace('_', "/");
-    match std.len() % 4 {
-        2 => std.push_str("=="),
-        3 => std.push('='),
-        1 => return Err("invalid base64url signature length".to_string()),
-        _ => {}
-    }
-    fs::write(out_file, std.as_bytes())
-        .map_err(|e| format!("failed to write signature temp: {e}"))?;
-    let st = Command::new("openssl")
-        .arg("base64")
-        .arg("-A")
-        .arg("-d")
-        .arg("-in")
-        .arg(out_file)
-        .arg("-out")
-        .arg(format!("{}.bin", out_file.display()))
-        .status()
-        .map_err(|_| "openssl not found".to_string())?;
-    if !st.success() {
-        return Err("invalid signature encoding".to_string());
-    }
-    fs::rename(format!("{}.bin", out_file.display()), out_file)
-        .map_err(|e| format!("failed to finalize signature temp: {e}"))?;
-    Ok(())
+fn load_verifying_key(path: &str) -> Result<VerifyingKey, String> {
+    let pem =
+        fs::read_to_string(path).map_err(|_| format!("public key file not found: {path}"))?;
+    VerifyingKey::from_public_key_pem(&pem)
+        .map_err(|_| "invalid public key (ensure Ed25519 public key PEM)".to_string())
 }
 
 fn run_sign(c: &CanonOpts) -> Result<(), String> {
@@ -1065,32 +1042,10 @@ fn run_sign(c: &CanonOpts) -> Result<(), String> {
     if !Path::new(&c.key).exists() {
         return Err(format!("private key file not found: {}", c.key));
     }
-    let root = workspace_root();
-    let dir = root.join(".local").join("wid").join("rust");
-    fs::create_dir_all(&dir).map_err(|e| format!("failed to create runtime dir: {e}"))?;
-    let msg = dir.join(format!("sign_msg_{}.bin", process::id()));
-    let sig = dir.join(format!("sign_sig_{}.bin", process::id()));
-    build_sign_verify_message(c, &msg)?;
-    let st = Command::new("openssl")
-        .arg("pkeyutl")
-        .arg("-sign")
-        .arg("-inkey")
-        .arg(&c.key)
-        .arg("-rawin")
-        .arg("-in")
-        .arg(&msg)
-        .arg("-out")
-        .arg(&sig)
-        .status()
-        .map_err(|_| "openssl not found".to_string())?;
-    if !st.success() {
-        let _ = fs::remove_file(&msg);
-        let _ = fs::remove_file(&sig);
-        return Err("sign failed (ensure Ed25519 private key PEM)".to_string());
-    }
-    let encoded = b64url_encode_file(&sig)?;
-    let _ = fs::remove_file(&msg);
-    let _ = fs::remove_file(&sig);
+    let msg = build_sign_verify_message(c)?;
+    let key = load_signing_key(&c.key)?;
+    let sig: Signature = key.sign(&msg);
+    let encoded = URL_SAFE_NO_PAD.encode(sig.to_bytes());
     if c.out.trim().is_empty() {
         println!("{encoded}");
     } else {
@@ -1110,33 +1065,21 @@ fn run_verify(c: &CanonOpts) -> Result<(), String> {
     if !Path::new(&c.key).exists() {
         return Err(format!("public key file not found: {}", c.key));
     }
-    let root = workspace_root();
-    let dir = root.join(".local").join("wid").join("rust");
-    fs::create_dir_all(&dir).map_err(|e| format!("failed to create runtime dir: {e}"))?;
-    let msg = dir.join(format!("verify_msg_{}.bin", process::id()));
-    let sig = dir.join(format!("verify_sig_{}.bin", process::id()));
-    build_sign_verify_message(c, &msg)?;
-    b64url_decode_to_file(&c.sig, &sig)?;
-    let st = Command::new("openssl")
-        .arg("pkeyutl")
-        .arg("-verify")
-        .arg("-pubin")
-        .arg("-inkey")
-        .arg(&c.key)
-        .arg("-sigfile")
-        .arg(&sig)
-        .arg("-rawin")
-        .arg("-in")
-        .arg(&msg)
-        .status()
-        .map_err(|_| "openssl not found".to_string())?;
-    let _ = fs::remove_file(&msg);
-    let _ = fs::remove_file(&sig);
-    if st.success() {
-        println!("Signature valid.");
-        return Ok(());
+    let msg = build_sign_verify_message(c)?;
+    let key = load_verifying_key(&c.key)?;
+    // Accept base64url with or without padding.
+    let sig_bytes = URL_SAFE_NO_PAD
+        .decode(c.sig.trim().trim_end_matches('='))
+        .map_err(|_| "invalid signature encoding".to_string())?;
+    let sig =
+        Signature::from_slice(&sig_bytes).map_err(|_| "invalid signature encoding".to_string())?;
+    match key.verify_strict(&msg, &sig) {
+        Ok(()) => {
+            println!("Signature valid.");
+            Ok(())
+        }
+        Err(_) => Err("Signature invalid.".to_string()),
     }
-    Err("Signature invalid.".to_string())
 }
 
 fn resolve_wotp_secret(raw: &str) -> Result<String, String> {
@@ -1153,34 +1096,14 @@ fn resolve_wotp_secret(raw: &str) -> Result<String, String> {
 }
 
 fn compute_wotp(secret: &str, wid: &str, digits: usize) -> Result<String, String> {
-    let out = Command::new("openssl")
-        .arg("dgst")
-        .arg("-sha256")
-        .arg("-mac")
-        .arg("HMAC")
-        .arg("-macopt")
-        .arg(format!("key:{secret}"))
-        .arg("-binary")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|_| "openssl not found".to_string())?;
-    let mut child = out;
-    if let Some(stdin) = &mut child.stdin {
-        stdin
-            .write_all(wid.as_bytes())
-            .map_err(|e| format!("failed to write wid to openssl: {e}"))?;
-    }
-    let out = child
-        .wait_with_output()
-        .map_err(|e| format!("failed to execute openssl: {e}"))?;
-    if !out.status.success() || out.stdout.len() < 4 {
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|_| "failed to initialize HMAC".to_string())?;
+    mac.update(wid.as_bytes());
+    let digest = mac.finalize().into_bytes();
+    if digest.len() < 4 {
         return Err("failed to compute w-otp digest".to_string());
     }
-    let v = ((out.stdout[0] as u32) << 24)
-        | ((out.stdout[1] as u32) << 16)
-        | ((out.stdout[2] as u32) << 8)
-        | (out.stdout[3] as u32);
+    let v = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]);
     let mut m = 1u32;
     for _ in 0..digits {
         m = m.saturating_mul(10);
@@ -1235,7 +1158,7 @@ fn run_wotp(c: &CanonOpts) -> Result<(), String> {
             return Err("OTP invalid: WID timestamp is too old".to_string());
         }
     }
-    if c.code == otp {
+    if bool::from(c.code.as_bytes().ct_eq(otp.as_bytes())) {
         println!("OTP valid.");
         return Ok(());
     }

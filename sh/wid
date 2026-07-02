@@ -699,7 +699,9 @@ run_canonical() {
         local secret="$1" wid="$2" digits="$3"
         command -v openssl >/dev/null 2>&1 || die "openssl is required for A=w-otp"
         local hex first num mod i
-        hex="$(printf '%s' "$wid" | openssl dgst -sha256 -mac HMAC -macopt "key:$secret" 2>/dev/null | awk '{print $NF}')"
+        # Use the portable -hmac flag: OpenSSL and macOS LibreSSL both accept it,
+        # whereas LibreSSL's dgst does not support -mac/-macopt.
+        hex="$(printf '%s' "$wid" | openssl dgst -sha256 -hmac "$secret" 2>/dev/null | awk '{print $NF}')"
         [[ "$hex" =~ ^[0-9a-fA-F]{64}$ ]] || die "failed to compute w-otp digest"
         first="${hex:0:8}"
         num=$((16#$first))
@@ -708,6 +710,18 @@ run_canonical() {
             mod=$((mod * 10))
         done
         printf "%0${digits}d" "$((num % mod))"
+    }
+
+    # Constant-time string equality. Both sides are HMAC'd under a fresh random
+    # key before comparison, so the short-circuit in [[ == ]] leaks nothing about
+    # how many leading characters of the real OTP matched.
+    ct_equal() {
+        local a="$1" b="$2" nonce ha hb
+        nonce="$(openssl rand -hex 32 2>/dev/null)" || return 1
+        [[ -n "$nonce" ]] || return 1
+        ha="$(printf '%s' "$a" | openssl dgst -sha256 -hmac "$nonce" 2>/dev/null | awk '{print $NF}')"
+        hb="$(printf '%s' "$b" | openssl dgst -sha256 -hmac "$nonce" 2>/dev/null | awk '{print $NF}')"
+        [[ -n "$ha" && "$ha" == "$hb" ]]
     }
 
     if [[ "$A" == "w-otp" ]]; then
@@ -744,7 +758,7 @@ run_canonical() {
                 ((delta_ms <= MAX_AGE_SEC * 1000)) || die "OTP invalid: WID timestamp is too old"
             fi
         fi
-        if [[ "$CODE" == "$otp" ]]; then
+        if ct_equal "$CODE" "$otp"; then
             echo "OTP valid."
             return
         fi
