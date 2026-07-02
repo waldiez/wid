@@ -290,7 +290,9 @@ validate_wid() {
         return 0
     fi
 
-    [[ "$suffix" =~ ^-[0-9a-f]{$Z}$ ]] || return 1
+    # Padding is OPTIONAL when Z>0 (matches SPEC.md and the other five impls):
+    # accept a missing pad or a correctly-sized lowercase-hex pad; reject else.
+    [[ -z "$suffix" || "$suffix" =~ ^-[0-9a-f]{$Z}$ ]] || return 1
     return 0
 }
 
@@ -325,7 +327,9 @@ validate_hlc_wid() {
         return 0
     fi
 
-    [[ "$suffix" =~ ^-[0-9a-f]{$Z}$ ]] || return 1
+    # Padding is OPTIONAL when Z>0 (matches SPEC.md and the other five impls):
+    # accept a missing pad or a correctly-sized lowercase-hex pad; reject else.
+    [[ -z "$suffix" || "$suffix" =~ ^-[0-9a-f]{$Z}$ ]] || return 1
     return 0
 }
 
@@ -339,11 +343,12 @@ parse_wid_fn() {
     seq=${BASH_REMATCH[2]}
     suffix=${BASH_REMATCH[3]}
     local pad=""
-    if ((Z > 0)); then
-        [[ "$suffix" =~ ^-[0-9a-f]{${Z}}$ ]] || { printf 'null\n'; return 1; }
+    if [[ -n "$suffix" ]]; then
+        # When present, padding must be a correctly-sized lowercase-hex pad and
+        # is only valid when Z>0. But padding is OPTIONAL: a missing pad is
+        # allowed even when Z>0, matching SPEC.md and the other implementations.
+        { ((Z > 0)) && [[ "$suffix" =~ ^-[0-9a-f]{${Z}}$ ]]; } || { printf 'null\n'; return 1; }
         pad="${suffix:1}"
-    else
-        [[ -z "$suffix" ]] || { printf 'null\n'; return 1; }
     fi
     local year=${ts:0:4} month=${ts:4:2} day=${ts:6:2}
     local hour=${ts:9:2} minute=${ts:11:2} second=${ts:13:2}
@@ -371,11 +376,12 @@ parse_hlc_wid_fn() {
     node=${BASH_REMATCH[3]}
     suffix=${BASH_REMATCH[4]}
     local pad=""
-    if ((Z > 0)); then
-        [[ "$suffix" =~ ^-[0-9a-f]{${Z}}$ ]] || { printf 'null\n'; return 1; }
+    if [[ -n "$suffix" ]]; then
+        # When present, padding must be a correctly-sized lowercase-hex pad and
+        # is only valid when Z>0. But padding is OPTIONAL: a missing pad is
+        # allowed even when Z>0, matching SPEC.md and the other implementations.
+        { ((Z > 0)) && [[ "$suffix" =~ ^-[0-9a-f]{${Z}}$ ]]; } || { printf 'null\n'; return 1; }
         pad="${suffix:1}"
-    else
-        [[ -z "$suffix" ]] || { printf 'null\n'; return 1; }
     fi
     local year=${ts:0:4} month=${ts:4:2} day=${ts:6:2}
     local hour=${ts:9:2} minute=${ts:11:2} second=${ts:13:2}

@@ -136,6 +136,27 @@
       "wid": "20260212T091530.0000Z-my node",
       "type": "hlc",
       "reason": "Node cannot contain spaces"
+    },
+    {
+      "id": "wid_padding_wrong_length_z6",
+      "wid": "20260212T091530.0000Z-abc",
+      "type": "wid",
+      "params": {"W": 4, "Z": 6},
+      "reason": "Padding, when present, must be exactly Z lowercase-hex chars"
+    },
+    {
+      "id": "wid_padding_with_z0",
+      "wid": "20260212T091530.0000Z-abcdef",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "reason": "Padding is not allowed when Z=0"
+    },
+    {
+      "id": "hlc_padding_wrong_length_z6",
+      "wid": "20260212T091530.0000Z-node01-abc",
+      "type": "hlc",
+      "params": {"W": 4, "Z": 6},
+      "reason": "Padding, when present, must be exactly Z lowercase-hex chars"
     }
   ]
 }

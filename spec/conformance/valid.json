@@ -136,6 +136,30 @@
         "valid": true,
         "node": "Server42ABC"
       }
+    },
+    {
+      "id": "wid_no_padding_w4_z6",
+      "wid": "20260212T091530.0000Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 6},
+      "expected": {
+        "valid": true,
+        "timestamp": "2026-02-12T09:15:30Z",
+        "sequence": 0,
+        "padding": null
+      }
+    },
+    {
+      "id": "hlc_no_padding_w4_z6",
+      "wid": "20260212T091530.0000Z-node01",
+      "type": "hlc",
+      "params": {"W": 4, "Z": 6},
+      "expected": {
+        "valid": true,
+        "sequence": 0,
+        "node": "node01",
+        "padding": null
+      }
     }
   ]
 }
