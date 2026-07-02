@@ -1,0 +1,28 @@
+# The Dockerfile builds only the Rust binary (it COPYs Cargo.toml, Cargo.lock,
+# and rust/). Keep the build context small: exclude VCS, dependency/build trees,
+# and runtime state so `docker build` does not stream them to the daemon.
+.git
+.github
+node_modules
+**/node_modules
+target
+**/target
+.local
+dist
+docs
+spec
+tools
+python
+go
+c
+sh
+typescript
+*.log
+*.pid
+*.tmp
+.venv
+__pycache__
+**/__pycache__
+.mypy_cache
+.pytest_cache
+.ruff_cache

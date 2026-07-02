@@ -29,8 +29,12 @@ test: $(BUILD_DIR)/wid $(BUILD_DIR)/wid_tests
 	$(BUILD_DIR)/wid_tests
 	$(BUILD_DIR)/wid selftest
 
-lint:
-	$(CC) $(CFLAGS) $(CRYPTO_CFLAGS) $(SQLITE_CFLAGS) -Werror -I include -fsyntax-only src/main.c
+# Full -Werror compile (not just -fsyntax-only) so warnings that only surface
+# during code generation/optimization (e.g. -Wunused-result, -Wmaybe-uninitialized)
+# are caught, for both the CLI and the test translation units.
+lint: | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(CRYPTO_CFLAGS) $(SQLITE_CFLAGS) -Werror -I include -c src/main.c -o $(BUILD_DIR)/main.lint.o
+	$(CC) $(CFLAGS) -Werror -I include -c tests/wid_tests.c -o $(BUILD_DIR)/tests.lint.o
 
 fmt:
 	@command -v clang-format >/dev/null 2>&1 && \
