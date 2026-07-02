@@ -945,28 +945,30 @@ static int compute_wotp(const char *secret, const char *wid, int digits, char *o
     return 0;
 }
 
+/* Days since 1970-01-01 for a proleptic-Gregorian UTC date (Howard Hinnant's
+ * civil-from-days algorithm, run in reverse). Valid for m in [1,12]. */
+static int64_t days_from_civil(int64_t y, unsigned m, unsigned d) {
+    y -= m <= 2;
+    const int64_t era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = (unsigned)(y - era * 400);
+    const unsigned doy = (153u * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + (int64_t)doe - 719468;
+}
+
+/* Convert a WID timestamp to epoch milliseconds (UTC). Pure arithmetic — no TZ
+ * mutation or mktime, so it is thread-safe and free of global side effects. */
 static int wotp_wid_tick_ms(const char *wid, int64_t *out_ms) {
     int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, millis = 0;
     if (sscanf(wid, "%4d%2d%2dT%2d%2d%2d%3d.", &year, &month, &day, &hour, &minute, &second, &millis) < 6) {
         return -1;
     }
-    struct tm tmv;
-    memset(&tmv, 0, sizeof(tmv));
-    tmv.tm_year = year - 1900;
-    tmv.tm_mon = month - 1;
-    tmv.tm_mday = day;
-    tmv.tm_hour = hour;
-    tmv.tm_min = minute;
-    tmv.tm_sec = second;
-    time_t sec_epoch;
-    char *old_tz = getenv("TZ");
-    setenv("TZ", "UTC", 1);
-    tzset();
-    sec_epoch = mktime(&tmv);
-    if (old_tz) setenv("TZ", old_tz, 1); else unsetenv("TZ");
-    tzset();
-    if (sec_epoch < 0) return -1;
-    *out_ms = ((int64_t)sec_epoch * 1000) + millis;
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 60) {
+        return -1;
+    }
+    int64_t days = days_from_civil(year, (unsigned)month, (unsigned)day);
+    int64_t sec_epoch = days * 86400 + (int64_t)hour * 3600 + (int64_t)minute * 60 + second;
+    *out_ms = sec_epoch * 1000 + millis;
     return 0;
 }
 
