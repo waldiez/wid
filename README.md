@@ -64,7 +64,7 @@ All implementations accept the same flag matrix (`--kind`, `--node`, `--W`, `--Z
 | 3 | **C**          | [c/](c/)                     | custom       | Yes    | Single-header `wid.h`              |
 | 4 | **TypeScript** | [typescript/](typescript/)   | `vitest`     | Yes    | ESM + CJS · browser-ready          |
 | 5 | **Go**         | [go/](go/)                   | `go test`    | Yes    | Thread-safe · stdlib only          |
-| 6 | **sh**         | [sh/](sh/)                   | self-test    | Yes    | Canonical POSIX orchestrator       |
+| 6 | **sh**         | [sh/](sh/)                   | self-test    | Yes    | Canonical Bash orchestrator       |
 
 <!-- markdownlint-enable MD060 -->
 
