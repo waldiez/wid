@@ -7,7 +7,7 @@ import {
   parseWid,
   validateHlcWid,
   validateWid
-} from "./chunk-EX3ZJPJ6.mjs";
+} from "./chunk-YTMVKODD.mjs";
 
 // typescript/src/cli.ts
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "fs";
@@ -533,23 +533,23 @@ function sqlAllocateNextWid(c) {
   try {
     db.exec("PRAGMA journal_mode=WAL;");
     db.exec(
-      "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_sec INTEGER NOT NULL, last_seq INTEGER NOT NULL)"
+      "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL)"
     );
     const key = sqlStateKey(c);
-    db.prepare("INSERT OR IGNORE INTO wid_state(k,last_sec,last_seq) VALUES(?,0,-1)").run(key);
-    const selectStmt = db.prepare("SELECT last_sec,last_seq FROM wid_state WHERE k=?");
-    const casStmt = db.prepare("UPDATE wid_state SET last_sec=?,last_seq=? WHERE k=? AND last_sec=? AND last_seq=?");
+    db.prepare("INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES(?,0,-1)").run(key);
+    const selectStmt = db.prepare("SELECT last_tick,last_seq FROM wid_state WHERE k=?");
+    const casStmt = db.prepare("UPDATE wid_state SET last_tick=?,last_seq=? WHERE k=? AND last_tick=? AND last_seq=?");
     for (let i = 0; i < 256; i += 1) {
       try {
         const row = selectStmt.get(key);
-        if (!row || typeof row.last_sec !== "number" || typeof row.last_seq !== "number") {
+        if (!row || typeof row.last_tick !== "number" || typeof row.last_seq !== "number") {
           throw new Error("invalid SQL state row");
         }
         const gen = new WidGen({ W: c.W, Z: c.Z, timeUnit: c.T });
-        gen.restoreState(row.last_sec, row.last_seq);
+        gen.restoreState(row.last_tick, row.last_seq);
         const id = gen.next();
         const nextState = gen.state;
-        const updated = casStmt.run(nextState.lastSec, nextState.lastSeq, key, row.last_sec, row.last_seq);
+        const updated = casStmt.run(nextState.lastSec, nextState.lastSeq, key, row.last_tick, row.last_seq);
         if ((updated.changes ?? 0) === 1) return id;
       } catch (e) {
         const msg = e.message ?? "";

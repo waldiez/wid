@@ -21,7 +21,6 @@ function timeDigits(unit) {
 // typescript/src/wid.ts
 var WID_BASE_RE_CACHE = /* @__PURE__ */ new Map();
 var HEX_RE_CACHE = /* @__PURE__ */ new Map();
-var SCOPE_PATTERN = /^[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)*$/;
 function widBaseRe(W, unit) {
   const key = `${W}:${unit}`;
   const cached = WID_BASE_RE_CACHE.get(key);
@@ -48,49 +47,21 @@ function randomHexChars(Z) {
   globalThis.crypto.getRandomValues(bytes);
   return bytesToHex(bytes).slice(0, Z);
 }
-function parseSuffix(suffix, Z) {
+function parsePadding(suffix, Z) {
   if (!suffix) {
-    return { scope: null, padding: null };
+    return { padding: null };
+  }
+  if (Z <= 0) {
+    return null;
   }
   if (!suffix.startsWith("-")) {
     return null;
   }
   const body = suffix.slice(1);
-  if (!body) {
+  if (!hexRe(Z).test(body)) {
     return null;
   }
-  let scope = null;
-  let padding = null;
-  if (Z > 0) {
-    const splitAt = body.lastIndexOf("-");
-    if (splitAt >= 0) {
-      const maybeScope = body.slice(0, splitAt);
-      const maybePadding = body.slice(splitAt + 1);
-      if (hexRe(Z).test(maybePadding)) {
-        padding = maybePadding;
-        scope = maybeScope || null;
-      } else if (maybePadding.length === Z && /^[0-9A-Fa-f]+$/.test(maybePadding)) {
-        return null;
-      } else {
-        scope = body;
-      }
-    } else if (hexRe(Z).test(body)) {
-      padding = body;
-    } else if (body.length === Z && /^[0-9A-Fa-f]+$/.test(body)) {
-      return null;
-    } else {
-      scope = body;
-    }
-  } else {
-    scope = body;
-  }
-  if (scope !== null && !SCOPE_PATTERN.test(scope)) {
-    return null;
-  }
-  if (padding !== null && !hexRe(Z).test(padding)) {
-    return null;
-  }
-  return { scope, padding };
+  return { padding: body };
 }
 function parseTimestamp(dateStr, timeStr, timeUnit) {
   const year = parseInt(dateStr.slice(0, 4), 10);
@@ -117,13 +88,12 @@ function parseCore(wid, W, Z, timeUnit) {
   const suffix = suffixRaw ?? "";
   const timestamp = parseTimestamp(dateStr, timeStr, timeUnit);
   if (!timestamp) return null;
-  const parsedSuffix = parseSuffix(suffix, Z);
+  const parsedSuffix = parsePadding(suffix, Z);
   if (!parsedSuffix) return null;
   return {
     raw: wid,
     timestamp,
     sequence: parseInt(seqStr, 10),
-    scope: parsedSuffix.scope,
     padding: parsedSuffix.padding
   };
 }
@@ -143,7 +113,6 @@ var WidGen = class {
     const {
       W = 4,
       Z = 6,
-      scope,
       timeUnit = "sec",
       stateStore,
       stateKey = "wid",
@@ -151,12 +120,8 @@ var WidGen = class {
     } = options;
     if (W <= 0) throw new Error("W must be > 0");
     if (Z < 0) throw new Error("Z must be >= 0");
-    if (scope && !SCOPE_PATTERN.test(scope)) {
-      throw new Error("Invalid scope format");
-    }
     this.W = W;
     this.Z = Z;
-    this.scope = scope ?? null;
     this.timeUnit = timeUnit;
     this.maxSeq = Math.pow(10, W) - 1;
     this.stateStore = stateStore ?? null;
@@ -213,9 +178,6 @@ var WidGen = class {
     const ts = this.tsForTick(tick);
     const seqStr = String(seq).padStart(this.W, "0");
     let wid = `${ts}.${seqStr}Z`;
-    if (this.scope) {
-      wid += `-${this.scope}`;
-    }
     if (this.Z > 0) {
       wid += `-${randomHexChars(this.Z)}`;
     }
@@ -924,23 +886,23 @@ function sqlAllocateNextWid(c) {
   try {
     db.exec("PRAGMA journal_mode=WAL;");
     db.exec(
-      "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_sec INTEGER NOT NULL, last_seq INTEGER NOT NULL)"
+      "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL)"
     );
     const key = sqlStateKey(c);
-    db.prepare("INSERT OR IGNORE INTO wid_state(k,last_sec,last_seq) VALUES(?,0,-1)").run(key);
-    const selectStmt = db.prepare("SELECT last_sec,last_seq FROM wid_state WHERE k=?");
-    const casStmt = db.prepare("UPDATE wid_state SET last_sec=?,last_seq=? WHERE k=? AND last_sec=? AND last_seq=?");
+    db.prepare("INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES(?,0,-1)").run(key);
+    const selectStmt = db.prepare("SELECT last_tick,last_seq FROM wid_state WHERE k=?");
+    const casStmt = db.prepare("UPDATE wid_state SET last_tick=?,last_seq=? WHERE k=? AND last_tick=? AND last_seq=?");
     for (let i = 0; i < 256; i += 1) {
       try {
         const row = selectStmt.get(key);
-        if (!row || typeof row.last_sec !== "number" || typeof row.last_seq !== "number") {
+        if (!row || typeof row.last_tick !== "number" || typeof row.last_seq !== "number") {
           throw new Error("invalid SQL state row");
         }
         const gen = new WidGen({ W: c.W, Z: c.Z, timeUnit: c.T });
-        gen.restoreState(row.last_sec, row.last_seq);
+        gen.restoreState(row.last_tick, row.last_seq);
         const id = gen.next();
         const nextState = gen.state;
-        const updated = casStmt.run(nextState.lastSec, nextState.lastSeq, key, row.last_sec, row.last_seq);
+        const updated = casStmt.run(nextState.lastSec, nextState.lastSeq, key, row.last_tick, row.last_seq);
         if ((updated.changes ?? 0) === 1) return id;
       } catch (e) {
         const msg = e.message ?? "";

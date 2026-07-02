@@ -452,20 +452,20 @@ def _sql_allocate_next_wid(
         q = (
             "CREATE TABLE IF NOT EXISTS wid_state ("
             "k TEXT PRIMARY KEY, "
-            "last_sec INTEGER NOT NULL, "
+            "last_tick INTEGER NOT NULL, "
             "last_seq INTEGER NOT NULL)"
         )
         conn.execute(q)
         key = _sql_state_key(w_val, z_val, time_unit)
         conn.execute(
-            "INSERT OR IGNORE INTO wid_state(k,last_sec,last_seq) VALUES(?,0,-1)",
+            "INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES(?,0,-1)",
             (key,),
         )
         conn.commit()
 
         for _ in range(64):
             row = conn.execute(
-                "SELECT last_sec,last_seq FROM wid_state WHERE k=?",
+                "SELECT last_tick,last_seq FROM wid_state WHERE k=?",
                 (key,),
             ).fetchone()
             if row is None:
@@ -482,8 +482,8 @@ def _sql_allocate_next_wid(
             wid_id = gen.next()
             st = gen.state()
             q_s = (
-                "UPDATE wid_state SET last_sec=?,last_seq=? "
-                "WHERE k=? AND last_sec=? AND last_seq=?"
+                "UPDATE wid_state SET last_tick=?,last_seq=? "
+                "WHERE k=? AND last_tick=? AND last_seq=?"
             )
             q_p = (st.last_sec, st.last_seq, key, last_sec, last_seq)
             cur = conn.execute(q_s, q_p)

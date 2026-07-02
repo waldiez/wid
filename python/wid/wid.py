@@ -69,7 +69,7 @@ class SqliteWidStateStore(WidStateStore):
         q = (
             "CREATE TABLE IF NOT EXISTS wid_state ("
             "k TEXT PRIMARY KEY, "
-            "last_sec INTEGER NOT NULL, "
+            "last_tick INTEGER NOT NULL, "
             "last_seq INTEGER NOT NULL)"
         )
         self._conn.execute(q)
@@ -81,7 +81,7 @@ class SqliteWidStateStore(WidStateStore):
     def load(self, key: str) -> WidGenState | None:
         """Load state for key."""
         row = self._conn.execute(
-            "SELECT last_sec, last_seq FROM wid_state WHERE k = ?",
+            "SELECT last_tick, last_seq FROM wid_state WHERE k = ?",
             (self._full_key(key),),
         ).fetchone()
         if row is None:
@@ -93,9 +93,9 @@ class SqliteWidStateStore(WidStateStore):
     def save(self, key: str, state: WidGenState) -> None:
         """Save state for key."""
         q_s = (
-            "INSERT INTO wid_state(k, last_sec, last_seq) VALUES(?, ?, ?) "
+            "INSERT INTO wid_state(k, last_tick, last_seq) VALUES(?, ?, ?) "
             "ON CONFLICT(k) DO UPDATE SET "
-            "last_sec=excluded.last_sec, last_seq=excluded.last_seq"
+            "last_tick=excluded.last_tick, last_seq=excluded.last_seq"
         )
         q_p = (self._full_key(key), state.last_sec, state.last_seq)
         self._conn.execute(q_s, q_p)

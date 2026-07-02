@@ -26,17 +26,22 @@ describe('validateWid', () => {
     expect(validateWid('20260212T091530123.0042Z-a3f91c', 4, 6, 'ms')).toBe(true);
   });
 
-  it('accepts WID with scope and padding', () => {
-    expect(validateWid('20260212T091530.0042Z-acme-a3f91c', 4, 6)).toBe(true);
-    expect(validateWid('20260212T091530.0042Z-acme-node01-7b2e4f', 4, 6)).toBe(true);
+  it('rejects a plain WID with an HLC node/scope suffix', () => {
+    // A plain WID has no node/scope segment (that belongs to HLC-WID). These
+    // must be rejected, matching the reference and every other implementation.
+    expect(validateWid('20260212T091530.0042Z-node01', 4, 0)).toBe(false);
+    expect(validateWid('20260212T091530.0042Z-acme-a3f91c', 4, 6)).toBe(false);
+    expect(validateWid('20260212T091530.0042Z-acme', 4, 6)).toBe(false);
   });
 
-  it('accepts WID with scope and no padding when Z>0', () => {
-    expect(validateWid('20260212T091530.0042Z-acme', 4, 6)).toBe(true);
+  it('rejects any suffix when Z=0', () => {
+    expect(validateWid('20260212T091530.0042Z-acme', 4, 0)).toBe(false);
+    expect(validateWid('20260212T091530.0042Z-a3f91c', 4, 0)).toBe(false);
   });
 
-  it('accepts scoped suffix when Z=0', () => {
-    expect(validateWid('20260212T091530.0042Z-acme', 4, 0)).toBe(true);
+  it('rejects non-hex or wrong-length padding', () => {
+    expect(validateWid('20260212T091530.0042Z-ghijkl', 4, 6)).toBe(false);
+    expect(validateWid('20260212T091530.0042Z-a3f91', 4, 6)).toBe(false);
   });
 
   it('rejects non-WID strings', () => {
@@ -82,26 +87,16 @@ describe('parseWid', () => {
     const parsed = parseWid('20260212T091530.0042Z', 4, 0);
     expect(parsed).not.toBeNull();
     expect(parsed!.sequence).toBe(42);
-    expect(parsed!.scope).toBeNull();
     expect(parsed!.padding).toBeNull();
     expect(parsed!.timestamp.getUTCFullYear()).toBe(2026);
     expect(parsed!.timestamp.getUTCMonth()).toBe(1); // February = 1
     expect(parsed!.timestamp.getUTCDate()).toBe(12);
   });
 
-  it('parses WID with scope and padding', () => {
-    const parsed = parseWid('20260212T091530.0042Z-acme-a3f91c', 4, 6);
-    expect(parsed).not.toBeNull();
-    expect(parsed!.sequence).toBe(42);
-    expect(parsed!.scope).toBe('acme');
-    expect(parsed!.padding).toBe('a3f91c');
-  });
-
-  it('parses WID with hierarchical scope', () => {
-    const parsed = parseWid('20260212T091530.0042Z-acme-node01-7b2e4f', 4, 6);
-    expect(parsed).not.toBeNull();
-    expect(parsed!.scope).toBe('acme-node01');
-    expect(parsed!.padding).toBe('7b2e4f');
+  it('rejects a plain WID with a node/scope suffix (plain WID has no scope)', () => {
+    expect(parseWid('20260212T091530.0042Z-acme-a3f91c', 4, 6)).toBeNull();
+    expect(parseWid('20260212T091530.0042Z-acme-node01-7b2e4f', 4, 6)).toBeNull();
+    expect(parseWid('20260212T091530.0042Z-node01', 4, 0)).toBeNull();
   });
 
   it('parses ms WID', () => {
@@ -136,12 +131,6 @@ describe('WidGen', () => {
     expect(wid2 < wid3).toBe(true);
   });
 
-  it('includes scope when provided', () => {
-    const gen = new WidGen({ W: 4, Z: 6, scope: 'acme-node01' });
-    const wid = gen.next();
-    expect(wid).toContain('-acme-node01-');
-  });
-
   it('generates unique padding', () => {
     const gen = new WidGen({ W: 4, Z: 6 });
     const wids = gen.nextN(10);
@@ -160,11 +149,6 @@ describe('WidGen', () => {
 
   it('throws on invalid Z', () => {
     expect(() => new WidGen({ Z: -1 })).toThrow();
-  });
-
-  it('throws on invalid scope', () => {
-    expect(() => new WidGen({ scope: 'invalid scope' })).toThrow();
-    expect(() => new WidGen({ scope: 'invalid@scope' })).toThrow();
   });
 
   it('allows restoring state', () => {

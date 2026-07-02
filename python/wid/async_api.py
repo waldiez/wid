@@ -47,7 +47,7 @@ class AsyncSqliteWidStateStore:
         q = (
             "CREATE TABLE IF NOT EXISTS wid_state ("
             "k TEXT PRIMARY KEY, "
-            "last_sec INTEGER NOT NULL, "
+            "last_tick INTEGER NOT NULL, "
             "last_seq INTEGER NOT NULL)"
         )
         await conn.execute(q)
@@ -59,7 +59,7 @@ class AsyncSqliteWidStateStore:
         conn = await self._connect()
         try:
             async with conn.execute(
-                "SELECT last_sec, last_seq FROM wid_state WHERE k=?",
+                "SELECT last_tick, last_seq FROM wid_state WHERE k=?",
                 (self._full_key(key),),
             ) as cur:
                 row = await cur.fetchone()
@@ -74,9 +74,9 @@ class AsyncSqliteWidStateStore:
         conn = await self._connect()
         try:
             q_s =(
-                "INSERT INTO wid_state(k, last_sec, last_seq) VALUES(?, ?, ?) "
+                "INSERT INTO wid_state(k, last_tick, last_seq) VALUES(?, ?, ?) "
                 "ON CONFLICT(k) DO UPDATE SET "
-                "last_sec=excluded.last_sec, last_seq=excluded.last_seq"
+                "last_tick=excluded.last_tick, last_seq=excluded.last_seq"
             )
             q_p = (self._full_key(key), state.last_sec, state.last_seq)
             await conn.execute(q_s, q_p)
@@ -92,13 +92,13 @@ class AsyncSqliteWidStateStore:
         conn = await self._connect()
         try:
             await conn.execute(
-                "INSERT OR IGNORE INTO wid_state(k,last_sec,last_seq) VALUES(?,0,-1)",
+                "INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES(?,0,-1)",
                 (full_key,),
             )
             await conn.commit()
             while True:
                 async with conn.execute(
-                    "SELECT last_sec,last_seq FROM wid_state WHERE k=?",
+                    "SELECT last_tick,last_seq FROM wid_state WHERE k=?",
                     (full_key,),
                 ) as cur:
                     row = await cur.fetchone()
@@ -111,8 +111,8 @@ class AsyncSqliteWidStateStore:
                 out = gen.next()
                 st = gen.state()
                 q_s = (
-                    "UPDATE wid_state SET last_sec=?,last_seq=? "
-                    "WHERE k=? AND last_sec=? AND last_seq=?"
+                    "UPDATE wid_state SET last_tick=?,last_seq=? "
+                    "WHERE k=? AND last_tick=? AND last_seq=?"
                 )
                 q_p = (st.last_sec, st.last_seq, full_key, last_sec, last_seq)
                 cur2 = await conn.execute(q_s, q_p)

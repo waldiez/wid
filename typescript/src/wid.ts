@@ -1,6 +1,6 @@
 /**
  * WID (Waldiez/SYNAPSE Identifier) generation and validation.
- * Format: YYYYMMDDTHHMMSS[mmm].<seqW>Z[-<scope>][-<padZ>]
+ * Format: YYYYMMDDTHHMMSS[mmm].<seqW>Z[-<padZ>]
  */
 
 import { type TimeUnit, timeDigits } from "./time";
@@ -13,8 +13,6 @@ export interface ParsedWid {
   timestamp: Date;
   /** Sequential component embedded in the identifier. */
   sequence: number;
-  /** Optional scope suffix if one was provided. */
-  scope: string | null;
   /** Optional padding hex string when Z > 0. */
   padding: string | null;
 }
@@ -119,7 +117,7 @@ class NodeSqliteWidStateStore implements WidStateStore {
     const DatabaseSync = resolveNodeSqliteDatabaseSync();
     this.db = new DatabaseSync(databasePath);
     this.db.exec(
-      "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_sec INTEGER NOT NULL, last_seq INTEGER NOT NULL)"
+      "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL)"
     );
   }
 
@@ -129,17 +127,17 @@ class NodeSqliteWidStateStore implements WidStateStore {
 
   load(key: string): WidStateSnapshot | null {
     const row = this.db
-      .prepare("SELECT last_sec, last_seq FROM wid_state WHERE k = ?")
-      .get(this.fullKey(key)) as { last_sec?: number; last_seq?: number } | undefined;
+      .prepare("SELECT last_tick, last_seq FROM wid_state WHERE k = ?")
+      .get(this.fullKey(key)) as { last_tick?: number; last_seq?: number } | undefined;
     if (!row) return null;
-    if (typeof row.last_sec !== "number" || typeof row.last_seq !== "number") return null;
-    return { lastSec: row.last_sec, lastSeq: row.last_seq };
+    if (typeof row.last_tick !== "number" || typeof row.last_seq !== "number") return null;
+    return { lastSec: row.last_tick, lastSeq: row.last_seq };
   }
 
   save(key: string, state: WidStateSnapshot): void {
     this.db
       .prepare(
-        "INSERT INTO wid_state (k, last_sec, last_seq) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET last_sec=excluded.last_sec, last_seq=excluded.last_seq"
+        "INSERT INTO wid_state (k, last_tick, last_seq) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET last_tick=excluded.last_tick, last_seq=excluded.last_seq"
       )
       .run(this.fullKey(key), state.lastSec, state.lastSeq);
   }
@@ -180,8 +178,6 @@ export interface WidGenOptions {
   W?: number;
   /** Padding length (default 6). */
   Z?: number;
-  /** Optional scope suffix appended to generated IDs. */
-  scope?: string;
   /** Time unit precision, either `sec` or `ms`. */
   timeUnit?: TimeUnit;
   /** Optional persistence layer for generator state. */
@@ -204,8 +200,6 @@ export interface AsyncWidStreamOptions extends WidGenOptions {
 const WID_BASE_RE_CACHE = new Map<string, RegExp>();
 /** Cache for padding-hex validation patterns keyed by width. */
 const HEX_RE_CACHE = new Map<number, RegExp>();
-/** Scope suffix pattern accepted by all generators. */
-const SCOPE_PATTERN = /^[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)*$/;
 
 function widBaseRe(W: number, unit: TimeUnit): RegExp {
   const key = `${W}:${unit}`;
@@ -237,59 +231,30 @@ function randomHexChars(Z: number): string {
   return bytesToHex(bytes).slice(0, Z);
 }
 
-function parseSuffix(
-  suffix: string,
-  Z: number
-): { scope: string | null; padding: string | null } | null {
+/**
+ * Parse the optional suffix of a plain WID. Per the spec
+ * (`WID ::= TIMESTAMP "." SEQ "Z" [ "-" PAD ]`) a plain WID has no node/scope
+ * segment — the only permitted suffix is `-<padZ>` lowercase-hex padding, and
+ * only when Z > 0. Anything else (an HLC node, uppercase hex, non-hex, or a
+ * suffix when Z = 0) is rejected, matching the reference implementation and the
+ * other language implementations. Node identifiers belong to HLC-WID (see
+ * `hlc.ts`).
+ */
+function parsePadding(suffix: string, Z: number): { padding: string | null } | null {
   if (!suffix) {
-    return { scope: null, padding: null };
+    return { padding: null };
   }
-
+  if (Z <= 0) {
+    return null;
+  }
   if (!suffix.startsWith("-")) {
     return null;
   }
-
   const body = suffix.slice(1);
-  if (!body) {
+  if (!hexRe(Z).test(body)) {
     return null;
   }
-
-  let scope: string | null = null;
-  let padding: string | null = null;
-
-  if (Z > 0) {
-    const splitAt = body.lastIndexOf("-");
-    if (splitAt >= 0) {
-      const maybeScope = body.slice(0, splitAt);
-      const maybePadding = body.slice(splitAt + 1);
-      if (hexRe(Z).test(maybePadding)) {
-        padding = maybePadding;
-        scope = maybeScope || null;
-      } else if (maybePadding.length === Z && /^[0-9A-Fa-f]+$/.test(maybePadding)) {
-        return null;
-      } else {
-        scope = body;
-      }
-    } else if (hexRe(Z).test(body)) {
-      padding = body;
-    } else if (body.length === Z && /^[0-9A-Fa-f]+$/.test(body)) {
-      return null;
-    } else {
-      scope = body;
-    }
-  } else {
-    scope = body;
-  }
-
-  if (scope !== null && !SCOPE_PATTERN.test(scope)) {
-    return null;
-  }
-
-  if (padding !== null && !hexRe(Z).test(padding)) {
-    return null;
-  }
-
-  return { scope, padding };
+  return { padding: body };
 }
 
 function parseTimestamp(dateStr: string, timeStr: string, timeUnit: TimeUnit): Date | null {
@@ -324,14 +289,13 @@ function parseCore(wid: string, W: number, Z: number, timeUnit: TimeUnit): Parse
   const timestamp = parseTimestamp(dateStr, timeStr, timeUnit);
   if (!timestamp) return null;
 
-  const parsedSuffix = parseSuffix(suffix, Z);
+  const parsedSuffix = parsePadding(suffix, Z);
   if (!parsedSuffix) return null;
 
   return {
     raw: wid,
     timestamp,
     sequence: parseInt(seqStr, 10),
-    scope: parsedSuffix.scope,
     padding: parsedSuffix.padding,
   };
 }
@@ -370,7 +334,6 @@ export async function* asyncWidStream(
 export class WidGen {
   private readonly W: number;
   private readonly Z: number;
-  private readonly scope: string | null;
   private readonly timeUnit: TimeUnit;
   private readonly maxSeq: number;
   private readonly stateStore: WidStateStore | null;
@@ -387,7 +350,6 @@ export class WidGen {
     const {
       W = 4,
       Z = 6,
-      scope,
       timeUnit = "sec",
       stateStore,
       stateKey = "wid",
@@ -396,13 +358,9 @@ export class WidGen {
 
     if (W <= 0) throw new Error("W must be > 0");
     if (Z < 0) throw new Error("Z must be >= 0");
-    if (scope && !SCOPE_PATTERN.test(scope)) {
-      throw new Error("Invalid scope format");
-    }
 
     this.W = W;
     this.Z = Z;
-    this.scope = scope ?? null;
     this.timeUnit = timeUnit;
     this.maxSeq = Math.pow(10, W) - 1;
     this.stateStore = stateStore ?? null;
@@ -477,10 +435,6 @@ export class WidGen {
     const ts = this.tsForTick(tick);
     const seqStr = String(seq).padStart(this.W, "0");
     let wid = `${ts}.${seqStr}Z`;
-
-    if (this.scope) {
-      wid += `-${this.scope}`;
-    }
 
     if (this.Z > 0) {
       wid += `-${randomHexChars(this.Z)}`;

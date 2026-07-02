@@ -4,7 +4,7 @@ declare function parseTimeUnit(input: string): TimeUnit;
 
 /**
  * WID (Waldiez/SYNAPSE Identifier) generation and validation.
- * Format: YYYYMMDDTHHMMSS[mmm].<seqW>Z[-<scope>][-<padZ>]
+ * Format: YYYYMMDDTHHMMSS[mmm].<seqW>Z[-<padZ>]
  */
 
 /** Parsed WID components after a successful parse. */
@@ -15,8 +15,6 @@ interface ParsedWid {
     timestamp: Date;
     /** Sequential component embedded in the identifier. */
     sequence: number;
-    /** Optional scope suffix if one was provided. */
-    scope: string | null;
     /** Optional padding hex string when Z > 0. */
     padding: string | null;
 }
@@ -50,8 +48,6 @@ interface WidGenOptions {
     W?: number;
     /** Padding length (default 6). */
     Z?: number;
-    /** Optional scope suffix appended to generated IDs. */
-    scope?: string;
     /** Time unit precision, either `sec` or `ms`. */
     timeUnit?: TimeUnit;
     /** Optional persistence layer for generator state. */
@@ -76,7 +72,6 @@ declare function asyncWidStream(options?: AsyncWidStreamOptions): AsyncGenerator
 declare class WidGen {
     private readonly W;
     private readonly Z;
-    private readonly scope;
     private readonly timeUnit;
     private readonly maxSeq;
     private readonly stateStore;

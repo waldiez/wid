@@ -64,21 +64,21 @@ var NodeSqliteWidStateStore = class {
     const DatabaseSync = resolveNodeSqliteDatabaseSync();
     this.db = new DatabaseSync(databasePath);
     this.db.exec(
-      "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_sec INTEGER NOT NULL, last_seq INTEGER NOT NULL)"
+      "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL)"
     );
   }
   fullKey(key) {
     return `${this.prefix}:${key}`;
   }
   load(key) {
-    const row = this.db.prepare("SELECT last_sec, last_seq FROM wid_state WHERE k = ?").get(this.fullKey(key));
+    const row = this.db.prepare("SELECT last_tick, last_seq FROM wid_state WHERE k = ?").get(this.fullKey(key));
     if (!row) return null;
-    if (typeof row.last_sec !== "number" || typeof row.last_seq !== "number") return null;
-    return { lastSec: row.last_sec, lastSeq: row.last_seq };
+    if (typeof row.last_tick !== "number" || typeof row.last_seq !== "number") return null;
+    return { lastSec: row.last_tick, lastSeq: row.last_seq };
   }
   save(key, state) {
     this.db.prepare(
-      "INSERT INTO wid_state (k, last_sec, last_seq) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET last_sec=excluded.last_sec, last_seq=excluded.last_seq"
+      "INSERT INTO wid_state (k, last_tick, last_seq) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET last_tick=excluded.last_tick, last_seq=excluded.last_seq"
     ).run(this.fullKey(key), state.lastSec, state.lastSeq);
   }
   close() {
@@ -101,7 +101,6 @@ function createNodeSqliteWidStateStore(databasePath, prefix = "wid") {
 }
 var WID_BASE_RE_CACHE = /* @__PURE__ */ new Map();
 var HEX_RE_CACHE = /* @__PURE__ */ new Map();
-var SCOPE_PATTERN = /^[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)*$/;
 function widBaseRe(W, unit) {
   const key = `${W}:${unit}`;
   const cached = WID_BASE_RE_CACHE.get(key);
@@ -128,49 +127,21 @@ function randomHexChars(Z) {
   globalThis.crypto.getRandomValues(bytes);
   return bytesToHex(bytes).slice(0, Z);
 }
-function parseSuffix(suffix, Z) {
+function parsePadding(suffix, Z) {
   if (!suffix) {
-    return { scope: null, padding: null };
+    return { padding: null };
+  }
+  if (Z <= 0) {
+    return null;
   }
   if (!suffix.startsWith("-")) {
     return null;
   }
   const body = suffix.slice(1);
-  if (!body) {
+  if (!hexRe(Z).test(body)) {
     return null;
   }
-  let scope = null;
-  let padding = null;
-  if (Z > 0) {
-    const splitAt = body.lastIndexOf("-");
-    if (splitAt >= 0) {
-      const maybeScope = body.slice(0, splitAt);
-      const maybePadding = body.slice(splitAt + 1);
-      if (hexRe(Z).test(maybePadding)) {
-        padding = maybePadding;
-        scope = maybeScope || null;
-      } else if (maybePadding.length === Z && /^[0-9A-Fa-f]+$/.test(maybePadding)) {
-        return null;
-      } else {
-        scope = body;
-      }
-    } else if (hexRe(Z).test(body)) {
-      padding = body;
-    } else if (body.length === Z && /^[0-9A-Fa-f]+$/.test(body)) {
-      return null;
-    } else {
-      scope = body;
-    }
-  } else {
-    scope = body;
-  }
-  if (scope !== null && !SCOPE_PATTERN.test(scope)) {
-    return null;
-  }
-  if (padding !== null && !hexRe(Z).test(padding)) {
-    return null;
-  }
-  return { scope, padding };
+  return { padding: body };
 }
 function parseTimestamp(dateStr, timeStr, timeUnit) {
   const year = parseInt(dateStr.slice(0, 4), 10);
@@ -197,13 +168,12 @@ function parseCore(wid, W, Z, timeUnit) {
   const suffix = suffixRaw ?? "";
   const timestamp = parseTimestamp(dateStr, timeStr, timeUnit);
   if (!timestamp) return null;
-  const parsedSuffix = parseSuffix(suffix, Z);
+  const parsedSuffix = parsePadding(suffix, Z);
   if (!parsedSuffix) return null;
   return {
     raw: wid,
     timestamp,
     sequence: parseInt(seqStr, 10),
-    scope: parsedSuffix.scope,
     padding: parsedSuffix.padding
   };
 }
@@ -240,7 +210,6 @@ var WidGen = class {
     const {
       W = 4,
       Z = 6,
-      scope,
       timeUnit = "sec",
       stateStore,
       stateKey = "wid",
@@ -248,12 +217,8 @@ var WidGen = class {
     } = options;
     if (W <= 0) throw new Error("W must be > 0");
     if (Z < 0) throw new Error("Z must be >= 0");
-    if (scope && !SCOPE_PATTERN.test(scope)) {
-      throw new Error("Invalid scope format");
-    }
     this.W = W;
     this.Z = Z;
-    this.scope = scope ?? null;
     this.timeUnit = timeUnit;
     this.maxSeq = Math.pow(10, W) - 1;
     this.stateStore = stateStore ?? null;
@@ -310,9 +275,6 @@ var WidGen = class {
     const ts = this.tsForTick(tick);
     const seqStr = String(seq).padStart(this.W, "0");
     let wid = `${ts}.${seqStr}Z`;
-    if (this.scope) {
-      wid += `-${this.scope}`;
-    }
     if (this.Z > 0) {
       wid += `-${randomHexChars(this.Z)}`;
     }
@@ -647,4 +609,4 @@ export {
   Manifest,
   SynapseFile
 };
-//# sourceMappingURL=chunk-EX3ZJPJ6.mjs.map
+//# sourceMappingURL=chunk-YTMVKODD.mjs.map
