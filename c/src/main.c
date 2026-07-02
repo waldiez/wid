@@ -1003,7 +1003,13 @@ static int run_wotp(const canon_opts_t *c, wid_time_unit_t unit) {
     }
     char widv[WID_MAX_LEN];
     if (c->WID[0]) {
-        snprintf(widv, sizeof(widv), "%s", c->WID);
+        /* Reject an over-long WID rather than silently truncating it (a valid
+         * WID is far shorter than WID_MAX_LEN). Checking the return also keeps
+         * -Wformat-truncation satisfied across compilers. */
+        if (snprintf(widv, sizeof(widv), "%s", c->WID) >= (int)sizeof(widv)) {
+            fprintf(stderr, "error: WID exceeds %d bytes\n", WID_MAX_LEN - 1);
+            return 1;
+        }
     } else if (strcmp(mode, "gen") == 0) {
         wid_gen_t g;
         wid_gen_init_ex(&g, c->W, c->Z, unit);
