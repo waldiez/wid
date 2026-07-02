@@ -1,11 +1,25 @@
 # Signed Event Envelope Specification
 
 Version: 1.0.0
-Status: Required for 1.0.0
+Status: Draft — specification only; not yet implemented by any CLI
 
 ## Purpose
 
 Define a canonical, transport-agnostic signed envelope for WID events so verifiers can validate integrity, authenticity, and freshness.
+
+## Implementation Status
+
+This document specifies the envelope format and verification rules; it is **not**
+a feature the shipped tools implement. None of the six CLIs (Rust, C, Go, Python,
+TypeScript, sh) expose an envelope produce/verify action — the implemented crypto
+actions are `sign`, `verify`, and `w-otp`.
+
+Conformance here is **specification-level only**: `tools/check_signed_envelope_spec.py`
+(and `tools/check_envelope_compat.py`) validate hand-written JSON fixtures against a
+Python reference implementation of the rules below. They do not drive any CLI, so a
+green check proves the fixtures and reference logic are self-consistent — not that
+the library can produce or verify an envelope. See `docs/qa/security-crypto-proof.md`
+("What this does NOT prove"). Producing/verifying envelopes in the CLIs is future work.
 
 ## Envelope Shape
 
