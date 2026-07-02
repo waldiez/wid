@@ -162,6 +162,35 @@ wid A=w-otp MODE=verify KEY=<secret_or_path> WID=<wid_string> CODE=<otp_code> [D
 *   `MODE=verify`: success message + exit `0` if valid; invalid message + exit `1` otherwise.
     * When time window args are set, verification also rejects stale/future WID timestamps.
 
+**Security considerations / threat model**:
+
+`w-otp` is **not** a rotating TOTP/HOTP. It is a *deterministic, truncated MAC*
+of a WID under a shared secret: the code is `HMAC-SHA256(secret, wid)` truncated
+to `DIGITS` decimal digits, so a given `(secret, WID)` pair **always** yields the
+same code. Its guarantee is "the holder of the secret vouched for this specific
+WID," not one-time freshness. Operators MUST account for the following:
+
+*   **Shared secret.** Security rests entirely on the secret. Anyone with it can
+    mint valid codes for any WID. Comparison is constant-time in every
+    implementation, but note the `sh` implementation passes the secret to
+    `openssl(1)` as a process argument (visible via `ps`/`/proc` to same-user
+    processes) — prefer a non-`sh` implementation where local secret exposure
+    matters.
+*   **Brute-force / online guessing.** The code space is only `10^DIGITS`
+    (`10^6` at the default `DIGITS=6`, as low as `10^4` at `DIGITS=4`). Verifiers
+    **MUST** rate-limit and/or lock out repeated failed attempts, and should use
+    the largest `DIGITS` the channel tolerates for higher-value uses.
+*   **Replay / single-use.** Because the code is a pure function of
+    `(secret, WID)`, it is inherently replayable for the same WID. If single-use
+    semantics are required, the verifier **MUST** track and reject already-seen
+    WIDs (e.g. persist consumed WIDs) — the algorithm does not do this.
+*   **Validity window.** Use `MAX_AGE_SEC` / `MAX_FUTURE_SEC` to bound acceptance
+    to a time window around the WID timestamp; this narrows, but does not
+    eliminate, replay within the window.
+*   **Truncation.** Codes are derived from the first 4 HMAC bytes (not RFC 4226
+    dynamic truncation); this is adequate for a short numeric code but is not a
+    substitute for the rate-limiting and single-use controls above.
+
 **1.0.0 rollout scope**:
 * Primary: `sh`, `rust`, `c`, `go`, `python`, `typescript`.
 
