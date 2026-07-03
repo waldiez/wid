@@ -60,7 +60,7 @@ Canonical mode:
 
 Optional:
   T=sec|ms
-  R=auto|mqtt|ws|redis|http|tcp|udp|null|stdout
+  R=auto|null|stdout
   N=<count>   # for A=stream, 0 means infinite
   MODE=gen|verify KEY=<secret_or_path> WID=<wid> CODE=<otp> DIGITS=4..10   # for A=w-otp
   MAX_AGE_SEC=<seconds> MAX_FUTURE_SEC=<seconds>                            # for A=w-otp MODE=verify
@@ -75,23 +75,9 @@ Core ID:
   A=next | A=stream | A=healthcheck
   A=sign | A=verify | A=w-otp
 
-Service lifecycle:
-  A=discover | A=scaffold | A=run | A=start | A=stop | A=status | A=logs | A=heal | A=self.check-update
-
-Local services:
-  A=saf      (alias: raf)
-  A=saf-wid  (aliases: waf, wraf)
-  A=wir      (alias: witr)
-  A=wism     (alias: wim)
-  A=wihp     (alias: wih)
-  A=wipr     (alias: wip)
-  A=duplex
-
-Transport adapters:
-  R=auto|mqtt|ws|redis|http|tcp|udp|null|stdout
-  ws   -> websocat (if available)
-  http -> curl (if available)
-  tcp/udp -> nc (if available)
+Services (Rust implementation only -- see spec/SERVICES.md):
+  A=start | A=stop | A=status | A=logs | A=run | A=discover | A=scaffold
+  A=saf | A=saf-wid | A=wir | A=wism | A=wihp | A=wipr | A=duplex
 
 Help:
   A=help-actions
@@ -522,9 +508,11 @@ is_true() {
     esac
 }
 
+# Core transports only; MQTT/WS/Redis/HTTP/TCP/UDP adapters live exclusively
+# in the Rust implementation (see spec/SERVICES.md).
 is_transport() {
     case "${1:-}" in
-    mqtt | ws | redis | http | tcp | udp | null | stdout | auto) return 0 ;;
+    null | stdout | auto) return 0 ;;
     *) return 1 ;;
     esac
 }
@@ -611,16 +599,6 @@ run_canonical() {
     if is_true "$M"; then
         T="ms"
     fi
-
-    # Action aliases
-    case "$A" in
-    raf) A="saf" ;;
-    waf | wraf) A="saf-wid" ;;
-    witr) A="wir" ;;
-    wim) A="wism" ;;
-    wih) A="wihp" ;;
-    wip) A="wipr" ;;
-    esac
 
     if [[ "$A" == "help-actions" ]]; then
         print_actions
@@ -827,15 +805,16 @@ run_canonical() {
         fi
     fi
 
+    # E may carry a "+transport" / ",transport" suffix from the full canonical
+    # grammar; only the state-mode half is meaningful here (transports are
+    # Rust-only).
     local state_mode="$E"
-    local effective_transport="$R"
     if [[ "$E" == *"+"* ]]; then
         state_mode="${E%%+*}"
-        [[ "$effective_transport" == "auto" ]] && effective_transport="${E#*+}"
     elif [[ "$E" == *","* ]]; then
         state_mode="${E%%,*}"
-        [[ "$effective_transport" == "auto" ]] && effective_transport="${E#*,}"
     fi
+    is_transport "$R" || die "transport R=$R is only available in the Rust implementation (services/transports are Rust-only)"
     case "$state_mode" in
     state | stateless | sql) ;;
     *) die "E must be state|stateless|sql (optionally +transport)" ;;
@@ -949,319 +928,7 @@ run_canonical() {
         ;;
     esac
 
-    local mode_args=()
-    if [[ "$state_mode" == "stateless" ]]; then
-        mode_args+=(--stateless)
-    else
-        mode_args+=(--with-state)
-    fi
-
-    local log_level="${LOG_LEVEL:-INFO}"
-    local runtime_dir="$ROOT_DIR/.local/wid/sh"
-    local pid_file="$runtime_dir/service.pid"
-    local log_file="$runtime_dir/service.log"
-    mkdir -p "$runtime_dir"
-
-    transport_send() {
-        local transport="$1" payload="$2"
-        local t
-        t="$(printf '%s' "$transport" | tr '[:upper:]' '[:lower:]')"
-        [[ "$t" == "auto" ]] && t="stdout"
-
-        case "$t" in
-        stdout)
-            printf '%s\n' "$payload"
-            ;;
-        null)
-            :
-            ;;
-        ws)
-            if command -v websocat >/dev/null 2>&1; then
-                local ws_url="${WID_WS_URL:-ws://127.0.0.1:8787}"
-                printf '%s\n' "$payload" | websocat -n - "$ws_url" >/dev/null 2>&1 || true
-            else
-                printf '%s\n' "$payload"
-            fi
-            ;;
-        http)
-            if command -v curl >/dev/null 2>&1; then
-                local http_url="${WID_HTTP_URL:-http://127.0.0.1:8080/wid}"
-                curl -fsS --max-time 2 -H 'content-type: application/json' -d "$payload" "$http_url" >/dev/null 2>&1 || true
-            else
-                printf '%s\n' "$payload"
-            fi
-            ;;
-        tcp | udp)
-            if command -v nc >/dev/null 2>&1; then
-                local addr host port proto
-                if [[ "$t" == "tcp" ]]; then
-                    addr="${WID_TCP_ADDR:-127.0.0.1:9000}"
-                    proto=""
-                else
-                    addr="${WID_UDP_ADDR:-127.0.0.1:9001}"
-                    proto="-u"
-                fi
-                host="${addr%:*}"
-                port="${addr##*:}"
-                if [[ -n "$host" && -n "$port" && "$port" =~ ^[0-9]+$ ]]; then
-                    # shellcheck disable=SC2086
-                    printf '%s\n' "$payload" | nc $proto -w 1 "$host" "$port" >/dev/null 2>&1 || true
-                else
-                    printf '%s\n' "$payload"
-                fi
-            else
-                printf '%s\n' "$payload"
-            fi
-            ;;
-        mqtt)
-            if command -v mosquitto_pub >/dev/null 2>&1; then
-                local topic="${WID_MQTT_TOPIC:-wid/events}"
-                local host="${WID_MQTT_HOST:-127.0.0.1}"
-                local port="${WID_MQTT_PORT:-1883}"
-                mosquitto_pub -h "$host" -p "$port" -t "$topic" -m "$payload" >/dev/null 2>&1 || true
-            else
-                printf '%s\n' "$payload"
-            fi
-            ;;
-        redis)
-            if command -v redis-cli >/dev/null 2>&1; then
-                local channel="${WID_REDIS_CHANNEL:-wid:events}"
-                redis-cli PUBLISH "$channel" "$payload" >/dev/null 2>&1 || true
-            else
-                printf '%s\n' "$payload"
-            fi
-            ;;
-        *)
-            die "invalid transport: $transport"
-            ;;
-        esac
-    }
-
-    service_loop_native() {
-        local action="$1" a_transport="$2" b_transport="$3"
-        local loops="$N"
-        [[ "$loops" =~ ^[0-9]+$ ]] || loops=0
-        ((loops <= 0)) && loops=10
-
-        local i id payload
-        for ((i = 1; i <= loops; i++)); do
-            if [[ "$id_impl" == "py" ]]; then
-                id="$(run_python_wid_cli next --kind wid --W "$W" --Z "$Z" --time-unit "$T")"
-            else
-                id="$(wid_next "$W" "$Z" "$T")"
-            fi
-
-            case "$action" in
-            run)
-                printf '%s\n' "$id"
-                ;;
-            duplex)
-                payload=$(printf '{"impl":"sh","action":"duplex","tick":%d,"id":"%s","a_transport":"%s","b_transport":"%s","interval":%s,"data_dir":"%s"}' \
-                    "$i" "$(json_escape "$id")" "$a_transport" "$b_transport" "$L" "$(json_escape "$data_dir")")
-                transport_send "$a_transport" "$payload"
-                transport_send "$b_transport" "$payload"
-                ;;
-            *)
-                payload=$(printf '{"impl":"sh","action":"%s","tick":%d,"id":"%s","transport":"%s","interval":%s,"data_dir":"%s","log_level":"%s"}' \
-                    "$action" "$i" "$(json_escape "$id")" "$a_transport" "$L" "$(json_escape "$data_dir")" "$log_level")
-                transport_send "$a_transport" "$payload"
-                ;;
-            esac
-
-            if ((i < loops)); then
-                sleep "$L"
-            fi
-        done
-    }
-
-    start_native() {
-        local daemon_args=("__daemon" "A=run" "W=$W" "L=$L" "D=$D" "I=$I" "E=$E" "Z=$Z" "T=$T" "R=$R" "M=$M" "N=$N")
-        nohup "$0" "${daemon_args[@]}" >"$log_file" 2>&1 &
-        echo "$!" >"$pid_file"
-        printf 'started sh service pid=%s\n' "$!"
-    }
-
-    stop_native() {
-        if [[ -f "$pid_file" ]]; then
-            local pid
-            pid="$(cat "$pid_file" 2>/dev/null || true)"
-            if [[ -n "$pid" ]]; then
-                kill "$pid" 2>/dev/null || true
-                return 0
-            fi
-            rm -f "$pid_file"
-            echo "stopped"
-        else
-            echo "not-running"
-        fi
-    }
-
-    status_native() {
-        if [[ -f "$pid_file" ]]; then
-            local pid
-            pid="$(cat "$pid_file" 2>/dev/null || true)"
-            if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-                echo "running"
-            else
-                echo "stale"
-            fi
-        else
-            echo "stopped"
-        fi
-    }
-
-    logs_native() {
-        if [[ -f "$log_file" ]]; then
-            tail -n 40 "$log_file"
-        else
-            echo "no-log"
-        fi
-    }
-
-    heal_native() {
-        local created_dirs=0 stale_pid_removed=0 active_pid_kept=0
-        local tic_to_toc=0 toc_to_tic=0 stale_data_pids_removed=0
-        local run_pid_file="$ROOT_DIR/.local/wid/run.pid"
-        local pid
-
-        if [[ ! -d "$runtime_dir" ]]; then
-            mkdir -p "$runtime_dir"
-            created_dirs=$((created_dirs + 1))
-        fi
-        if [[ ! -d "$data_dir" ]]; then
-            mkdir -p "$data_dir"
-            created_dirs=$((created_dirs + 1))
-        fi
-
-        if [[ -f "$pid_file" ]]; then
-            pid="$(cat "$pid_file" 2>/dev/null || true)"
-            if [[ -z "$pid" || ! "$pid" =~ ^[0-9]+$ ]] || ! kill -0 "$pid" 2>/dev/null; then
-                rm -f "$pid_file"
-                stale_pid_removed=$((stale_pid_removed + 1))
-            else
-                active_pid_kept=$((active_pid_kept + 1))
-            fi
-        fi
-
-        if [[ -f "$run_pid_file" ]]; then
-            pid="$(cat "$run_pid_file" 2>/dev/null || true)"
-            if [[ -z "$pid" || ! "$pid" =~ ^[0-9]+$ ]] || ! kill -0 "$pid" 2>/dev/null; then
-                rm -f "$run_pid_file"
-                stale_pid_removed=$((stale_pid_removed + 1))
-            else
-                active_pid_kept=$((active_pid_kept + 1))
-            fi
-        fi
-
-        while IFS= read -r -d '' tic_path; do
-            local toc_path
-            toc_path="${tic_path%.tic}.toc"
-            if [[ ! -f "$toc_path" ]]; then
-                cp "$tic_path" "$toc_path" 2>/dev/null || true
-                [[ -f "$toc_path" ]] && tic_to_toc=$((tic_to_toc + 1))
-            fi
-        done < <(find "$data_dir" -type f -name '*.tic' -print0 2>/dev/null)
-
-        while IFS= read -r -d '' toc_path; do
-            local tic_path
-            tic_path="${toc_path%.toc}.tic"
-            if [[ ! -f "$tic_path" ]]; then
-                cp "$toc_path" "$tic_path" 2>/dev/null || true
-                [[ -f "$tic_path" ]] && toc_to_tic=$((toc_to_tic + 1))
-            fi
-        done < <(find "$data_dir" -type f -name '*.toc' -print0 2>/dev/null)
-
-        while IFS= read -r -d '' data_pid_file; do
-            local data_pid
-            data_pid="$(cat "$data_pid_file" 2>/dev/null || true)"
-            if [[ -z "$data_pid" || ! "$data_pid" =~ ^[0-9]+$ ]] || ! kill -0 "$data_pid" 2>/dev/null; then
-                rm -f "$data_pid_file"
-                stale_data_pids_removed=$((stale_data_pids_removed + 1))
-            fi
-        done < <(find "$data_dir" -type f -name '*.pid' -print0 2>/dev/null)
-
-        printf '{"ok":true,"action":"heal","impl":"sh","runtime_dir":"%s","data_dir":"%s","created_dirs":%d,"stale_pid_removed":%d,"active_pid_kept":%d,"tic_to_toc":%d,"toc_to_tic":%d,"stale_data_pids_removed":%d}\n' \
-            "$(json_escape "$runtime_dir")" "$(json_escape "$data_dir")" \
-            "$created_dirs" "$stale_pid_removed" "$active_pid_kept" "$tic_to_toc" "$toc_to_tic" "$stale_data_pids_removed"
-    }
-
-    check_update_native() {
-        local current="1.0.0"
-        local latest=""
-        local update_exists=false
-
-        if command -v curl >/dev/null 2>&1; then
-            # Check GitHub for latest release tag
-            latest=$(curl -fsSL --max-time 3 https://api.github.com/repos/waldiez/wid/releases/latest 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/^v//')
-            if [[ -n "$latest" && "$latest" != "$current" ]]; then
-                update_exists=true
-            fi
-        fi
-
-        printf '{"current":"%s","latest":"%s","update_exists":%s}\n' "$current" "${latest:-$current}" "$update_exists"
-    }
-
-    case "$A" in
-    discover)
-        printf '{"impl":"sh","orchestration":"native","actions":["discover","scaffold","run","start","stop","status","logs","heal","saf","saf-wid","wir","wism","wihp","wipr","duplex","self.check-update"],"transports":["auto","mqtt","ws","redis","http","tcp","udp","null","stdout"]}\n'
-        ;;
-    scaffold)
-        [[ -n "$D" ]] || die "D=<name> required for A=scaffold"
-        mkdir -p "$D/state" "$D/logs"
-        printf 'scaffolded %s\n' "$D"
-        ;;
-    run)
-        service_loop_native "run" "$effective_transport" "$I"
-        ;;
-    start)
-        start_native
-        ;;
-    stop) stop_native ;;
-    status) status_native ;;
-    logs) logs_native ;;
-    heal) heal_native ;;
-    self.check-update) check_update_native ;;
-    saf)
-        [[ "$effective_transport" == "auto" ]] && effective_transport="stdout"
-        is_transport "$effective_transport" || die "invalid transport for A=saf: $effective_transport"
-        service_loop_native "saf" "$effective_transport" "$I"
-        ;;
-    saf-wid)
-        [[ "$effective_transport" == "auto" ]] && effective_transport="mqtt"
-        is_transport "$effective_transport" || die "invalid transport for A=saf-wid: $effective_transport"
-        service_loop_native "saf-wid" "$effective_transport" "$I"
-        ;;
-    wir)
-        [[ "$effective_transport" == "auto" ]] && effective_transport="mqtt"
-        is_transport "$effective_transport" || die "invalid transport: $effective_transport"
-        service_loop_native "wir" "$effective_transport" "$I"
-        ;;
-    wism)
-        [[ "$effective_transport" == "auto" ]] && effective_transport="mqtt"
-        is_transport "$effective_transport" || die "invalid transport for A=wism: $effective_transport"
-        service_loop_native "wism" "$effective_transport" "$I"
-        ;;
-    wihp)
-        [[ "$effective_transport" == "auto" ]] && effective_transport="mqtt"
-        is_transport "$effective_transport" || die "invalid transport for A=wihp: $effective_transport"
-        service_loop_native "wihp" "$effective_transport" "$I"
-        ;;
-    wipr)
-        [[ "$effective_transport" == "auto" ]] && effective_transport="mqtt"
-        is_transport "$effective_transport" || die "invalid transport for A=wipr: $effective_transport"
-        service_loop_native "wipr" "$effective_transport" "$I"
-        ;;
-    duplex)
-        local a_transport="$effective_transport"
-        local b_transport="ws"
-        [[ "$a_transport" == "auto" ]] && a_transport="mqtt"
-        if is_transport "$I" && [[ "$I" != "auto" ]]; then b_transport="$I"; fi
-        is_transport "$a_transport" || die "invalid side-A transport: $a_transport"
-        is_transport "$b_transport" || die "invalid side-B transport: $b_transport"
-        service_loop_native "duplex" "$a_transport" "$b_transport"
-        ;;
-    *) die "unknown A=$A" ;;
-    esac
+    die "unknown A=$A"
 }
 run_selftest() {
     local n=$1 procs=$2 per=$3 kind=$4 W=$5 Z=$6 time_unit=$7
@@ -1350,7 +1017,7 @@ _wid_complete() {
   if [[ "$cur" == *=* ]]; then
     local key="${cur%%=*}" val="${cur#*=}" vals=""
     case "$key" in
-      A) vals="next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions" ;;
+      A) vals="next stream healthcheck sign verify w-otp help-actions" ;;
       T) vals="sec ms" ;;
       I) vals="auto sh bash" ;;
       E) vals="state stateless sql" ;;
@@ -1377,7 +1044,7 @@ _wid_complete() {
     local key="${cur%%=*}"
     local -a vals=()
     case "$key" in
-      A) vals=(next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions) ;;
+      A) vals=(next stream healthcheck sign verify w-otp help-actions) ;;
       T) vals=(sec ms) ;;
       I) vals=(auto sh bash) ;;
       E) vals=(state stateless sql) ;;

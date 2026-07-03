@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	wid "github.com/waldiez/wid/go"
@@ -56,20 +55,11 @@ type canon struct {
 	maxFutureSec int
 }
 
-var localServiceTransports = map[string]bool{
-	"mqtt": true, "ws": true, "redis": true, "null": true, "stdout": true,
-}
-
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
 		printHelp()
 		os.Exit(2)
-	}
-
-	if args[0] == "__daemon" {
-		exit(runCanonical(args[1:]))
-		return
 	}
 
 	if hasKVArg(args) {
@@ -464,7 +454,7 @@ func runCanonical(args []string) int {
 	if c.a == "w-otp" {
 		return runWOtp(c)
 	}
-	stateMode, _ := parseStateTransport(c)
+	stateMode := parseStateMode(c)
 	if stateMode == "sql" && (c.a == "next" || c.a == "stream") {
 		switch c.a {
 		case "next":
@@ -481,7 +471,8 @@ func runCanonical(args []string) int {
 	case "healthcheck":
 		return cmdHealthcheck(opts{kind: "wid", w: c.w, z: c.z, timeUnit: c.t, json: true})
 	default:
-		return runNativeOrchestration(c)
+		errln(fmt.Sprintf("unknown A=%s", c.a))
+		return 1
 	}
 }
 
@@ -998,24 +989,12 @@ func parseCanonical(args []string) (canon, error) {
 		c.a = "next"
 	case "hc":
 		c.a = "healthcheck"
-	case "raf":
-		c.a = "saf"
-	case "waf", "wraf":
-		c.a = "saf-wid"
-	case "witr":
-		c.a = "wir"
-	case "wim":
-		c.a = "wism"
-	case "wih":
-		c.a = "wihp"
-	case "wip":
-		c.a = "wipr"
 	}
 	if c.w <= 0 || c.z < 0 || c.n < 0 || c.l < 0 {
 		return c, errors.New("W must be >0 and Z/N/L >=0")
 	}
 	if !isTransport(c.r) {
-		return c, errors.New("invalid R transport")
+		return c, fmt.Errorf("transport R=%s is only available in the Rust implementation (services/transports are Rust-only)", c.r)
 	}
 	return c, nil
 }
@@ -1055,268 +1034,35 @@ func defaultForKey(k string) string {
 	}
 }
 
+// Core transports only; MQTT/WS/Redis adapters live exclusively in the Rust
+// implementation (see spec/SERVICES.md).
 func isTransport(s string) bool {
 	switch s {
-	case "auto", "mqtt", "ws", "redis", "null", "stdout":
+	case "auto", "null", "stdout":
 		return true
 	default:
 		return false
 	}
 }
 
-func parseStateTransport(c canon) (string, string) {
-	stateMode := c.e
-	transport := c.r
+// E may carry a "+transport" / ",transport" suffix from the full canonical
+// grammar; only the state-mode half is meaningful here (transports are
+// Rust-only).
+func parseStateMode(c canon) string {
 	if strings.Contains(c.e, "+") {
-		parts := strings.SplitN(c.e, "+", 2)
-		stateMode = parts[0]
-		if transport == "auto" {
-			transport = parts[1]
-		}
-	} else if strings.Contains(c.e, ",") {
-		parts := strings.SplitN(c.e, ",", 2)
-		stateMode = parts[0]
-		if transport == "auto" {
-			transport = parts[1]
-		}
+		return strings.SplitN(c.e, "+", 2)[0]
 	}
-	return stateMode, transport
+	if strings.Contains(c.e, ",") {
+		return strings.SplitN(c.e, ",", 2)[0]
+	}
+	return c.e
 }
-
-func runtimeDir() string { return filepath.Clean(".local/wid/go") }
-func runtimePid() string { return filepath.Join(runtimeDir(), "service.pid") }
-func runtimeLog() string { return filepath.Join(runtimeDir(), "service.log") }
 
 func dataDir(c canon) string {
 	if strings.TrimSpace(c.d) == "" {
 		return filepath.Clean(".local/services")
 	}
 	return filepath.Clean(c.d)
-}
-
-func readPid(path string) (int, bool) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return 0, false
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
-	if err != nil || pid <= 0 {
-		return 0, false
-	}
-	return pid, true
-}
-
-func pidAlive(pid int) bool {
-	return syscall.Kill(pid, 0) == nil
-}
-
-func runNativeOrchestration(c canon) int {
-	switch c.a {
-	case "discover":
-		payload := map[string]any{
-			"impl":          "go",
-			"orchestration": "native",
-			"actions": []string{
-				"discover", "scaffold", "run", "start", "stop", "status", "logs",
-				"saf", "saf-wid", "wir", "wism", "wihp", "wipr", "duplex",
-			},
-			"transports": []string{"auto", "mqtt", "ws", "redis", "null", "stdout"},
-		}
-		printJSON(payload)
-		return 0
-	case "scaffold":
-		if strings.TrimSpace(c.d) == "" {
-			errln("D=<name> required for A=scaffold")
-			return 1
-		}
-		if err := os.MkdirAll(filepath.Join(c.d, "state"), 0o755); err != nil {
-			errln(err.Error())
-			return 1
-		}
-		if err := os.MkdirAll(filepath.Join(c.d, "logs"), 0o755); err != nil {
-			errln(err.Error())
-			return 1
-		}
-		fmt.Printf("scaffolded %s\n", c.d)
-		return 0
-	case "run", "saf", "saf-wid", "wir", "wism", "wihp", "wipr", "duplex":
-		return runServiceLoop(c, c.a)
-	case "start":
-		return runStart(c)
-	case "stop":
-		return runStop()
-	case "status":
-		return runStatus()
-	case "logs":
-		return runLogs()
-	default:
-		errln("unknown A=" + c.a)
-		return 1
-	}
-}
-
-func runServiceLoop(c canon, action string) int {
-	stateMode, transport := parseStateTransport(c)
-	if transport == "auto" {
-		transport = "mqtt"
-	}
-	if (action == "saf-wid" || action == "wir" || action == "wism" || action == "wihp" || action == "wipr" || action == "duplex") &&
-		!localServiceTransports[transport] {
-		errln(fmt.Sprintf("invalid transport for A=%s: %s", action, transport))
-		return 1
-	}
-	dd := dataDir(c)
-	_ = os.MkdirAll(dd, 0o755)
-	logLevel := os.Getenv("LOG_LEVEL")
-	if logLevel == "" {
-		logLevel = "INFO"
-	}
-
-	g, err := wid.NewWidGenWithUnit(c.w, c.z, c.t)
-	if err != nil {
-		errln(err.Error())
-		return 1
-	}
-	max := c.n
-	if max <= 0 {
-		max = int(^uint(0) >> 1)
-	}
-
-	for i := 1; i <= max; i++ {
-		id := g.Next()
-		if transport != "null" {
-			switch action {
-			case "saf-wid", "wism", "wihp", "wipr":
-				printJSON(map[string]any{
-					"impl":      "go",
-					"action":    action,
-					"tick":      i,
-					"transport": transport,
-					"W":         c.w,
-					"Z":         c.z,
-					"time_unit": string(c.t),
-					"wid":       id,
-					"interval":  c.l,
-					"log_level": logLevel,
-					"data_dir":  dd,
-				})
-			case "duplex":
-				bTransport := "ws"
-				if c.i != "auto" && localServiceTransports[c.i] {
-					bTransport = c.i
-				}
-				printJSON(map[string]any{
-					"impl":        "go",
-					"action":      "duplex",
-					"tick":        i,
-					"a_transport": transport,
-					"b_transport": bTransport,
-					"interval":    c.l,
-					"data_dir":    dd,
-				})
-			default:
-				printJSON(map[string]any{
-					"impl":       "go",
-					"action":     action,
-					"tick":       i,
-					"transport":  transport,
-					"interval":   c.l,
-					"log_level":  logLevel,
-					"data_dir":   dd,
-					"state_mode": stateMode,
-				})
-			}
-		}
-		if i < max && c.l > 0 {
-			time.Sleep(time.Duration(c.l) * time.Second)
-		}
-	}
-	return 0
-}
-
-func runStart(c canon) int {
-	_ = os.MkdirAll(runtimeDir(), 0o755)
-	if pid, ok := readPid(runtimePid()); ok && pidAlive(pid) {
-		fmt.Printf("wid-go start: already-running pid=%d log=%s\n", pid, runtimeLog())
-		return 0
-	}
-
-	exe, err := os.Executable()
-	if err != nil {
-		errln("failed to resolve executable: " + err.Error())
-		return 1
-	}
-	logf, err := os.OpenFile(runtimeLog(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		errln("failed to open log: " + err.Error())
-		return 1
-	}
-	defer logf.Close()
-
-	args := []string{
-		"__daemon",
-		fmt.Sprintf("A=%s", "run"),
-		fmt.Sprintf("W=%d", c.w),
-		fmt.Sprintf("L=%d", c.l),
-		fmt.Sprintf("D=%s", valueOrHash(c.d)),
-		fmt.Sprintf("I=%s", c.i),
-		fmt.Sprintf("E=%s", c.e),
-		fmt.Sprintf("Z=%d", c.z),
-		fmt.Sprintf("T=%s", c.t),
-		fmt.Sprintf("R=%s", c.r),
-		fmt.Sprintf("M=%t", c.m),
-		fmt.Sprintf("N=%d", c.n),
-	}
-
-	cmd := exec.Command(exe, args...)
-	cmd.Stdout = logf
-	cmd.Stderr = logf
-	cmd.Stdin = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := cmd.Start(); err != nil {
-		errln("failed to start daemon: " + err.Error())
-		return 1
-	}
-	_ = os.WriteFile(runtimePid(), []byte(fmt.Sprintf("%d\n", cmd.Process.Pid)), 0o644)
-	fmt.Printf("wid-go start: started pid=%d log=%s\n", cmd.Process.Pid, runtimeLog())
-	return 0
-}
-
-func runStatus() int {
-	pid, ok := readPid(runtimePid())
-	if ok && pidAlive(pid) {
-		fmt.Printf("wid-go status=running pid=%d log=%s\n", pid, runtimeLog())
-		return 0
-	}
-	_ = os.Remove(runtimePid())
-	fmt.Println("wid-go status=stopped")
-	return 0
-}
-
-func runStop() int {
-	pid, ok := readPid(runtimePid())
-	if !ok || !pidAlive(pid) {
-		_ = os.Remove(runtimePid())
-		fmt.Println("wid-go stop: not running")
-		return 0
-	}
-	if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
-		errln(fmt.Sprintf("failed to stop pid=%d: %v", pid, err))
-		return 1
-	}
-	_ = os.Remove(runtimePid())
-	fmt.Printf("wid-go stop: stopped pid=%d\n", pid)
-	return 0
-}
-
-func runLogs() int {
-	b, err := os.ReadFile(runtimeLog())
-	if err != nil {
-		fmt.Println("wid-go logs: empty")
-		return 0
-	}
-	fmt.Print(string(b))
-	return 0
 }
 
 func printJSON(v any) {
@@ -1367,7 +1113,7 @@ func printCompletion(shell string) {
   if [[ "$cur" == *=* ]]; then
     local key="${cur%%=*}" val="${cur#*=}" vals=""
     case "$key" in
-      A) vals="next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions" ;;
+      A) vals="next stream healthcheck sign verify w-otp help-actions" ;;
       T) vals="sec ms" ;;
       I) vals="auto sh bash" ;;
       E) vals="state stateless sql" ;;
@@ -1392,7 +1138,7 @@ _wid_complete() {
     local key="${cur%%=*}"
     local -a vals=()
     case "$key" in
-      A) vals=(next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions) ;;
+      A) vals=(next stream healthcheck sign verify w-otp help-actions) ;;
       T) vals=(sec ms) ;;
       I) vals=(auto sh bash) ;;
       E) vals=(state stateless sql) ;;
@@ -1415,7 +1161,7 @@ complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck v
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a parse -d 'Parse a WID string'
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a help-actions -d 'Show canonical action matrix'
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a completion -d 'Print shell completion script'
-complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=start A=stop A=status A=logs A=help-actions' -d 'Action'
+complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=help-actions' -d 'Action'
 complete -c wid -f -a 'T=sec T=ms' -d 'Time unit'
 complete -c wid -f -a 'I=auto I=sh I=bash' -d 'Input source'
 complete -c wid -f -a 'E=state E=stateless E=sql' -d 'State mode'
@@ -1457,17 +1203,9 @@ func printActions() {
 Core ID:
   A=next | A=stream | A=healthcheck | A=sign | A=verify | A=w-otp
 
-Service lifecycle (native):
-  A=discover | A=scaffold | A=run | A=start | A=stop | A=status | A=logs
-
-Service modules (native):
-  A=saf      (alias: raf)
-  A=saf-wid  (aliases: waf, wraf)
-  A=wir      (alias: witr)
-  A=wism     (alias: wim)
-  A=wihp     (alias: wih)
-  A=wipr     (alias: wip)
-  A=duplex
+Services (Rust implementation only -- see spec/SERVICES.md):
+  A=start | A=stop | A=status | A=logs | A=run | A=discover | A=scaffold
+  A=saf | A=saf-wid | A=wir | A=wism | A=wihp | A=wipr | A=duplex
 
 Help:
   A=help-actions

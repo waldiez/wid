@@ -74,6 +74,12 @@ All implementations conform to the same [specification](spec/SPEC.md). Cross-lan
 - `make stream-conformance` — streaming behavior
 - `tools/check_wotp_parity.sh` and `tools/smoke_crypto.sh` — crypto (`sign`/`verify`/`w-otp`) parity and interop
 
+The conformance promise covers the core surface. The service layer (daemons,
+periodic emitters, MQTT/WS/Redis transports) lives **only in the Rust
+implementation** — see [spec/SERVICES.md](spec/SERVICES.md).
+
+- Core-CLI-only implementations: `C`, `Go`, `Python`, `TypeScript`, `sh` — they implement `next`, `stream`, `validate`, `parse`, `healthcheck`, `bench`, `selftest` (plus `sign`/`verify`/`w-otp` and `E=sql`), and reject service actions.
+
 ## Format
 
 ```text

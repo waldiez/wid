@@ -285,14 +285,16 @@ do:
 healthcheck:
 	bash sh/wid A=healthcheck W=$(W) Z=$(Z) T=$(T)
 
+# The service layer (daemons, transports) lives exclusively in the Rust
+# implementation; see spec/SERVICES.md.
 start:
-	bash sh/wid A=start W=$(W) Z=$(Z) T=$(T) N=$(N) D="$(D)" E="$(E)" R="$(R)" I="$(I)"
+	cargo run --release -- A=start W=$(W) Z=$(Z) T=$(T) N=$(N) D="$(D)" E="$(E)" R="$(R)" I="$(I)"
 
 status:
-	bash sh/wid A=status
+	cargo run --release -- A=status
 
 stop:
-	bash sh/wid A=stop
+	cargo run --release -- A=stop
 
 sign:
 	@if [ -z "$(KEY)" ]; then echo "KEY=<private_key_path> is required"; exit 2; fi

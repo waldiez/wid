@@ -10,11 +10,9 @@ import {
 } from "./chunk-I3HMNKLV.mjs";
 
 // typescript/src/cli.ts
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "fs";
-import { dirname, resolve } from "path";
-import { spawn } from "child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
 import { createHmac, createPrivateKey, createPublicKey, sign as cryptoSign, timingSafeEqual, verify as cryptoVerify } from "crypto";
-var LOCAL_SERVICE_TRANSPORTS = /* @__PURE__ */ new Set(["mqtt", "ws", "redis", "null", "stdout"]);
 function printHelp() {
   console.error(`wid - WID/HLC-WID generator CLI
 
@@ -27,7 +25,7 @@ Usage:
   wid bench [--kind wid|hlc] [--node <name>] [--W <n>] [--Z <n>] [--time-unit sec|ms] [--count <n>]
 
 Canonical mode:
-  wid W=# A=# L=# D=# I=# E=# Z=# T=sec|ms R=auto|mqtt|ws|redis|null|stdout N=#
+  wid W=# A=# L=# D=# I=# E=# Z=# T=sec|ms R=auto|null|stdout N=#
   wid A=w-otp MODE=gen|verify KEY=<secret|path> [WID=<wid>] [CODE=<otp>] [DIGITS=6] [MAX_AGE_SEC=0] [MAX_FUTURE_SEC=5]
   For A=stream: N=0 means infinite stream
   E supports: state | stateless | sql`);
@@ -38,17 +36,9 @@ function printActions() {
 Core ID:
   A=next | A=stream | A=healthcheck | A=sign | A=verify | A=w-otp
 
-Service lifecycle (native):
-  A=discover | A=scaffold | A=run | A=start | A=stop | A=status | A=logs
-
-Service modules (native):
-  A=saf      (alias: raf)
-  A=saf-wid  (aliases: waf, wraf)
-  A=wir      (alias: witr)
-  A=wism     (alias: wim)
-  A=wihp     (alias: wih)
-  A=wipr     (alias: wip)
-  A=duplex
+Services (Rust implementation only -- see spec/SERVICES.md):
+  A=start | A=stop | A=status | A=logs | A=run | A=discover | A=scaffold
+  A=saf | A=saf-wid | A=wir | A=wism | A=wihp | A=wipr | A=duplex
 
 Help:
   A=help-actions`);
@@ -319,11 +309,11 @@ function parseCanonical(args) {
     }
   }
   if (out.M) out.T = "ms";
-  out.A = out.A === "id" || out.A === "default" ? "next" : out.A === "hc" ? "healthcheck" : out.A === "raf" ? "saf" : out.A === "waf" || out.A === "wraf" ? "saf-wid" : out.A === "witr" ? "wir" : out.A === "wim" ? "wism" : out.A === "wih" ? "wihp" : out.A === "wip" ? "wipr" : out.A;
+  out.A = out.A === "id" || out.A === "default" ? "next" : out.A === "hc" ? "healthcheck" : out.A;
   if (out.W <= 0) throw new Error("W must be > 0");
   if (out.Z < 0 || out.N < 0 || out.L < 0) throw new Error("Z/N/L must be >= 0");
-  if (!["auto", "mqtt", "ws", "redis", "null", "stdout"].includes(out.R)) {
-    throw new Error("invalid R transport");
+  if (!["auto", "null", "stdout"].includes(out.R)) {
+    throw new Error(`transport R=${out.R} is only available in the Rust implementation (services/transports are Rust-only)`);
   }
   return out;
 }
@@ -486,28 +476,10 @@ function runWOtp(c) {
   console.error("OTP invalid.");
   return 1;
 }
-function parseStateAndTransport(c) {
-  let stateMode = c.E;
-  let transport = c.R;
-  if (c.E.includes("+")) {
-    const [left, right] = c.E.split("+", 2);
-    stateMode = left;
-    if (transport === "auto") transport = right;
-  } else if (c.E.includes(",")) {
-    const [left, right] = c.E.split(",", 2);
-    stateMode = left;
-    if (transport === "auto") transport = right;
-  }
-  return { stateMode, transport };
-}
-function runtimeDir() {
-  return resolve(".local/wid/typescript");
-}
-function runtimePidFile() {
-  return resolve(runtimeDir(), "service.pid");
-}
-function runtimeLogFile() {
-  return resolve(runtimeDir(), "service.log");
+function parseStateMode(c) {
+  if (c.E.includes("+")) return c.E.split("+", 2)[0];
+  if (c.E.includes(",")) return c.E.split(",", 2)[0];
+  return c.E;
 }
 function dataDir(c) {
   return c.D && c.D.length > 0 ? resolve(c.D) : resolve(".local/services");
@@ -562,245 +534,10 @@ function sqlAllocateNextWid(c) {
     db.close?.();
   }
 }
-function readPid(file) {
-  try {
-    const value = readFileSync(file, "utf-8").trim();
-    if (!value) return null;
-    const pid = Number.parseInt(value, 10);
-    return Number.isNaN(pid) || pid <= 0 ? null : pid;
-  } catch {
-    return null;
-  }
-}
-function pidAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
 function sleepSeconds(sec) {
   if (sec <= 0) return;
   const i32 = new Int32Array(new SharedArrayBuffer(4));
   Atomics.wait(i32, 0, 0, sec * 1e3);
-}
-function runDiscover() {
-  console.log(
-    JSON.stringify({
-      impl: "typescript",
-      orchestration: "native",
-      actions: [
-        "discover",
-        "scaffold",
-        "run",
-        "start",
-        "stop",
-        "status",
-        "logs",
-        "saf",
-        "saf-wid",
-        "wir",
-        "wism",
-        "wihp",
-        "wipr",
-        "duplex"
-      ],
-      transports: ["auto", "mqtt", "ws", "redis", "null", "stdout"]
-    })
-  );
-  return 0;
-}
-function runScaffold(c) {
-  if (!c.D || c.D.length === 0) throw new Error("D=<name> required for A=scaffold");
-  const root = resolve(c.D);
-  mkdirSync(resolve(root, "state"), { recursive: true });
-  mkdirSync(resolve(root, "logs"), { recursive: true });
-  console.log(`scaffolded ${root}`);
-  return 0;
-}
-function runStatus() {
-  const pidFile = runtimePidFile();
-  const logFile = runtimeLogFile();
-  const pid = readPid(pidFile);
-  if (pid !== null && pidAlive(pid)) {
-    console.log(`wid-typescript status=running pid=${pid} log=${logFile}`);
-    return 0;
-  }
-  try {
-    unlinkSync(pidFile);
-  } catch {
-  }
-  console.log("wid-typescript status=stopped");
-  return 0;
-}
-function runLogs() {
-  const logFile = runtimeLogFile();
-  if (!existsSync(logFile)) {
-    console.log("wid-typescript logs: empty");
-    return 0;
-  }
-  process.stdout.write(readFileSync(logFile, "utf-8"));
-  return 0;
-}
-function runStop() {
-  const pidFile = runtimePidFile();
-  const pid = readPid(pidFile);
-  if (pid === null || !pidAlive(pid)) {
-    try {
-      unlinkSync(pidFile);
-    } catch {
-    }
-    console.log("wid-typescript stop: not running");
-    return 0;
-  }
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch (e) {
-    throw new Error(`failed to stop pid=${pid}: ${e.message}`);
-  }
-  try {
-    unlinkSync(pidFile);
-  } catch {
-  }
-  console.log(`wid-typescript stop: stopped pid=${pid}`);
-  return 0;
-}
-function daemonCanonicalArgs(c, action) {
-  return [
-    `A=${action}`,
-    `W=${c.W}`,
-    `L=${c.L}`,
-    `D=${c.D.length > 0 ? c.D : "#"}`,
-    `I=${c.I}`,
-    `E=${c.E}`,
-    `Z=${c.Z}`,
-    `T=${c.T}`,
-    `R=${c.R}`,
-    `M=${c.M ? "true" : "false"}`,
-    `N=${c.N}`
-  ];
-}
-function runStart(c) {
-  const dir = runtimeDir();
-  mkdirSync(dir, { recursive: true });
-  const pidFile = runtimePidFile();
-  const logFile = runtimeLogFile();
-  const existing = readPid(pidFile);
-  if (existing !== null && pidAlive(existing)) {
-    console.log(`wid-typescript start: already-running pid=${existing} log=${logFile}`);
-    return 0;
-  }
-  mkdirSync(dirname(logFile), { recursive: true });
-  const fd = openSync(logFile, "a");
-  const child = spawn(process.execPath, [process.argv[1], "__daemon", ...daemonCanonicalArgs(c, "run")], {
-    detached: true,
-    stdio: ["ignore", fd, fd]
-  });
-  closeSync(fd);
-  child.unref();
-  writeFileSync(pidFile, `${child.pid}
-`, "utf-8");
-  console.log(`wid-typescript start: started pid=${child.pid} log=${logFile}`);
-  return 0;
-}
-function runServiceLoop(c, action) {
-  const { stateMode, transport: rawTransport } = parseStateAndTransport(c);
-  let transport = rawTransport === "auto" ? "mqtt" : rawTransport;
-  if (["saf-wid", "wir", "wism", "wihp", "wipr", "duplex"].includes(action) && !LOCAL_SERVICE_TRANSPORTS.has(transport)) {
-    throw new Error(`invalid transport for A=${action}: ${transport}`);
-  }
-  const dir = dataDir(c);
-  mkdirSync(dir, { recursive: true });
-  const logLevel = process.env.LOG_LEVEL || "INFO";
-  const max = c.N <= 0 ? Number.POSITIVE_INFINITY : c.N;
-  const gen = new WidGen({ W: c.W, Z: c.Z, timeUnit: c.T });
-  let i = 0;
-  while (i < max) {
-    i += 1;
-    const wid = gen.next();
-    if (transport !== "null") {
-      if (["saf-wid", "wism", "wihp", "wipr"].includes(action)) {
-        console.log(
-          JSON.stringify({
-            impl: "typescript",
-            action,
-            tick: i,
-            transport,
-            W: c.W,
-            Z: c.Z,
-            time_unit: c.T,
-            wid,
-            interval: c.L,
-            log_level: logLevel,
-            data_dir: dir
-          })
-        );
-      } else if (action === "duplex") {
-        const bTransport = c.I !== "auto" && LOCAL_SERVICE_TRANSPORTS.has(c.I) ? c.I : "ws";
-        console.log(
-          JSON.stringify({
-            impl: "typescript",
-            action: "duplex",
-            tick: i,
-            a_transport: transport,
-            b_transport: bTransport,
-            interval: c.L,
-            data_dir: dir
-          })
-        );
-      } else {
-        console.log(
-          JSON.stringify({
-            impl: "typescript",
-            action,
-            tick: i,
-            transport,
-            interval: c.L,
-            log_level: logLevel,
-            data_dir: dir,
-            state_mode: stateMode
-          })
-        );
-      }
-    }
-    if (i < max && c.L > 0) sleepSeconds(c.L);
-  }
-  return 0;
-}
-function runNativeOrchestration(c) {
-  switch (c.A) {
-    case "discover":
-      return runDiscover();
-    case "scaffold":
-      return runScaffold(c);
-    case "run":
-      return runServiceLoop(c, "run");
-    case "start":
-      return runStart(c);
-    case "stop":
-      return runStop();
-    case "status":
-      return runStatus();
-    case "logs":
-      return runLogs();
-    case "saf":
-      return runServiceLoop(c, "saf");
-    case "saf-wid":
-      return runServiceLoop(c, "saf-wid");
-    case "wir":
-      return runServiceLoop(c, "wir");
-    case "wism":
-      return runServiceLoop(c, "wism");
-    case "wihp":
-      return runServiceLoop(c, "wihp");
-    case "wipr":
-      return runServiceLoop(c, "wipr");
-    case "duplex":
-      return runServiceLoop(c, "duplex");
-    default:
-      throw new Error(`unknown A=${c.A}`);
-  }
 }
 function runCanonical(args) {
   const c = parseCanonical(args);
@@ -808,7 +545,7 @@ function runCanonical(args) {
     printActions();
     return 0;
   }
-  const { stateMode } = parseStateAndTransport(c);
+  const stateMode = parseStateMode(c);
   const canonDataDir = dataDir(c);
   mkdirSync(canonDataDir, { recursive: true });
   const genOptions = { W: c.W, Z: c.Z, timeUnit: c.T };
@@ -852,7 +589,7 @@ function runCanonical(args) {
   if (c.A === "sign") return runSign(c);
   if (c.A === "verify") return runVerify(c);
   if (c.A === "w-otp") return runWOtp(c);
-  return runNativeOrchestration(c);
+  throw new Error(`unknown A=${c.A}`);
 }
 function printCompletion(shell) {
   if (shell === "bash") {
@@ -863,7 +600,7 @@ function printCompletion(shell) {
   if [[ "$cur" == *=* ]]; then
     local key="\${cur%%=*}" val="\${cur#*=}" vals=""
     case "$key" in
-      A) vals="next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions" ;;
+      A) vals="next stream healthcheck sign verify w-otp help-actions" ;;
       T) vals="sec ms" ;;
       I) vals="auto sh bash" ;;
       E) vals="state stateless sql" ;;
@@ -890,7 +627,7 @@ _wid_complete() {
     local key="\${cur%%=*}"
     local -a vals=()
     case "$key" in
-      A) vals=(next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions) ;;
+      A) vals=(next stream healthcheck sign verify w-otp help-actions) ;;
       T) vals=(sec ms) ;;
       I) vals=(auto sh bash) ;;
       E) vals=(state stateless sql) ;;
@@ -916,7 +653,7 @@ complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthchec
 complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a parse -d 'Parse a WID string'
 complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a help-actions -d 'Show canonical action matrix'
 complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a completion -d 'Print shell completion script'
-complete -c wid-ts -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=start A=stop A=status A=logs A=help-actions' -d 'Action'
+complete -c wid-ts -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=help-actions' -d 'Action'
 complete -c wid-ts -f -a 'T=sec T=ms' -d 'Time unit'
 complete -c wid-ts -f -a 'I=auto I=sh I=bash' -d 'Input source'
 complete -c wid-ts -f -a 'E=state E=stateless E=sql' -d 'State mode'

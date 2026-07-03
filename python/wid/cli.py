@@ -13,15 +13,13 @@ import hashlib
 import hmac
 import json
 import os
-import shutil
-import signal
 import sqlite3
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 from .core import WidCore
 from .hlc import HLCWidGen
@@ -54,17 +52,9 @@ CANONICAL_KEYS = {
     "MAX_AGE_SEC",
     "MAX_FUTURE_SEC",
 }
-TRANSPORTS = {"mqtt", "ws", "redis", "null", "stdout", "auto"}
-ACTION_ALIASES = {
-    "raf": "saf",
-    "waf": "saf-wid",
-    "wraf": "saf-wid",
-    "witr": "wir",
-    "wim": "wism",
-    "wih": "wihp",
-    "wip": "wipr",
-}
-LOCAL_SERVICE_TRANSPORTS = {"mqtt", "ws", "redis", "null", "stdout", "auto"}
+# Core transports only. The service layer (daemons, MQTT/WS/Redis adapters)
+# lives exclusively in the Rust implementation -- see spec/SERVICES.md.
+TRANSPORTS = {"null", "stdout", "auto"}
 
 
 def _print_actions() -> None:
@@ -74,17 +64,9 @@ Core ID:
   A=next | A=stream | A=healthcheck
   A=sign | A=verify | A=w-otp
 
-Service lifecycle:
-  A=discover | A=scaffold | A=run | A=start | A=stop | A=status | A=logs | A=self.check-update
-
-Local services:
-  A=saf      (alias: raf)
-  A=saf-wid  (aliases: waf, wraf)
-  A=wir      (alias: witr)
-  A=wism     (alias: wim)
-  A=wihp     (alias: wih)
-  A=wipr     (alias: wip)
-  A=duplex
+Services (Rust implementation only -- see spec/SERVICES.md):
+  A=start | A=stop | A=status | A=logs | A=run | A=discover | A=scaffold
+  A=saf | A=saf-wid | A=wir | A=wism | A=wihp | A=wipr | A=duplex
 
 Help:
   A=help-actions
@@ -289,149 +271,6 @@ def _run_shell_wid(root_dir: Path, canon: dict[str, str]) -> None:
         for k in ("W", "A", "L", "D", "I", "E", "Z", "T", "R", "M", "N")
     ]
     _run_cmd([str(sh_impl), *args])
-
-
-def _runtime_dir(root_dir: Path) -> Path:
-    return (root_dir / ".local" / "wid" / "python").resolve()
-
-
-def _pid_file(root_dir: Path) -> Path:
-    return _runtime_dir(root_dir) / "service.pid"
-
-
-def _log_file(root_dir: Path) -> Path:
-    return _runtime_dir(root_dir) / "service.log"
-
-
-def _tail_text(path: Path, n: int = 40) -> str:
-    if not path.exists():
-        return "no-log\n"
-    with path.open("r", encoding="utf-8", errors="replace") as f:
-        lines = f.readlines()
-    return "".join(lines[-n:])
-
-
-def _service_loop_native(
-    *,
-    action: str,
-    n_val: int,
-    l_val: int,
-    w_val: int,
-    z_val: int,
-    time_unit: str,
-    state_mode: str,
-    data_dir: Path,
-) -> None:
-    loops = n_val if n_val > 0 else 10
-    unit = WidCore.TimeUnit.from_string(time_unit)
-    gen = WidGen(w=w_val, z=z_val, time_unit=unit)
-    emitted = 0
-    while emitted < loops:
-        if action == "run":
-            if state_mode == "sql":
-                print(
-                    _sql_allocate_next_wid(
-                        w_val,
-                        z_val,
-                        time_unit,
-                        _sql_state_path(data_dir),
-                    ),
-                    flush=True,
-                )
-            else:
-                print(gen.next(), flush=True)
-        emitted += 1
-        if emitted < loops:
-            time.sleep(max(0, l_val))
-
-
-def _start_native_daemon(
-    *,
-    root_dir: Path,
-    canon: dict[str, str],
-) -> None:
-    run_canon = dict(canon)
-    run_canon["A"] = "run"
-    ks = ("W", "A", "L", "D", "I", "E", "Z", "T", "R", "M", "N")
-    args = [f"{k}={run_canon[k]}" for k in ks]
-    runtime = _runtime_dir(root_dir)
-    runtime.mkdir(parents=True, exist_ok=True)
-    log_path = _log_file(root_dir)
-    py = sys.executable or shutil.which("python3") or "python3"
-    cmd = [py, "-m", "wid", "__daemon", *args]
-    with log_path.open("a", encoding="utf-8") as logf:
-        proc = subprocess.Popen(  # noqa: S603
-            cmd,
-            cwd=str(root_dir),
-            env=dict(os.environ),
-            stdout=logf,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-    _pid_file(root_dir).write_text(f"{proc.pid}\n", encoding="utf-8")
-    print(f"started python service pid={proc.pid}")
-
-
-def _stop_native_daemon(root_dir: Path) -> None:
-    pid_path = _pid_file(root_dir)
-    if not pid_path.exists():
-        print("not-running")
-        return
-    raw = pid_path.read_text(encoding="utf-8").strip()
-    if not raw.isdigit():
-        pid_path.unlink(missing_ok=True)
-        print("stopped")
-        return
-    pid = int(raw)
-    try:
-        os.kill(pid, signal.SIGTERM)
-        print("stopped")
-    except ProcessLookupError:
-        print("stale")
-    pid_path.unlink(missing_ok=True)
-
-
-def _status_native_daemon(root_dir: Path) -> None:
-    pid_path = _pid_file(root_dir)
-    if not pid_path.exists():
-        print("stopped")
-        return
-    raw = pid_path.read_text(encoding="utf-8").strip()
-    if not raw.isdigit():
-        print("stale")
-        return
-    pid = int(raw)
-    try:
-        os.kill(pid, 0)
-        print("running")
-    except ProcessLookupError:
-        print("stale")
-
-
-def _logs_native_daemon(root_dir: Path) -> None:
-    print(_tail_text(_log_file(root_dir), 40), end="")
-
-
-def _check_update_native() -> None:
-    import urllib.request
-    current = "1.0.0"
-    latest = ""
-    update_exists = False
-    try:
-        url = "https://api.github.com/repos/waldiez/wid/releases/latest"
-        with urllib.request.urlopen(url, timeout=3) as response:
-            data = json.loads(response.read().decode())
-            latest = data.get("tag_name", "").lstrip("v")
-            if latest and latest != current:
-                update_exists = True
-    except Exception:
-        latest = current
-
-    print(json.dumps({
-        "current": current,
-        "latest": latest,
-        "update_exists": update_exists
-    }, separators=(",", ":")))
 
 
 def _sql_state_path(data_dir: Path) -> Path:
@@ -725,10 +564,12 @@ def _run_canonical(argv: list[str]) -> bool:
     if not canon["L"].isdigit():
         raise ValueError("L must be a non-negative integer (seconds)")
     if canon["R"] not in TRANSPORTS:
-        raise ValueError(f"invalid transport: {canon['R']}")
+        raise ValueError(
+            f"transport R={canon['R']} is only available in the Rust "
+            "implementation (services/transports are Rust-only)"
+        )
 
     action: str = canon["A"].strip().lower()
-    action = ACTION_ALIASES.get(action, action)
     w_val: int = int(canon["W"])
     z_val: int = int(canon["Z"])
     l_val: int = int(canon["L"])
@@ -737,7 +578,6 @@ def _run_canonical(argv: list[str]) -> bool:
     input_src: str = canon["I"]
     d_val = canon["D"]
     e_val: str = canon["E"]
-    r_val: str = canon["R"]
     if action == "help-actions":
         _print_actions()
         return True
@@ -751,18 +591,14 @@ def _run_canonical(argv: list[str]) -> bool:
 
     effective_time_unit = WidCore.TimeUnit.from_string(time_unit)
 
+    # E may carry a "+transport" / ",transport" suffix from the full canonical
+    # grammar; only the state-mode half is meaningful here (transports are
+    # Rust-only).
     state_mode = e_val
-    effective_transport = r_val
     if "+" in e_val:
-        left, right = e_val.split("+", 1)
-        state_mode = left
-        if effective_transport == "auto":
-            effective_transport = right
+        state_mode = e_val.split("+", 1)[0]
     elif "," in e_val:
-        left, right = e_val.split(",", 1)
-        state_mode = left
-        if effective_transport == "auto":
-            effective_transport = right
+        state_mode = e_val.split(",", 1)[0]
 
     if action in {"next", "stream", "healthcheck"}:
         if input_src in {"sh", "bash"}:
@@ -824,68 +660,6 @@ def _run_canonical(argv: list[str]) -> bool:
                 time.sleep(max(0, l_val))
         return True
 
-    if action == "discover":
-        payload = {
-            "impl": "python",
-            "orchestration": "native",
-            "actions": [
-                "discover",
-                "scaffold",
-                "run",
-                "start",
-                "stop",
-                "status",
-                "logs",
-                "saf",
-                "saf-wid",
-                "wir",
-                "wism",
-                "wihp",
-                "wipr",
-                "duplex",
-                "self.check-update",
-            ],
-            "transports": ["auto", "mqtt", "ws", "redis", "null", "stdout"],
-        }
-        print(json.dumps(payload, separators=(",", ":")))
-        return True
-    if action == "scaffold":
-        if not d_val:
-            raise ValueError("D=<name> required for A=scaffold")
-        base = Path(d_val).expanduser().resolve()
-        (base / "state").mkdir(parents=True, exist_ok=True)
-        (base / "logs").mkdir(parents=True, exist_ok=True)
-        print(f"scaffolded {base}")
-        return True
-    if action == "run":
-        _service_loop_native(
-            action="run",
-            n_val=n_val,
-            l_val=l_val,
-            w_val=w_val,
-            z_val=z_val,
-            time_unit=time_unit,
-            state_mode=state_mode,
-            data_dir=data_dir,
-        )
-        return True
-    if action in {"start", "stop", "status", "logs"}:
-        root_dir = _repo_root()
-        if root_dir is None:
-            raise RuntimeError("Unable to locate repository root (missing sh/wid)")
-        if action == "start":
-            _start_native_daemon(root_dir=root_dir, canon=canon)
-        elif action == "stop":
-            _stop_native_daemon(root_dir)
-        elif action == "status":
-            _status_native_daemon(root_dir)
-        elif action == "logs":
-            _logs_native_daemon(root_dir)
-        return True
-    if action == "self.check-update":
-        _check_update_native()
-        return True
-
     if action == "sign":
         _run_sign_mode(canon)
         return True
@@ -896,122 +670,6 @@ def _run_canonical(argv: list[str]) -> bool:
 
     if action == "w-otp":
         _run_wotp_mode(canon, w_val=w_val, z_val=z_val, time_unit=time_unit)
-        return True
-
-    log_level = os.environ.get("LOG_LEVEL", "INFO")
-    tu: Literal["ms", "sec"] = "ms" if time_unit == "ms" else "sec"
-
-    def _service_emit(payload: dict[str, Any]) -> None:
-        t = payload.get("transport") or payload.get("a_transport", "")
-        if t != "null":
-            print(json.dumps(payload, separators=(",", ":")), flush=True)
-
-    if action == "saf":
-        tick = 0
-        while n_val == 0 or tick < n_val:
-            tick += 1
-            _service_emit({"impl": "python", "action": "saf", "tick": tick,
-                           "transport": effective_transport,
-                           "interval": l_val, "log_level": log_level, "data_dir": str(data_dir)})
-            if n_val == 0 or tick < n_val:
-                time.sleep(max(0, l_val))
-        return True
-
-    if action == "saf-wid":
-        transport = effective_transport if effective_transport != "auto" else "mqtt"
-        if transport not in LOCAL_SERVICE_TRANSPORTS:
-            raise ValueError(f"invalid transport for A=saf-wid: {transport}")
-        gen = WidGen(w=w_val, z=z_val, time_unit=tu)
-        tick = 0
-        while n_val == 0 or tick < n_val:
-            tick += 1
-            _service_emit({"impl": "python", "action": "saf-wid", "tick": tick,
-                           "transport": transport, "wid": gen.next(),
-                           "W": w_val, "Z": z_val, "time_unit": time_unit,
-                           "interval": l_val, "log_level": log_level, "data_dir": str(data_dir)})
-            if n_val == 0 or tick < n_val:
-                time.sleep(max(0, l_val))
-        return True
-
-    if action == "wir":
-        transport = effective_transport if effective_transport != "auto" else "mqtt"
-        if transport not in LOCAL_SERVICE_TRANSPORTS:
-            raise ValueError(f"invalid transport for A=wir: {transport}")
-        tick = 0
-        while n_val == 0 or tick < n_val:
-            tick += 1
-            _service_emit({"impl": "python", "action": "wir", "tick": tick,
-                           "transport": transport, "interval": l_val,
-                           "log_level": log_level, "data_dir": str(data_dir)})
-            if n_val == 0 or tick < n_val:
-                time.sleep(max(0, l_val))
-        return True
-
-    if action == "wism":
-        transport = effective_transport if effective_transport != "auto" else "mqtt"
-        if transport not in LOCAL_SERVICE_TRANSPORTS:
-            raise ValueError(f"invalid transport for A=wism: {transport}")
-        gen = WidGen(w=w_val, z=z_val, time_unit=tu)
-        tick = 0
-        while n_val == 0 or tick < n_val:
-            tick += 1
-            _service_emit({"impl": "python", "action": "wism", "tick": tick,
-                           "transport": transport, "wid": gen.next(),
-                           "W": w_val, "Z": z_val,
-                           "interval": l_val, "data_dir": str(data_dir)})
-            if n_val == 0 or tick < n_val:
-                time.sleep(max(0, l_val))
-        return True
-
-    if action == "wihp":
-        transport = effective_transport if effective_transport != "auto" else "mqtt"
-        if transport not in LOCAL_SERVICE_TRANSPORTS:
-            raise ValueError(f"invalid transport for A=wihp: {transport}")
-        gen = WidGen(w=w_val, z=z_val, time_unit=tu)
-        tick = 0
-        while n_val == 0 or tick < n_val:
-            tick += 1
-            _service_emit({"impl": "python", "action": "wihp", "tick": tick,
-                           "transport": transport, "wid": gen.next(),
-                           "W": w_val, "Z": z_val,
-                           "interval": l_val, "data_dir": str(data_dir)})
-            if n_val == 0 or tick < n_val:
-                time.sleep(max(0, l_val))
-        return True
-
-    if action == "wipr":
-        transport = effective_transport if effective_transport != "auto" else "mqtt"
-        if transport not in LOCAL_SERVICE_TRANSPORTS:
-            raise ValueError(f"invalid transport for A=wipr: {transport}")
-        gen = WidGen(w=w_val, z=z_val, time_unit=tu)
-        tick = 0
-        while n_val == 0 or tick < n_val:
-            tick += 1
-            _service_emit({"impl": "python", "action": "wipr", "tick": tick,
-                           "transport": transport, "wid": gen.next(),
-                           "W": w_val, "Z": z_val,
-                           "interval": l_val, "data_dir": str(data_dir)})
-            if n_val == 0 or tick < n_val:
-                time.sleep(max(0, l_val))
-        return True
-
-    if action == "duplex":
-        a_transport = effective_transport if effective_transport != "auto" else "mqtt"
-        b_transport = "ws"
-        if input_src in TRANSPORTS and input_src != "auto":
-            b_transport = input_src
-        if a_transport not in LOCAL_SERVICE_TRANSPORTS:
-            raise ValueError(f"invalid side-A transport: {a_transport}")
-        if b_transport not in LOCAL_SERVICE_TRANSPORTS:
-            raise ValueError(f"invalid side-B transport: {b_transport}")
-        tick = 0
-        while n_val == 0 or tick < n_val:
-            tick += 1
-            _service_emit({"impl": "python", "action": "duplex", "tick": tick,
-                           "a_transport": a_transport, "b_transport": b_transport,
-                           "interval": l_val, "data_dir": str(data_dir)})
-            if n_val == 0 or tick < n_val:
-                time.sleep(max(0, l_val))
         return True
 
     raise ValueError(f"unknown A={action}")

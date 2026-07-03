@@ -7,7 +7,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
-#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -59,7 +58,7 @@ static void print_help(void) {
             "  wid help-actions\n"
             "\n"
             "Canonical mode:\n"
-            "  wid W=# A=# L=# D=# I=# E=# Z=# T=sec|ms R=auto|mqtt|ws|redis|null|stdout N=#\n"
+            "  wid W=# A=# L=# D=# I=# E=# Z=# T=sec|ms R=auto|null|stdout N=#\n"
             "  For A=stream: N=0 means infinite stream\n"
             "  E supports: state | stateless | sql\n");
 }
@@ -68,16 +67,9 @@ static void print_actions(void) {
     puts("wid action matrix\n\n"
          "Core ID:\n"
          "  A=next | A=stream | A=healthcheck | A=sign | A=verify | A=w-otp\n\n"
-         "Service lifecycle (native):\n"
-         "  A=discover | A=scaffold | A=run | A=start | A=stop | A=status | A=logs | A=self.check-update\n\n"
-         "Service modules (native):\n"
-         "  A=saf      (alias: raf)\n"
-         "  A=saf-wid  (aliases: waf, wraf)\n"
-         "  A=wir      (alias: witr)\n"
-         "  A=wism     (alias: wim)\n"
-         "  A=wihp     (alias: wih)\n"
-         "  A=wipr     (alias: wip)\n"
-         "  A=duplex\n\n"
+         "Services (Rust implementation only -- see spec/SERVICES.md):\n"
+         "  A=start | A=stop | A=status | A=logs | A=run | A=discover | A=scaffold\n"
+         "  A=saf | A=saf-wid | A=wir | A=wism | A=wihp | A=wipr | A=duplex\n\n"
          "Help:\n"
          "  A=help-actions\n\n"
          "State mode:\n"
@@ -134,14 +126,10 @@ static bool is_core_action(const char *a) {
            strcmp(a, "w-otp") == 0;
 }
 
+/* Core transports only; MQTT/WS/Redis adapters live exclusively in the Rust
+ * implementation (see spec/SERVICES.md). */
 static bool is_transport(const char *s) {
-    return strcmp(s, "mqtt") == 0 || strcmp(s, "ws") == 0 || strcmp(s, "redis") == 0 || strcmp(s, "null") == 0 ||
-           strcmp(s, "stdout") == 0 || strcmp(s, "auto") == 0;
-}
-
-static bool is_local_service_transport(const char *s) {
-    return strcmp(s, "mqtt") == 0 || strcmp(s, "ws") == 0 || strcmp(s, "redis") == 0 || strcmp(s, "null") == 0 ||
-           strcmp(s, "stdout") == 0;
+    return strcmp(s, "null") == 0 || strcmp(s, "stdout") == 0 || strcmp(s, "auto") == 0;
 }
 
 static bool has_unsafe_shell_char(const char *s) {
@@ -251,18 +239,6 @@ static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
         strcpy(o->A, "next");
     } else if (strcmp(o->A, "hc") == 0) {
         strcpy(o->A, "healthcheck");
-    } else if (strcmp(o->A, "raf") == 0) {
-        strcpy(o->A, "saf");
-    } else if (strcmp(o->A, "waf") == 0 || strcmp(o->A, "wraf") == 0) {
-        strcpy(o->A, "saf-wid");
-    } else if (strcmp(o->A, "witr") == 0) {
-        strcpy(o->A, "wir");
-    } else if (strcmp(o->A, "wim") == 0) {
-        strcpy(o->A, "wism");
-    } else if (strcmp(o->A, "wih") == 0) {
-        strcpy(o->A, "wihp");
-    } else if (strcmp(o->A, "wip") == 0) {
-        strcpy(o->A, "wipr");
     }
 
     if (is_core_action(o->A) && strcmp(o->T, "sec") != 0 && strcmp(o->T, "ms") != 0) {
@@ -287,7 +263,13 @@ static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
         return false;
     }
     if (o->MAX_AGE_SEC < 0 || o->MAX_FUTURE_SEC < 0) return false;
-    if (!is_transport(o->R)) return false;
+    if (!is_transport(o->R)) {
+        fprintf(stderr,
+                "error: transport R=%s is only available in the Rust implementation "
+                "(services/transports are Rust-only)\n",
+                o->R);
+        return false;
+    }
     return true;
 }
 
@@ -327,23 +309,19 @@ static int join_path(char *out, size_t out_len, const char *left, const char *ri
     return 0;
 }
 
-static void parse_state_transport(const canon_opts_t *c, char state_mode[64], char effective_transport[32]) {
+/* E may carry a "+transport" / ",transport" suffix from the full canonical
+ * grammar; only the state-mode half is meaningful here (transports are
+ * Rust-only). */
+static void parse_state_mode(const canon_opts_t *c, char state_mode[64]) {
     snprintf(state_mode, 64, "%s", c->E);
-    snprintf(effective_transport, 32, "%s", c->R);
-
     const char *plus = strchr(c->E, '+');
     const char *comma = strchr(c->E, ',');
     const char *sep = plus ? plus : comma;
-
     if (sep) {
         size_t left_len = (size_t)(sep - c->E);
         if (left_len >= 64) left_len = 63;
         memcpy(state_mode, c->E, left_len);
         state_mode[left_len] = '\0';
-
-        if (strcmp(effective_transport, "auto") == 0) {
-            snprintf(effective_transport, 32, "%s", sep + 1);
-        }
     }
 }
 
@@ -444,276 +422,6 @@ static int sql_allocate_next_wid(
     return -1;
 }
 
-static void runtime_paths(char runtime_dir[PATH_MAX], char pid_file[PATH_MAX], char log_file[PATH_MAX]) {
-    snprintf(runtime_dir, PATH_MAX, ".local/wid/c");
-    snprintf(pid_file, PATH_MAX, "%s/service.pid", runtime_dir);
-    snprintf(log_file, PATH_MAX, "%s/service.log", runtime_dir);
-}
-
-static int read_pid_file(const char *pid_file, pid_t *pid_out) {
-    FILE *fp = fopen(pid_file, "r");
-    if (!fp) return 0;
-    long pid = 0;
-    int ok = fscanf(fp, "%ld", &pid) == 1;
-    fclose(fp);
-    if (!ok || pid <= 0) return 0;
-    *pid_out = (pid_t)pid;
-    return 1;
-}
-
-static int pid_alive(pid_t pid) {
-    if (pid <= 0) return 0;
-    return kill(pid, 0) == 0;
-}
-
-static int run_discover(void) {
-    puts("{\"impl\":\"c\",\"orchestration\":\"native\","
-         "\"actions\":[\"discover\",\"scaffold\",\"run\",\"start\",\"stop\",\"status\",\"logs\",\"saf\",\"saf-wid\",\"wir\",\"wism\",\"wihp\",\"wipr\",\"duplex\",\"self.check-update\"],"
-         "\"transports\":[\"auto\",\"mqtt\",\"ws\",\"redis\",\"null\",\"stdout\"]}");
-    return 0;
-}
-
-static int run_scaffold(const canon_opts_t *c) {
-    if (!c->D[0]) {
-        fprintf(stderr, "error: D=<name> required for A=scaffold\n");
-        return 1;
-    }
-
-    char state_dir[PATH_MAX];
-    char logs_dir[PATH_MAX];
-    snprintf(state_dir, PATH_MAX, "%s/state", c->D);
-    snprintf(logs_dir, PATH_MAX, "%s/logs", c->D);
-
-    if (mkdir_p(state_dir) != 0 || mkdir_p(logs_dir) != 0) {
-        fprintf(stderr, "error: failed to scaffold '%s'\n", c->D);
-        return 1;
-    }
-    printf("scaffolded %s\n", c->D);
-    return 0;
-}
-
-static int run_service_loop(const canon_opts_t *c, const char *action) {
-    char state_mode[64];
-    char transport[32];
-    parse_state_transport(c, state_mode, transport);
-    if (strcmp(transport, "auto") == 0) {
-        snprintf(transport, sizeof(transport), "mqtt");
-    }
-
-    if ((strcmp(action, "saf-wid") == 0 || strcmp(action, "wir") == 0 || strcmp(action, "wism") == 0 ||
-         strcmp(action, "wihp") == 0 || strcmp(action, "wipr") == 0 || strcmp(action, "duplex") == 0) &&
-        !is_local_service_transport(transport)) {
-        fprintf(stderr, "error: invalid transport for A=%s: %s\n", action, transport);
-        return 1;
-    }
-
-    char data_dir[PATH_MAX];
-    get_data_dir(c, data_dir);
-    if (mkdir_p(data_dir) != 0) {
-        fprintf(stderr, "error: failed to create data dir: %s\n", data_dir);
-        return 1;
-    }
-
-    const char *log_level = getenv("LOG_LEVEL");
-    if (!log_level || !*log_level) log_level = "INFO";
-    int64_t iter = 0;
-    int64_t max_iter = (c->N == 0) ? INT64_MAX : c->N;
-
-    wid_gen_t wg;
-    wid_gen_init_ex(&wg, c->W, c->Z, strcmp(c->T, "ms") == 0 ? WID_TIME_MS : WID_TIME_SEC);
-
-    while (iter < max_iter) {
-        iter++;
-        char wid[WID_MAX_LEN];
-        wid_gen_next(&wg, wid, sizeof(wid));
-
-        if (strcmp(transport, "null") != 0) {
-            if (strcmp(action, "saf-wid") == 0 || strcmp(action, "wism") == 0 || strcmp(action, "wihp") == 0 ||
-                strcmp(action, "wipr") == 0) {
-                printf("{\"impl\":\"c\",\"action\":\"%s\",\"tick\":%lld,\"transport\":\"%s\",\"W\":%d,\"Z\":%d,\"time_unit\":\"%s\",\"wid\":\"%s\",\"interval\":%d,\"log_level\":\"%s\",\"data_dir\":\"%s\"}\n",
-                       action,
-                       (long long)iter,
-                       transport,
-                       c->W,
-                       c->Z,
-                       c->T,
-                       wid,
-                       c->L,
-                       log_level,
-                       data_dir);
-            } else if (strcmp(action, "duplex") == 0) {
-                const char *b_transport = "ws";
-                if (is_local_service_transport(c->I) && strcmp(c->I, "auto") != 0) b_transport = c->I;
-                printf("{\"impl\":\"c\",\"action\":\"duplex\",\"tick\":%lld,\"a_transport\":\"%s\",\"b_transport\":\"%s\",\"interval\":%d,\"data_dir\":\"%s\"}\n",
-                       (long long)iter,
-                       transport,
-                       b_transport,
-                       c->L,
-                       data_dir);
-            } else {
-                printf("{\"impl\":\"c\",\"action\":\"%s\",\"tick\":%lld,\"transport\":\"%s\",\"interval\":%d,\"log_level\":\"%s\",\"data_dir\":\"%s\"}\n",
-                       action,
-                       (long long)iter,
-                       transport,
-                       c->L,
-                       log_level,
-                       data_dir);
-            }
-            fflush(stdout);
-        }
-
-        if (iter < max_iter && c->L > 0) sleep((unsigned int)c->L);
-    }
-    (void)state_mode;
-    return 0;
-}
-
-static int run_status(void) {
-    char runtime_dir[PATH_MAX], pid_file[PATH_MAX], log_file[PATH_MAX];
-    runtime_paths(runtime_dir, pid_file, log_file);
-    pid_t pid;
-    if (read_pid_file(pid_file, &pid) && pid_alive(pid)) {
-        printf("wid-c status=running pid=%ld log=%s\n", (long)pid, log_file);
-        return 0;
-    }
-    unlink(pid_file);
-    puts("wid-c status=stopped");
-    return 0;
-}
-
-static int run_logs(void) {
-    char runtime_dir[PATH_MAX], pid_file[PATH_MAX], log_file[PATH_MAX];
-    runtime_paths(runtime_dir, pid_file, log_file);
-    (void)pid_file;
-    FILE *fp = fopen(log_file, "r");
-    if (!fp) {
-        puts("wid-c logs: empty");
-        return 0;
-    }
-    char buf[4096];
-    while (fgets(buf, sizeof(buf), fp)) {
-        fputs(buf, stdout);
-    }
-    fclose(fp);
-    return 0;
-}
-
-static int run_stop(void) {
-    char runtime_dir[PATH_MAX], pid_file[PATH_MAX], log_file[PATH_MAX];
-    runtime_paths(runtime_dir, pid_file, log_file);
-    (void)runtime_dir;
-    (void)log_file;
-    pid_t pid;
-    if (!read_pid_file(pid_file, &pid)) {
-        puts("wid-c stop: not running");
-        return 0;
-    }
-    if (!pid_alive(pid)) {
-        unlink(pid_file);
-        puts("wid-c stop: not running");
-        return 0;
-    }
-    if (kill(pid, SIGTERM) != 0) {
-        fprintf(stderr, "error: failed to stop pid=%ld\n", (long)pid);
-        return 1;
-    }
-    unlink(pid_file);
-    printf("wid-c stop: stopped pid=%ld\n", (long)pid);
-    return 0;
-}
-
-static int run_start(const canon_opts_t *c) {
-    char runtime_dir[PATH_MAX], pid_file[PATH_MAX], log_file[PATH_MAX];
-    runtime_paths(runtime_dir, pid_file, log_file);
-    if (mkdir_p(runtime_dir) != 0) {
-        fprintf(stderr, "error: failed to create runtime dir\n");
-        return 1;
-    }
-
-    pid_t existing;
-    if (read_pid_file(pid_file, &existing) && pid_alive(existing)) {
-        printf("wid-c start: already-running pid=%ld log=%s\n", (long)existing, log_file);
-        return 0;
-    }
-
-    pid_t pid = fork();
-    if (pid < 0) {
-        fprintf(stderr, "error: fork failed\n");
-        return 1;
-    }
-    if (pid == 0) {
-        setsid();
-        FILE *log = fopen(log_file, "a");
-        if (!log) _exit(1);
-        dup2(fileno(log), STDOUT_FILENO);
-        dup2(fileno(log), STDERR_FILENO);
-        fclose(log);
-        int rc = run_service_loop(c, "run");
-        _exit(rc == 0 ? 0 : 1);
-    }
-
-    FILE *fp = fopen(pid_file, "w");
-    if (!fp) {
-        fprintf(stderr, "error: failed to write pid file\n");
-        return 1;
-    }
-    fprintf(fp, "%ld\n", (long)pid);
-    fclose(fp);
-    printf("wid-c start: started pid=%ld log=%s\n", (long)pid, log_file);
-    return 0;
-}
-
-static int run_check_update(void) {
-    const char *current = "1.0.0";
-    char latest[64] = "1.0.0";
-    bool update_exists = false;
-
-    FILE *fp = popen("curl -fsSL --max-time 3 https://api.github.com/repos/waldiez/wid/releases/latest 2>/dev/null | grep '\"tag_name\":' | sed -E 's/.*\"([^\"]+)\".*/\\1/' | sed 's/^v//'", "r");
-    if (fp) {
-        if (fgets(latest, sizeof(latest), fp)) {
-            size_t n = strlen(latest);
-            while (n > 0 && (latest[n-1] == '\n' || latest[n-1] == '\r')) {
-                latest[n-1] = '\0';
-                n--;
-            }
-            if (n > 0 && strcmp(latest, current) != 0) {
-                update_exists = true;
-            }
-        }
-        pclose(fp);
-    }
-
-    printf("{\"current\":\"%s\",\"latest\":\"%s\",\"update_exists\":%s}\n", 
-           current, latest[0] ? latest : current, update_exists ? "true" : "false");
-    return 0;
-}
-
-static int run_native_orchestration(const canon_opts_t *c) {
-    if (strcmp(c->A, "discover") == 0) return run_discover();
-    if (strcmp(c->A, "scaffold") == 0) return run_scaffold(c);
-    if (strcmp(c->A, "run") == 0) return run_service_loop(c, "run");
-    if (strcmp(c->A, "start") == 0) return run_start(c);
-    if (strcmp(c->A, "stop") == 0) return run_stop();
-    if (strcmp(c->A, "status") == 0) return run_status();
-    if (strcmp(c->A, "logs") == 0) return run_logs();
-    if (strcmp(c->A, "self.check-update") == 0) return run_check_update();
-    if (strcmp(c->A, "saf") == 0) return run_service_loop(c, "saf");
-    if (strcmp(c->A, "saf-wid") == 0) return run_service_loop(c, "saf-wid");
-    if (strcmp(c->A, "wir") == 0) return run_service_loop(c, "wir");
-    if (strcmp(c->A, "wism") == 0) return run_service_loop(c, "wism");
-    if (strcmp(c->A, "wihp") == 0) return run_service_loop(c, "wihp");
-    if (strcmp(c->A, "wipr") == 0) return run_service_loop(c, "wipr");
-    if (strcmp(c->A, "duplex") == 0) return run_service_loop(c, "duplex");
-    fprintf(stderr, "error: unknown A=%s\n", c->A);
-    return 1;
-}
-
-/* Build the canonical sign/verify message in memory:
- *   "wid-sig-v1:" || len(WID) || ":" || WID || DATA
- * The domain-separation prefix and explicit WID byte-length frame the WID/DATA
- * boundary so no bytes can shift between them (plain WID||DATA is ambiguous).
- * On success sets *out (malloc'd, caller frees) and *out_len. No temporary
- * files are created. Returns 0 on success, 1 on error. */
 static int build_message_buf(const canon_opts_t *c, unsigned char **out, size_t *out_len) {
     if (!c->WID[0]) {
         fprintf(stderr, "error: WID=<wid_string> required\n");
@@ -1093,9 +801,7 @@ static int run_canonical(const canon_opts_t *c) {
     if (strcmp(c->A, "w-otp") == 0) return run_wotp(c, unit);
 
     char state_mode[64];
-    char transport[32];
-    parse_state_transport(c, state_mode, transport);
-    (void)transport;
+    parse_state_mode(c, state_mode);
     if (strcmp(state_mode, "sql") == 0) {
         if (strcmp(c->A, "next") == 0) return run_canonical_sql_next(c, unit);
         if (strcmp(c->A, "stream") == 0) return run_canonical_sql_stream(c, unit);
@@ -1105,7 +811,8 @@ static int run_canonical(const canon_opts_t *c) {
     if (strcmp(c->A, "stream") == 0) return cmd_stream(&o);
     if (strcmp(c->A, "healthcheck") == 0) return cmd_healthcheck(&o);
 
-    return run_native_orchestration(c);
+    fprintf(stderr, "error: unknown A=%s\n", c->A);
+    return 1;
 }
 
 static int run_canonical_sql_next(const canon_opts_t *c, wid_time_unit_t unit) {
