@@ -1,5 +1,5 @@
 /**
- * WID (Waldiez/SYNAPSE Identifier) generation and validation.
+ * WID (Waldiez Identifier) generation and validation.
  * Format: YYYYMMDDTHHMMSS[mmm].<seqW>Z[-<padZ>]
  */
 

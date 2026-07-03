@@ -194,7 +194,11 @@ impl HLCWidGen {
     }
 
     fn current_tick(time_unit: TimeUnit) -> i64 {
-        let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        // A pre-1970 system clock yields Err; treat it as tick 0 rather
+        // than panicking (the HLC merge logic takes over from there).
+        let dur = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
         match time_unit {
             TimeUnit::Sec => dur.as_secs() as i64,
             TimeUnit::Ms => dur.as_millis() as i64,
@@ -202,20 +206,12 @@ impl HLCWidGen {
     }
 
     fn ts_for_tick(&mut self, tick: i64) -> &str {
+        // Saturate instead of unwrap-panicking: a corrupted resume state or
+        // hostile remote clock could otherwise push the tick out of range.
+        let tick = crate::wid::clamp_tick(tick, self.time_unit);
         if tick != self.cached_tick {
             self.cached_tick = tick;
-            self.cached_ts = match self.time_unit {
-                TimeUnit::Sec => {
-                    let dt = Utc.timestamp_opt(tick, 0).unwrap();
-                    dt.format("%Y%m%dT%H%M%S").to_string()
-                }
-                TimeUnit::Ms => {
-                    let sec = tick / 1000;
-                    let ms = (tick % 1000) as u32;
-                    let dt = Utc.timestamp_opt(sec, ms * 1_000_000).unwrap();
-                    dt.format("%Y%m%dT%H%M%S%3f").to_string()
-                }
-            };
+            self.cached_ts = crate::wid::format_tick(tick, self.time_unit);
         }
         &self.cached_ts
     }

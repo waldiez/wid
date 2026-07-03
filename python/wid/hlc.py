@@ -57,6 +57,11 @@ class HLCWidGen:
             W = int(kwargs.pop("w"))  # pyright: ignore[reportConstantRedefinition]
         if "z" in kwargs:
             Z = int(kwargs.pop("z"))  # pyright: ignore[reportConstantRedefinition]
+        if kwargs:
+            # Anything left is a typo (e.g. tine_unit=), not compatibility.
+            raise TypeError(
+                f"unexpected keyword argument(s): {', '.join(sorted(kwargs))}"
+            )
 
         if not node or not all(c.isascii() and (c.isalnum() or c == "_") for c in node):
             raise ValueError(

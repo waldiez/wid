@@ -479,7 +479,7 @@ async function* asyncHlcWidStream(options) {
 }
 
 // typescript/src/manifest.ts
-var MANIFEST_MAGIC = new Uint8Array([83, 89, 78, 77]);
+var MANIFEST_MAGIC = new Uint8Array([87, 73, 68, 77]);
 var MANIFEST_VERSION = 1;
 var MAX_MANIFEST_SIZE = 64 * 1024;
 var HEADER_SIZE = 10;
@@ -546,7 +546,7 @@ var Manifest = class _Manifest {
     return _Manifest.fromJson(utf8Decode(data));
   }
 };
-var SynapseFile = class _SynapseFile {
+var WidFile = class _WidFile {
   constructor(manifest, payload = new Uint8Array(0)) {
     this.manifest = manifest;
     this.payload = payload;
@@ -567,7 +567,7 @@ var SynapseFile = class _SynapseFile {
   }
   static fromBytes(data) {
     if (data.length < HEADER_SIZE) {
-      throw new Error("Data too small for SYNAPSE file");
+      throw new Error("Data too small for WID manifest file");
     }
     const magic = data.subarray(0, 4);
     if (!equalBytes(magic, MANIFEST_MAGIC)) {
@@ -582,7 +582,7 @@ var SynapseFile = class _SynapseFile {
     const manifestBytes = data.subarray(HEADER_SIZE, manifestEnd);
     const manifest = Manifest.fromBytes(manifestBytes);
     const payload = data.subarray(manifestEnd);
-    return new _SynapseFile(manifest, payload);
+    return new _WidFile(manifest, payload);
   }
   async verify() {
     const actualHash = await sha256Hex(this.payload);
@@ -611,6 +611,6 @@ export {
   MANIFEST_VERSION,
   DataType,
   Manifest,
-  SynapseFile
+  WidFile
 };
-//# sourceMappingURL=chunk-I3HMNKLV.mjs.map
+//# sourceMappingURL=chunk-IQV3B3X3.mjs.map

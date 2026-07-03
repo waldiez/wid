@@ -6,7 +6,7 @@
        go-setup go-test go-check go-clean go-lint go-bench go-next \
        sh-test sh-next \
        next id stream do healthcheck start stop status sign verify otp otp-gen otp-verify crypto-demo \
-       conformance bench-matrix docker capabilities-check stream-conformance id-conformance crypto-smoke signed-envelope-check security-matrix-check key-rotation-drill-check soak-check envelope-compat-check release-check \
+       conformance bench-matrix docker capabilities-check stream-conformance id-conformance cli-surface-check crypto-smoke signed-envelope-check security-matrix-check key-rotation-drill-check soak-check envelope-compat-check release-check \
        wotp-parity-check \
        hardening-check
 
@@ -53,6 +53,7 @@ help:
 	@echo "  make hardening-check     # release-check + strict crypto + path/package/SQL spot checks"
 	@echo "  make capabilities-check"
 	@echo "  make stream-conformance"
+	@echo "  make cli-surface-check   # cross-language flag/defaults/error-surface gate"
 	@echo "  make signed-envelope-check"
 	@echo "  make security-matrix-check"
 	@echo "  make key-rotation-drill-check"
@@ -129,6 +130,7 @@ PYTHON ?= $(PYTHONPATH_LOCAL) $(PYTHON_)
 PIP ?= $(PYTHON) -m pip
 
 python-setup:
+	@$(PYTHON) -c "import os,sys; sys.prefix != sys.base_prefix or os.environ.get('CI') or print('warning: installing into the non-venv interpreter ' + sys.prefix + '; consider: python3 -m venv .venv && . .venv/bin/activate', file=sys.stderr)"
 	$(PIP) install -e ".[dev]"
 
 python-test:
@@ -365,6 +367,9 @@ stream-conformance:
 id-conformance:
 	python3 tools/check_id_conformance.py
 
+cli-surface-check:
+	python3 tools/check_cli_surface.py
+
 signed-envelope-check:
 	python3 tools/check_signed_envelope_spec.py
 
@@ -386,7 +391,7 @@ crypto-smoke:
 wotp-parity-check:
 	bash tools/check_wotp_parity.sh
 
-release-check: capabilities-check stream-conformance check
+release-check: capabilities-check stream-conformance cli-surface-check check
 	npm run typecheck
 
 hardening-check:

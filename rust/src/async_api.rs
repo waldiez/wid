@@ -4,7 +4,7 @@ use crate::{HLCWidGen, TimeUnit, WidError, WidGen};
 
 /// Get one WID in async contexts.
 pub async fn async_next_wid(w: usize, z: usize, time_unit: TimeUnit) -> Result<String, WidError> {
-    let mut generator = WidGen::new_with_time_unit(w, z, None, time_unit)?;
+    let mut generator = WidGen::new_with_time_unit(w, z, time_unit)?;
     Ok(generator.next_wid())
 }
 
@@ -26,7 +26,7 @@ pub async fn async_wid_stream(
     z: usize,
     time_unit: TimeUnit,
 ) -> Result<Vec<String>, WidError> {
-    let mut generator = WidGen::new_with_time_unit(w, z, None, time_unit)?;
+    let mut generator = WidGen::new_with_time_unit(w, z, time_unit)?;
     Ok((0..count).map(|_| generator.next_wid()).collect())
 }
 

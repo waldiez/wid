@@ -99,12 +99,16 @@ now_tick() {
         local out sec ns
 
         if [[ -z "$MS_TICK_MODE" ]]; then
+            # Probe for exact digit counts (10 epoch-sec digits + 3 ms / + 9 ns),
+            # not just "all digits": uutils coreutils (default on newer Ubuntu)
+            # expands %3N/%N to SIX microsecond digits, which the loose probe
+            # accepted and then emitted corrupt 16-digit ticks.
             out="$(date +%s%3N 2>/dev/null || true)"
-            if [[ "$out" =~ ^[0-9]+$ ]]; then
+            if [[ "$out" =~ ^[0-9]{13}$ ]]; then
                 MS_TICK_MODE="date_ms"
             else
                 out="$(date +%s%N 2>/dev/null || true)"
-                if [[ "$out" =~ ^[0-9]+$ ]]; then
+                if [[ "$out" =~ ^[0-9]{19}$ ]]; then
                     MS_TICK_MODE="date_ns"
                 else
                     MS_TICK_MODE="sec_counter"
@@ -540,7 +544,7 @@ run_canonical() {
 
     local A="next" W="4" L="3600" D="" I="auto" E="state" Z="6" T="sec" R="auto" M="false" N="0"
     local WID="" KEY="" SIG="" DATA="" OUT="" MODE="" CODE="" DIGITS="6" MAX_AGE_SEC="0" MAX_FUTURE_SEC="5"
-    local L_FROM_PLACEHOLDER="false"
+    local L_EXPLICIT="false"
     local arg key val
 
     for arg in "$@"; do
@@ -556,7 +560,7 @@ run_canonical() {
         W) W="$val" ;;
         L)
             L="$val"
-            [[ "$val" == "#" ]] && L_FROM_PLACEHOLDER="true"
+            [[ "$val" != "#" ]] && L_EXPLICIT="true"
             ;;
         D) D="$val" ;;
         I) I="$val" ;;
@@ -598,9 +602,11 @@ run_canonical() {
     [[ "$MAX_AGE_SEC" == "#" ]] && MAX_AGE_SEC="0"
     [[ "$MAX_FUTURE_SEC" == "#" ]] && MAX_FUTURE_SEC="5"
 
-    # For stream, placeholder L should be interactive-friendly.
-    if [[ "$A" == "stream" && "$L_FROM_PLACEHOLDER" == "true" ]]; then
-        L="1"
+    # Unified stream cadence (all six implementations): only an explicit
+    # L=n sleeps between emissions; unset/placeholder L emits back-to-back.
+    # The 3600 default applies to the Rust-only service loops, not streaming.
+    if [[ "$A" == "stream" && "$L_EXPLICIT" != "true" ]]; then
+        L="0"
     fi
 
     A="$(printf '%s' "$A" | tr '[:upper:]' '[:lower:]')"
@@ -1019,6 +1025,9 @@ run_selftest() {
         fi
     fi
 
+    # One summary line so success is distinguishable from a silent no-op.
+    printf 'selftest: ok (n=%s procs=%s per=%s kind=%s W=%s Z=%s unit=%s)\n' \
+        "$n" "$procs" "$per" "$kind" "$W" "$Z" "$time_unit"
     return 0
 }
 

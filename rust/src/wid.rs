@@ -1,4 +1,4 @@
-//! WID (Waldiez/SYNAPSE Identifier) generation and validation.
+//! WID (Waldiez Identifier) generation and validation.
 //!
 //! Format: `YYYYMMDDTHHMMSS[mmm].<seqW>Z[-<padZ>]`
 //!
@@ -28,8 +28,6 @@ pub enum WidError {
     InvalidW,
     #[error("Invalid Z parameter: must be between 0 and 64")]
     InvalidZ,
-    #[error("Scope is not supported for plain WID")]
-    InvalidScope,
     #[error("Invalid node format")]
     InvalidNode,
     #[error("Invalid remote clock values")]
@@ -60,6 +58,40 @@ impl TimeUnit {
             "sec" => Some(Self::Sec),
             "ms" => Some(Self::Ms),
             _ => None,
+        }
+    }
+}
+
+/// Largest second tick that still formats as a 4-digit year
+/// (9999-12-31T23:59:59Z). Ticks are saturated into [0, max] before
+/// formatting so a corrupted resume state degrades to a pinned timestamp
+/// instead of an out-of-range `timestamp_opt` panic.
+const MAX_SEC_TICK: i64 = 253_402_300_799;
+
+pub(crate) fn clamp_tick(tick: i64, unit: TimeUnit) -> i64 {
+    match unit {
+        TimeUnit::Sec => tick.clamp(0, MAX_SEC_TICK),
+        TimeUnit::Ms => tick.clamp(0, MAX_SEC_TICK * 1000 + 999),
+    }
+}
+
+pub(crate) fn format_tick(tick: i64, unit: TimeUnit) -> String {
+    match unit {
+        TimeUnit::Sec => {
+            let dt = Utc
+                .timestamp_opt(tick, 0)
+                .single()
+                .expect("tick clamped to a chrono-valid range");
+            dt.format("%Y%m%dT%H%M%S").to_string()
+        }
+        TimeUnit::Ms => {
+            let sec = tick / 1000;
+            let ms = (tick % 1000) as u32;
+            let dt = Utc
+                .timestamp_opt(sec, ms * 1_000_000)
+                .single()
+                .expect("tick clamped to a chrono-valid range");
+            dt.format("%Y%m%dT%H%M%S%3f").to_string()
         }
     }
 }
@@ -203,27 +235,18 @@ pub struct WidGen {
 
 impl WidGen {
     /// Create a new WID generator in `sec` mode.
-    pub fn new(w: usize, z: usize, scope: Option<String>) -> Result<Self, WidError> {
-        Self::new_with_time_unit(w, z, scope, TimeUnit::Sec)
+    pub fn new(w: usize, z: usize) -> Result<Self, WidError> {
+        Self::new_with_time_unit(w, z, TimeUnit::Sec)
     }
 
     /// Create a new WID generator with a chosen time unit.
-    pub fn new_with_time_unit(
-        w: usize,
-        z: usize,
-        scope: Option<String>,
-        time_unit: TimeUnit,
-    ) -> Result<Self, WidError> {
+    pub fn new_with_time_unit(w: usize, z: usize, time_unit: TimeUnit) -> Result<Self, WidError> {
         // W > MAX_W would overflow the i64 sequence below (10^19 > i64::MAX).
         if w == 0 || w > MAX_W {
             return Err(WidError::InvalidW);
         }
         if z > MAX_Z {
             return Err(WidError::InvalidZ);
-        }
-
-        if scope.is_some() {
-            return Err(WidError::InvalidScope);
         }
 
         let max_seq = 10_i64.pow(w as u32) - 1;
@@ -242,30 +265,26 @@ impl WidGen {
 
     /// Create a generator with default parameters (W=4, Z=6, `sec`).
     pub fn default_params() -> Self {
-        Self::new(4, 6, None).expect("default parameters should always be valid")
+        Self::new(4, 6).expect("default parameters should always be valid")
     }
 
     fn ts_for_tick(&mut self, tick: i64) -> &str {
+        // Saturate instead of unwrap-panicking: a corrupted resume state
+        // could otherwise push the tick outside the formattable range.
+        let tick = clamp_tick(tick, self.time_unit);
         if tick != self.cached_tick {
             self.cached_tick = tick;
-            self.cached_ts = match self.time_unit {
-                TimeUnit::Sec => {
-                    let dt = Utc.timestamp_opt(tick, 0).unwrap();
-                    dt.format("%Y%m%dT%H%M%S").to_string()
-                }
-                TimeUnit::Ms => {
-                    let sec = tick / 1000;
-                    let ms = (tick % 1000) as u32;
-                    let dt = Utc.timestamp_opt(sec, ms * 1_000_000).unwrap();
-                    dt.format("%Y%m%dT%H%M%S%3f").to_string()
-                }
-            };
+            self.cached_ts = format_tick(tick, self.time_unit);
         }
         &self.cached_ts
     }
 
     fn current_tick(time_unit: TimeUnit) -> i64 {
-        let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        // A pre-1970 system clock yields Err; treat it as tick 0 rather
+        // than panicking (monotonicity handling takes over from there).
+        let dur = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
         match time_unit {
             TimeUnit::Sec => dur.as_secs() as i64,
             TimeUnit::Ms => dur.as_millis() as i64,
@@ -376,20 +395,16 @@ mod tests {
 
     #[test]
     fn test_new_rejects_invalid_params() {
-        assert!(matches!(WidGen::new(0, 0, None), Err(WidError::InvalidW)));
+        assert!(matches!(WidGen::new(0, 0), Err(WidError::InvalidW)));
         // W=19 used to panic (10_i64.pow(19) overflow); it must be a clean error.
-        assert!(matches!(WidGen::new(19, 0, None), Err(WidError::InvalidW)));
-        assert!(matches!(WidGen::new(4, 65, None), Err(WidError::InvalidZ)));
-        assert!(WidGen::new(18, 64, None).is_ok());
-        assert!(matches!(
-            WidGen::new(4, 0, Some("invalid scope".to_string())),
-            Err(WidError::InvalidScope)
-        ));
+        assert!(matches!(WidGen::new(19, 0), Err(WidError::InvalidW)));
+        assert!(matches!(WidGen::new(4, 65), Err(WidError::InvalidZ)));
+        assert!(WidGen::new(18, 64).is_ok());
     }
 
     #[test]
     fn test_generator_monotonic() {
-        let mut generator = WidGen::new(4, 0, None).expect("valid constructor args");
+        let mut generator = WidGen::new(4, 0).expect("valid constructor args");
         let wid1 = generator.next_wid();
         let wid2 = generator.next_wid();
         assert!(wid1 < wid2);
@@ -397,7 +412,7 @@ mod tests {
 
     #[test]
     fn test_iterator_take() {
-        let generator = WidGen::new(4, 6, None).unwrap();
+        let generator = WidGen::new(4, 6).unwrap();
         let v: Vec<String> = generator.take(5).collect();
         assert_eq!(v.len(), 5);
     }
@@ -445,12 +460,12 @@ mod tests {
 
     #[test]
     fn test_state_restore_and_next_n() {
-        let mut g1 = WidGen::new(4, 0, None).unwrap();
+        let mut g1 = WidGen::new(4, 0).unwrap();
         let _ = g1.next_wid();
         let _ = g1.next_wid();
         let (last_tick, last_seq) = g1.state();
 
-        let mut g2 = WidGen::new(4, 0, None).unwrap();
+        let mut g2 = WidGen::new(4, 0).unwrap();
         g2.restore_state(last_tick, last_seq);
         let w = g2.next_wid();
         let p = parse_wid(&w, 4, 0).unwrap();
@@ -461,19 +476,23 @@ mod tests {
     }
 
     #[test]
-    fn test_default_params_and_scope_rejected() {
+    fn test_default_params() {
         let mut g = WidGen::default_params();
         let w = g.next_wid();
         assert!(validate_wid(&w, 4, 6));
-        assert!(matches!(
-            WidGen::new(4, 6, Some("acme".to_string())),
-            Err(WidError::InvalidScope)
-        ));
+    }
+
+    #[test]
+    fn test_extreme_tick_saturates_instead_of_panicking() {
+        let s = format_tick(clamp_tick(i64::MAX, TimeUnit::Sec), TimeUnit::Sec);
+        assert_eq!(s, "99991231T235959");
+        let m = format_tick(clamp_tick(i64::MIN, TimeUnit::Ms), TimeUnit::Ms);
+        assert_eq!(m, "19700101T000000000");
     }
 
     #[test]
     fn test_ms_generator_shape() {
-        let mut g = WidGen::new_with_time_unit(4, 0, None, TimeUnit::Ms).unwrap();
+        let mut g = WidGen::new_with_time_unit(4, 0, TimeUnit::Ms).unwrap();
         let w = g.next_wid();
         assert!(validate_wid_with_unit(&w, 4, 0, TimeUnit::Ms));
     }

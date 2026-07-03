@@ -364,7 +364,7 @@ var HLCWidGen = class {
 };
 
 // typescript/src/manifest.ts
-var MANIFEST_MAGIC = new Uint8Array([83, 89, 78, 77]);
+var MANIFEST_MAGIC = new Uint8Array([87, 73, 68, 77]);
 var MAX_MANIFEST_SIZE = 64 * 1024;
 
 // typescript/src/cli.ts
@@ -588,7 +588,8 @@ function parseCanonical(args) {
     T: "sec",
     R: "auto",
     M: false,
-    N: 0
+    N: 0,
+    LExplicit: false
   };
   for (const arg of args) {
     const [k, vRaw] = arg.split("=", 2);
@@ -603,6 +604,7 @@ function parseCanonical(args) {
         break;
       case "L":
         out.L = parseIntStrict(v, "L");
+        out.LExplicit = vRaw !== "#";
         break;
       case "D":
         out.D = v;
@@ -922,7 +924,7 @@ function runCanonical(args) {
         console.log(gen.next());
       }
       emitted += 1;
-      if (emitted < max && c.L > 0) sleepSeconds(c.L);
+      if (emitted < max && c.LExplicit && c.L > 0) sleepSeconds(c.L);
     }
     return 0;
   }

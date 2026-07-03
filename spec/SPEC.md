@@ -1,11 +1,13 @@
 # WID Specification
 
 **Version**: 1.0.0  
-**Status**: Draft
+**Status**: Release Candidate — frozen for v1.0.0; changes before the first
+tag are editorial only. Release state is tracked in the repository
+`CHANGELOG.md`.
 
 ## Overview
 
-WID (Waldiez/SYNAPSE Identifier) is a time-ordered, human-readable, collision-resistant identifier format designed for distributed IoT and agent systems.
+WID (Waldiez Identifier) is a time-ordered, human-readable, collision-resistant identifier format designed for distributed IoT and agent systems.
 
 Two variants are supported:
 

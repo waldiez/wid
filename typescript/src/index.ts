@@ -1,5 +1,5 @@
 /**
- * synapse-wid: WID (Waldiez/SYNAPSE Identifier) generation and validation.
+ * waldiez-wid: WID (Waldiez Identifier) generation and validation.
  * @packageDocumentation
  */
 
@@ -35,6 +35,6 @@ export {
 } from './hlc';
 
 /** Manifest helpers surfaced to consumers. */
-export { Manifest, SynapseFile, DataType } from './manifest';
+export { Manifest, WidFile, DataType } from './manifest';
 /** Manifest constants re-exported for the public API. */
 export { MANIFEST_MAGIC, MANIFEST_VERSION } from './manifest';

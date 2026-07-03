@@ -29,12 +29,20 @@ type opts struct {
 	timeUnit wid.TimeUnit
 	count    int
 	json     bool
+	// intervalSecs is the canonical L= stream cadence: 0 (the stream
+	// default, and always the flag-mode value) emits back-to-back; an
+	// explicit L=n sleeps n seconds between emissions.
+	intervalSecs int
 }
 
 type canon struct {
-	a            string
-	w            int
-	l            int
+	a string
+	w int
+	l int
+	// lExplicit is true only for a real L=<n> (not omitted, not the L=#
+	// placeholder). A=stream treats an unset L as 0 (no sleep); the 3600
+	// default applies to the Rust-only service loops, not streaming.
+	lExplicit    bool
 	d            string
 	i            string
 	e            string
@@ -265,6 +273,9 @@ func cmdStream(o opts) int {
 		}
 		for i := 0; o.count == 0 || i < o.count; i++ {
 			fmt.Println(g.Next())
+			if o.intervalSecs > 0 && (o.count == 0 || i+1 < o.count) {
+				time.Sleep(time.Duration(o.intervalSecs) * time.Second)
+			}
 		}
 		return 0
 	}
@@ -275,6 +286,9 @@ func cmdStream(o opts) int {
 	}
 	for i := 0; o.count == 0 || i < o.count; i++ {
 		fmt.Println(g.Next())
+		if o.intervalSecs > 0 && (o.count == 0 || i+1 < o.count) {
+			time.Sleep(time.Duration(o.intervalSecs) * time.Second)
+		}
 	}
 	return 0
 }
@@ -467,7 +481,11 @@ func runCanonical(args []string) int {
 	case "next":
 		return cmdNext(opts{kind: "wid", w: c.w, z: c.z, timeUnit: c.t})
 	case "stream":
-		return cmdStream(opts{kind: "wid", w: c.w, z: c.z, timeUnit: c.t, count: c.n})
+		interval := 0
+		if c.lExplicit {
+			interval = c.l
+		}
+		return cmdStream(opts{kind: "wid", w: c.w, z: c.z, timeUnit: c.t, count: c.n, intervalSecs: interval})
 	case "healthcheck":
 		return cmdHealthcheck(opts{kind: "wid", w: c.w, z: c.z, timeUnit: c.t, json: true})
 	default:
@@ -886,6 +904,9 @@ func runCanonicalSQLStream(c canon) int {
 			return 1
 		}
 		fmt.Println(id)
+		if c.lExplicit && c.l > 0 && (c.n == 0 || i+1 < c.n) {
+			time.Sleep(time.Duration(c.l) * time.Second)
+		}
 	}
 	return 0
 }
@@ -916,6 +937,7 @@ func parseCanonical(args []string) (canon, error) {
 				return c, errors.New("invalid L")
 			}
 			c.l = n
+			c.lExplicit = kv[1] != "#"
 		case "D":
 			c.d = v
 		case "I":

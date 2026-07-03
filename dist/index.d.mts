@@ -3,7 +3,7 @@ type TimeUnit = "sec" | "ms";
 declare function parseTimeUnit(input: string): TimeUnit;
 
 /**
- * WID (Waldiez/SYNAPSE Identifier) generation and validation.
+ * WID (Waldiez Identifier) generation and validation.
  * Format: YYYYMMDDTHHMMSS[mmm].<seqW>Z[-<padZ>]
  */
 
@@ -172,9 +172,9 @@ declare function asyncHlcWidStream(options: HLCWidGenOptions & {
 }): AsyncGenerator<string>;
 
 /**
- * SYNAPSE Manifest-Based Binary Files.
+ * WID manifest-based binary files.
  */
-/** Fixed header bytes used by SYNAPSE files. */
+/** Fixed header bytes used by WID manifest files. */
 declare const MANIFEST_MAGIC: Uint8Array<ArrayBuffer>;
 /** Current manifest version published in all files. */
 declare const MANIFEST_VERSION = 1;
@@ -211,13 +211,13 @@ declare class Manifest {
     static fromBytes(data: Uint8Array): Manifest;
 }
 /** Composite object combining a manifest with its binary payload. */
-declare class SynapseFile {
+declare class WidFile {
     manifest: Manifest;
     payload: Uint8Array;
     constructor(manifest: Manifest, payload?: Uint8Array);
     toBytes(): Promise<Uint8Array>;
-    static fromBytes(data: Uint8Array): SynapseFile;
+    static fromBytes(data: Uint8Array): WidFile;
     verify(): Promise<boolean>;
 }
 
-export { type AsyncWidStreamOptions, DataType, type HLCState, HLCWidGen, type HLCWidGenOptions, MANIFEST_MAGIC, MANIFEST_VERSION, MAX_W, MAX_Z, Manifest, MemoryWidStateStore, type ParsedHlcWid, type ParsedWid, SynapseFile, type TimeUnit, WidGen, type WidGenOptions, type WidStateSnapshot, type WidStateStore, asyncHlcWidStream, asyncNextHlcWid, asyncNextWid, asyncWidStream, createBrowserWidStateStore, createNodeSqliteWidStateStore, parseHlcWid, parseTimeUnit, parseWid, validateHlcWid, validateWid };
+export { type AsyncWidStreamOptions, DataType, type HLCState, HLCWidGen, type HLCWidGenOptions, MANIFEST_MAGIC, MANIFEST_VERSION, MAX_W, MAX_Z, Manifest, MemoryWidStateStore, type ParsedHlcWid, type ParsedWid, type TimeUnit, WidFile, WidGen, type WidGenOptions, type WidStateSnapshot, type WidStateStore, asyncHlcWidStream, asyncNextHlcWid, asyncNextWid, asyncWidStream, createBrowserWidStateStore, createNodeSqliteWidStateStore, parseHlcWid, parseTimeUnit, parseWid, validateHlcWid, validateWid };

@@ -7,7 +7,7 @@ import {
   MAX_Z,
   Manifest,
   MemoryWidStateStore,
-  SynapseFile,
+  WidFile,
   WidGen,
   asyncHlcWidStream,
   asyncNextHlcWid,
@@ -20,7 +20,7 @@ import {
   parseWid,
   validateHlcWid,
   validateWid
-} from "./chunk-I3HMNKLV.mjs";
+} from "./chunk-IQV3B3X3.mjs";
 export {
   DataType,
   HLCWidGen,
@@ -30,7 +30,7 @@ export {
   MAX_Z,
   Manifest,
   MemoryWidStateStore,
-  SynapseFile,
+  WidFile,
   WidGen,
   asyncHlcWidStream,
   asyncNextHlcWid,

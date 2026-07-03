@@ -8,6 +8,19 @@ description = "WID — time-ordered, human-readable, collision-resistant identif
 repository = "https://github.com/waldiez/wid"
 homepage = "https://waldiez.github.io/wid"
 readme = "README.md"
+keywords = ["identifier", "id", "time-ordered", "hlc", "distributed"]
+categories = ["data-structures", "date-and-time", "command-line-utilities"]
+# The repo is polyglot; without this allowlist `cargo publish` would ship the
+# C/Go/Python/TS/sh trees, committed JS dist/, and docs into the crate tarball.
+include = [
+    "/Cargo.toml",
+    "/LICENSE",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/rust/src/**",
+    "/spec/SPEC.md",
+    "/spec/CRYPTO_SPEC.md",
+]
 
 [lib]
 name = "wid"
@@ -32,6 +45,9 @@ hmac = "0.12.1"
 base64 = "0.22.1"
 subtle = "2.6.1"
 rusqlite = { version = "0.37", features = ["bundled"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 nanoid = "0.4"

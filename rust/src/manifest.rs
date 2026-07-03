@@ -1,4 +1,4 @@
-//! SYNAPSE Manifest-Based Binary Files.
+//! WID manifest-based binary files.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -7,8 +7,8 @@ use std::fs;
 use std::path::Path;
 use thiserror::Error;
 
-/// Fixed magic bytes that prefix every SYNAPSE manifest file.
-pub const MANIFEST_MAGIC: &[u8; 4] = b"SYNM";
+/// Fixed magic bytes that prefix every WID manifest file.
+pub const MANIFEST_MAGIC: &[u8; 4] = b"WIDM";
 /// Current manifest version baked into every file.
 pub const MANIFEST_VERSION: u16 = 1;
 /// Maximum payload bytes that a manifest may declare.
@@ -24,7 +24,7 @@ pub enum ManifestError {
     UnsupportedVersion(u16),
     #[error("Manifest too large: {0} bytes")]
     ManifestTooLarge(usize),
-    #[error("Data too small for SYNAPSE file")]
+    #[error("Data too small for WID manifest file")]
     DataTooSmall,
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -90,13 +90,13 @@ impl Manifest {
     }
 }
 
-/// Combined manifest payload used for SYNAPSE file blobs.
-pub struct SynapseFile {
+/// Combined manifest payload used for WID manifest file blobs.
+pub struct WidFile {
     pub manifest: Manifest,
     pub payload: Vec<u8>,
 }
 
-impl SynapseFile {
+impl WidFile {
     pub fn new(manifest: Manifest, payload: Vec<u8>) -> Self {
         Self { manifest, payload }
     }
@@ -217,19 +217,19 @@ mod tests {
 
     #[test]
     fn test_roundtrip() {
-        let mut sf = SynapseFile::new(Manifest::new("test-id"), b"Hello!".to_vec());
+        let mut sf = WidFile::new(Manifest::new("test-id"), b"Hello!".to_vec());
         let bytes = sf.to_bytes().unwrap();
-        let loaded = SynapseFile::from_bytes(&bytes).unwrap();
+        let loaded = WidFile::from_bytes(&bytes).unwrap();
         assert_eq!(loaded.manifest.id, "test-id");
         assert!(loaded.verify());
     }
 
     #[test]
     fn test_unsupported_version_rejected() {
-        let mut sf = SynapseFile::new(Manifest::new("test-id"), b"Hello!".to_vec());
+        let mut sf = WidFile::new(Manifest::new("test-id"), b"Hello!".to_vec());
         let mut bytes = sf.to_bytes().unwrap();
         bytes[4..6].copy_from_slice(&2u16.to_be_bytes());
-        let err = SynapseFile::from_bytes(&bytes).map(|_| ()).unwrap_err();
+        let err = WidFile::from_bytes(&bytes).map(|_| ()).unwrap_err();
         match err {
             ManifestError::UnsupportedVersion(2) => {}
             other => panic!("expected UnsupportedVersion(2), got {other:?}"),
@@ -253,13 +253,13 @@ mod tests {
     #[test]
     fn test_from_bytes_rejects_too_small_and_bad_magic() {
         assert!(matches!(
-            SynapseFile::from_bytes(b"123"),
+            WidFile::from_bytes(b"123"),
             Err(ManifestError::DataTooSmall)
         ));
 
         let bad = vec![b'B', b'A', b'D', b'!', 0, 1, 0, 0, 0, 0];
         assert!(matches!(
-            SynapseFile::from_bytes(&bad),
+            WidFile::from_bytes(&bad),
             Err(ManifestError::InvalidMagic)
         ));
     }
@@ -271,7 +271,7 @@ mod tests {
         buf.extend_from_slice(&MANIFEST_VERSION.to_be_bytes());
         buf.extend_from_slice(&((MAX_MANIFEST_SIZE as u32) + 1).to_be_bytes());
         assert!(matches!(
-            SynapseFile::from_bytes(&buf),
+            WidFile::from_bytes(&buf),
             Err(ManifestError::ManifestTooLarge(_))
         ));
     }
@@ -284,7 +284,7 @@ mod tests {
         buf.extend_from_slice(&10u32.to_be_bytes()); // claim 10-byte manifest
         buf.extend_from_slice(b"{}"); // but only 2 bytes available
         assert!(matches!(
-            SynapseFile::from_bytes(&buf),
+            WidFile::from_bytes(&buf),
             Err(ManifestError::DataTooSmall)
         ));
     }
@@ -296,7 +296,7 @@ mod tests {
             "huge".to_string(),
             serde_json::Value::String("x".repeat(MAX_MANIFEST_SIZE + 1024)),
         );
-        let mut sf = SynapseFile::new(m, b"payload".to_vec());
+        let mut sf = WidFile::new(m, b"payload".to_vec());
         assert!(matches!(
             sf.to_bytes(),
             Err(ManifestError::ManifestTooLarge(_))
@@ -306,10 +306,10 @@ mod tests {
     #[test]
     fn test_save_load_embed() {
         let path = tmp_path("embed.syn");
-        let mut sf = SynapseFile::new(Manifest::new("embed-id"), b"embed".to_vec());
+        let mut sf = WidFile::new(Manifest::new("embed-id"), b"embed".to_vec());
         sf.save(&path, true).unwrap();
 
-        let loaded = SynapseFile::load(&path).unwrap();
+        let loaded = WidFile::load(&path).unwrap();
         assert_eq!(loaded.manifest.id, "embed-id");
         assert_eq!(loaded.payload, b"embed");
         assert!(loaded.verify());
@@ -320,11 +320,11 @@ mod tests {
     #[test]
     fn test_save_load_sidecar_manifest() {
         let path = tmp_path("sidecar.bin");
-        let mut sf = SynapseFile::new(Manifest::new("sidecar-id"), b"data".to_vec());
+        let mut sf = WidFile::new(Manifest::new("sidecar-id"), b"data".to_vec());
         sf.manifest.node = "node01".to_string();
         sf.save(&path, false).unwrap();
 
-        let loaded = SynapseFile::load(&path).unwrap();
+        let loaded = WidFile::load(&path).unwrap();
         assert_eq!(loaded.manifest.id, "sidecar-id");
         assert_eq!(loaded.manifest.node, "node01");
         assert_eq!(loaded.payload, b"data");
@@ -340,7 +340,7 @@ mod tests {
         let path = tmp_path("plain.txt");
         fs::write(&path, b"plain-payload").unwrap();
 
-        let loaded = SynapseFile::load(&path).unwrap();
+        let loaded = WidFile::load(&path).unwrap();
         assert_eq!(loaded.payload, b"plain-payload");
         assert!(loaded.manifest.id.ends_with("_plain"));
         assert_eq!(loaded.manifest.data_size, b"plain-payload".len());
@@ -351,9 +351,9 @@ mod tests {
 
     #[test]
     fn test_verify_false_on_payload_tamper() {
-        let mut sf = SynapseFile::new(Manifest::new("x"), b"orig".to_vec());
+        let mut sf = WidFile::new(Manifest::new("x"), b"orig".to_vec());
         let bytes = sf.to_bytes().unwrap();
-        let mut loaded = SynapseFile::from_bytes(&bytes).unwrap();
+        let mut loaded = WidFile::from_bytes(&bytes).unwrap();
         loaded.payload = b"tampered".to_vec();
         assert!(!loaded.verify());
     }

@@ -7,7 +7,7 @@ import {
   parseWid,
   validateHlcWid,
   validateWid
-} from "./chunk-I3HMNKLV.mjs";
+} from "./chunk-IQV3B3X3.mjs";
 
 // typescript/src/cli.ts
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -233,7 +233,8 @@ function parseCanonical(args) {
     T: "sec",
     R: "auto",
     M: false,
-    N: 0
+    N: 0,
+    LExplicit: false
   };
   for (const arg of args) {
     const [k, vRaw] = arg.split("=", 2);
@@ -248,6 +249,7 @@ function parseCanonical(args) {
         break;
       case "L":
         out.L = parseIntStrict(v, "L");
+        out.LExplicit = vRaw !== "#";
         break;
       case "D":
         out.D = v;
@@ -567,7 +569,7 @@ function runCanonical(args) {
         console.log(gen.next());
       }
       emitted += 1;
-      if (emitted < max && c.L > 0) sleepSeconds(c.L);
+      if (emitted < max && c.LExplicit && c.L > 0) sleepSeconds(c.L);
     }
     return 0;
   }

@@ -41,6 +41,12 @@ interface Canon {
   R: string;
   M: boolean;
   N: number;
+  /**
+   * True only for a real L=<n> (not omitted, not the L=# placeholder).
+   * A=stream treats an unset L as 0 (no sleep); the 3600 default applies
+   * to the Rust-only service loops, not streaming.
+   */
+  LExplicit: boolean;
   WID?: string;
   KEY?: string;
   SIG?: string;
@@ -303,6 +309,7 @@ function parseCanonical(args: string[]): Canon {
     R: "auto",
     M: false,
     N: 0,
+    LExplicit: false,
   };
 
   for (const arg of args) {
@@ -319,6 +326,7 @@ function parseCanonical(args: string[]): Canon {
         break;
       case "L":
         out.L = parseIntStrict(v, "L");
+        out.LExplicit = vRaw !== "#";
         break;
       case "D":
         out.D = v;
@@ -697,7 +705,9 @@ function runCanonical(args: string[]): number {
         console.log(gen!.next());
       }
       emitted += 1;
-      if (emitted < max && c.L > 0) sleepSeconds(c.L);
+      // Unified stream cadence (all six implementations): only an
+      // explicit L=n sleeps; unset/placeholder L emits back-to-back.
+      if (emitted < max && c.LExplicit && c.L > 0) sleepSeconds(c.L);
     }
     return 0;
   }

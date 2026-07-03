@@ -1,4 +1,4 @@
-//! synapse-wid: WID (Waldiez/SYNAPSE Identifier) generation and manifest utilities.
+//! waldiez-wid: WID (Waldiez Identifier) generation and manifest utilities.
 //!
 //! WID is a time-ordered, human-readable, collision-resistant identifier format
 //! designed for distributed IoT and agent systems.
@@ -15,7 +15,7 @@
 //! ```
 //! use wid::WidGen;
 //!
-//! let mut wid_gen = WidGen::new(4, 6, None).expect("valid default generator params");
+//! let mut wid_gen = WidGen::new(4, 6).expect("valid default generator params");
 //! let wid = wid_gen.next_wid(); // or .next() to get Optional<String>
 //! println!("{}", wid);  // e.g., "20260212T091530.0000Z-a3f91c"   // use {:?} if used .next()
 //! ```
@@ -30,7 +30,7 @@ pub use hlc::{
     HLCState, HLCWidGen, ParsedHlcWid, parse_hlc_wid, parse_hlc_wid_with_unit, validate_hlc_wid,
     validate_hlc_wid_with_unit,
 };
-pub use manifest::{DataType, MANIFEST_MAGIC, MANIFEST_VERSION, Manifest, SynapseFile};
+pub use manifest::{DataType, MANIFEST_MAGIC, MANIFEST_VERSION, Manifest, WidFile};
 pub use wid::{
     MAX_W, MAX_Z, ParsedWid, TimeUnit, WidError, WidGen, parse_wid, parse_wid_with_unit,
     validate_wid, validate_wid_with_unit,

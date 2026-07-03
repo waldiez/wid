@@ -55,6 +55,10 @@ struct CanonOpts {
     a: String,
     w: usize,
     l: usize,
+    /// True only when the user passed a real `L=<n>` (not omitted, not the
+    /// `L=#` placeholder). `A=stream` treats an unset L as 0 (no sleep);
+    /// the 3600 default applies to the service loops only.
+    l_explicit: bool,
     d: String,
     i: String,
     e: String,
@@ -102,55 +106,26 @@ fn parse_time_unit(s: &str) -> Result<TimeUnit, String> {
     TimeUnit::parse(s).ok_or_else(|| "time-unit must be sec or ms".to_string())
 }
 
-fn parse_validate_flags(args: &[String]) -> Result<ValidateOpts, String> {
-    let mut opts = ValidateOpts::default();
-    let mut i = 0;
-
-    while i < args.len() {
-        match args[i].as_str() {
-            "--kind" => {
-                if i + 1 >= args.len() {
-                    return Err("missing value for --kind".to_string());
-                }
-                opts.kind = args[i + 1].clone();
-                i += 2;
-            }
-            "--W" => {
-                if i + 1 >= args.len() {
-                    return Err("missing value for --W".to_string());
-                }
-                opts.w = args[i + 1]
-                    .parse::<usize>()
-                    .map_err(|_| "invalid integer for --W".to_string())?;
-                i += 2;
-            }
-            "--Z" => {
-                if i + 1 >= args.len() {
-                    return Err("missing value for --Z".to_string());
-                }
-                opts.z = args[i + 1]
-                    .parse::<usize>()
-                    .map_err(|_| "invalid integer for --Z".to_string())?;
-                i += 2;
-            }
-            "--time-unit" | "--T" => {
-                if i + 1 >= args.len() {
-                    return Err("missing value for --time-unit".to_string());
-                }
-                opts.time_unit = parse_time_unit(&args[i + 1])?;
-                i += 2;
-            }
-            _ => return Err(format!("unknown flag: {}", args[i])),
-        }
-    }
-
-    match opts.kind.as_str() {
-        "wid" | "hlc" => Ok(opts),
-        _ => Err("--kind must be one of: wid, hlc".to_string()),
-    }
+fn flag_value<'a>(args: &'a [String], i: usize, name: &str) -> Result<&'a str, String> {
+    args.get(i + 1)
+        .map(String::as_str)
+        .ok_or_else(|| format!("missing value for {name}"))
 }
 
-fn parse_emit_flags(args: &[String], allow_count: bool) -> Result<EmitOpts, String> {
+fn flag_usize(args: &[String], i: usize, name: &str) -> Result<usize, String> {
+    flag_value(args, i, name)?
+        .parse::<usize>()
+        .map_err(|_| format!("invalid integer for {name}"))
+}
+
+/// Single parser for the `--flag` surface. `validate`/`parse` reuse it with
+/// `--node`/`--count` disallowed; the accepted flags, defaults, and error
+/// strings stay identical across every subcommand by construction.
+fn parse_surface_flags(
+    args: &[String],
+    allow_node: bool,
+    allow_count: bool,
+) -> Result<EmitOpts, String> {
     let mut opts = EmitOpts {
         kind: "wid".to_string(),
         node: default_node(),
@@ -163,56 +138,17 @@ fn parse_emit_flags(args: &[String], allow_count: bool) -> Result<EmitOpts, Stri
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--kind" => {
-                if i + 1 >= args.len() {
-                    return Err("missing value for --kind".to_string());
-                }
-                opts.kind = args[i + 1].clone();
-                i += 2;
-            }
-            "--node" => {
-                if i + 1 >= args.len() {
-                    return Err("missing value for --node".to_string());
-                }
-                opts.node = args[i + 1].clone();
-                i += 2;
-            }
-            "--W" => {
-                if i + 1 >= args.len() {
-                    return Err("missing value for --W".to_string());
-                }
-                opts.w = args[i + 1]
-                    .parse::<usize>()
-                    .map_err(|_| "invalid integer for --W".to_string())?;
-                i += 2;
-            }
-            "--Z" => {
-                if i + 1 >= args.len() {
-                    return Err("missing value for --Z".to_string());
-                }
-                opts.z = args[i + 1]
-                    .parse::<usize>()
-                    .map_err(|_| "invalid integer for --Z".to_string())?;
-                i += 2;
-            }
+            "--kind" => opts.kind = flag_value(args, i, "--kind")?.to_string(),
+            "--node" if allow_node => opts.node = flag_value(args, i, "--node")?.to_string(),
+            "--W" => opts.w = flag_usize(args, i, "--W")?,
+            "--Z" => opts.z = flag_usize(args, i, "--Z")?,
             "--time-unit" | "--T" => {
-                if i + 1 >= args.len() {
-                    return Err("missing value for --time-unit".to_string());
-                }
-                opts.time_unit = parse_time_unit(&args[i + 1])?;
-                i += 2;
+                opts.time_unit = parse_time_unit(flag_value(args, i, "--time-unit")?)?;
             }
-            "--count" if allow_count => {
-                if i + 1 >= args.len() {
-                    return Err("missing value for --count".to_string());
-                }
-                opts.count = args[i + 1]
-                    .parse::<usize>()
-                    .map_err(|_| "invalid integer for --count".to_string())?;
-                i += 2;
-            }
+            "--count" if allow_count => opts.count = flag_usize(args, i, "--count")?,
             _ => return Err(format!("unknown flag: {}", args[i])),
         }
+        i += 2;
     }
 
     match opts.kind.as_str() {
@@ -221,11 +157,25 @@ fn parse_emit_flags(args: &[String], allow_count: bool) -> Result<EmitOpts, Stri
     }
 }
 
+fn parse_validate_flags(args: &[String]) -> Result<ValidateOpts, String> {
+    let opts = parse_surface_flags(args, false, false)?;
+    Ok(ValidateOpts {
+        kind: opts.kind,
+        w: opts.w,
+        z: opts.z,
+        time_unit: opts.time_unit,
+    })
+}
+
+fn parse_emit_flags(args: &[String], allow_count: bool) -> Result<EmitOpts, String> {
+    parse_surface_flags(args, true, allow_count)
+}
+
 fn run_next(args: &[String]) -> Result<(), String> {
     let opts = parse_emit_flags(args, false)?;
 
     if opts.kind == "wid" {
-        let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, None, opts.time_unit)
+        let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, opts.time_unit)
             .map_err(|e| e.to_string())?;
         println!("{}", generator.next_wid());
     } else {
@@ -238,20 +188,31 @@ fn run_next(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn run_stream(args: &[String]) -> Result<(), String> {
+/// Emit the stream. `interval_secs` is the canonical `L=` cadence: 0 (the
+/// stream default, and always the flag-mode value) means emit back-to-back;
+/// an explicit `L=n` sleeps n seconds between emissions in every
+/// implementation.
+fn run_stream(args: &[String], interval_secs: u64) -> Result<(), String> {
     let opts = parse_emit_flags(args, true)?;
     let mut emitted = 0usize;
 
+    let emit_one = |line: String| -> Result<(), String> {
+        println!("{line}");
+        io::stdout().flush().map_err(|e| e.to_string())
+    };
+
     if opts.kind == "wid" {
-        let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, None, opts.time_unit)
+        let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, opts.time_unit)
             .map_err(|e| e.to_string())?;
         loop {
             if opts.count > 0 && emitted >= opts.count {
                 break;
             }
-            println!("{}", generator.next_wid());
-            io::stdout().flush().map_err(|e| e.to_string())?;
+            emit_one(generator.next_wid())?;
             emitted += 1;
+            if interval_secs > 0 && (opts.count == 0 || emitted < opts.count) {
+                thread::sleep(Duration::from_secs(interval_secs));
+            }
         }
     } else {
         let mut generator =
@@ -261,9 +222,11 @@ fn run_stream(args: &[String]) -> Result<(), String> {
             if opts.count > 0 && emitted >= opts.count {
                 break;
             }
-            println!("{}", generator.next_hlc_wid());
-            io::stdout().flush().map_err(|e| e.to_string())?;
+            emit_one(generator.next_hlc_wid())?;
             emitted += 1;
+            if interval_secs > 0 && (opts.count == 0 || emitted < opts.count) {
+                thread::sleep(Duration::from_secs(interval_secs));
+            }
         }
     }
 
@@ -284,7 +247,7 @@ fn run_healthcheck(args: &[String]) -> Result<(), String> {
     let opts = parse_emit_flags(&tail, false)?;
 
     if opts.kind == "wid" {
-        let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, None, opts.time_unit)
+        let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, opts.time_unit)
             .map_err(|e| e.to_string())?;
         let sample = generator.next_wid();
         let ok = validate_wid_with_unit(&sample, opts.w, opts.z, opts.time_unit);
@@ -450,7 +413,7 @@ fn run_bench(args: &[String]) -> Result<(), String> {
     let start = Instant::now();
 
     if opts.kind == "wid" {
-        let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, None, opts.time_unit)
+        let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, opts.time_unit)
             .map_err(|e| e.to_string())?;
         for _ in 0..opts.count {
             let _ = generator.next_wid();
@@ -513,7 +476,31 @@ fn resolve_data_dir(root: &Path, d: &str) -> PathBuf {
     }
 }
 
+/// Runtime dir for the daemon's PID/log files. Anchored to a per-user
+/// location so `start` and `stop` manage the same daemon regardless of the
+/// working directory they run from: `$WID_RUNTIME_DIR` >
+/// `$XDG_STATE_HOME/wid/rust` > `$HOME/.local/state/wid/rust`, falling back
+/// to `<cwd>/.local/wid/rust` only when no HOME is available.
 fn runtime_dir(root: &Path) -> PathBuf {
+    if let Ok(d) = env::var("WID_RUNTIME_DIR")
+        && !d.is_empty()
+    {
+        return PathBuf::from(d);
+    }
+    if let Ok(d) = env::var("XDG_STATE_HOME")
+        && !d.is_empty()
+    {
+        return PathBuf::from(d).join("wid").join("rust");
+    }
+    if let Ok(h) = env::var("HOME")
+        && !h.is_empty()
+    {
+        return PathBuf::from(h)
+            .join(".local")
+            .join("state")
+            .join("wid")
+            .join("rust");
+    }
     root.join(".local").join("wid").join("rust")
 }
 
@@ -547,41 +534,54 @@ fn parse_pid(path: &Path) -> Option<i32> {
     content.trim().parse::<i32>().ok()
 }
 
+#[cfg(unix)]
 fn pid_alive(pid: i32) -> bool {
     if pid <= 0 {
         return false;
     }
-    Command::new("kill")
-        .arg("-0")
-        .arg(pid.to_string())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    // Signal 0 probes existence; EPERM means it exists but isn't ours.
+    let rc = unsafe { libc::kill(pid, 0) };
+    rc == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
+#[cfg(not(unix))]
+fn pid_alive(_pid: i32) -> bool {
+    false
+}
+
+/// Refuse to signal a PID whose /proc cmdline no longer looks like our
+/// daemon — after a crash or reboot the pid file can point at a recycled
+/// PID belonging to an unrelated process. Platforms without /proc cannot
+/// verify and trust the pid file as before.
+fn pid_is_wid_daemon(pid: i32) -> bool {
+    match fs::read(format!("/proc/{pid}/cmdline")) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).contains("__daemon"),
+        Err(_) => true,
+    }
+}
+
+#[cfg(unix)]
 fn kill_pid(pid: i32) -> bool {
     if pid <= 0 {
         return false;
     }
-    if Command::new("kill")
-        .arg(pid.to_string())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-    {
-        return true;
+    if unsafe { libc::kill(pid, libc::SIGTERM) } != 0 {
+        return false;
     }
-    Command::new("kill")
-        .args(["-9", &pid.to_string()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    // Give it up to ~2s to exit cleanly before escalating.
+    for _ in 0..40 {
+        if !pid_alive(pid) {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    let rc = unsafe { libc::kill(pid, libc::SIGKILL) };
+    rc == 0 || !pid_alive(pid)
+}
+
+#[cfg(not(unix))]
+fn kill_pid(_pid: i32) -> bool {
+    false
 }
 
 fn run_service_action(c: &CanonOpts, action: &str) -> Result<(), String> {
@@ -606,7 +606,7 @@ fn run_service_action(c: &CanonOpts, action: &str) -> Result<(), String> {
         }
     }
 
-    let mut wid_gen = WidGen::new_with_time_unit(c.w, c.z, None, c.t).map_err(|e| e.to_string())?;
+    let mut wid_gen = WidGen::new_with_time_unit(c.w, c.z, c.t).map_err(|e| e.to_string())?;
     let iterations = if c.n == 0 { usize::MAX } else { c.n };
     let mut i = 0usize;
 
@@ -707,6 +707,7 @@ fn run_status() -> Result<(), String> {
     let log_file = runtime_log_file(&root);
     if let Some(pid) = parse_pid(&pid_file)
         && pid_alive(pid)
+        && pid_is_wid_daemon(pid)
     {
         println!(
             "wid-rust status=running pid={} log={}",
@@ -747,6 +748,11 @@ fn run_stop() -> Result<(), String> {
         println!("wid-rust stop: not running");
         return Ok(());
     }
+    if !pid_is_wid_daemon(pid) {
+        let _ = fs::remove_file(&pid_file);
+        println!("wid-rust stop: stale pid file (pid={pid} is another process); removed");
+        return Ok(());
+    }
     if kill_pid(pid) {
         let _ = fs::remove_file(&pid_file);
         println!("wid-rust stop: stopped pid={pid}");
@@ -779,16 +785,40 @@ fn run_start(c: &CanonOpts) -> Result<(), String> {
     let pid_file = runtime_pid_file(&root);
     let log_file = runtime_log_file(&root);
 
-    if let Some(pid) = parse_pid(&pid_file)
-        && pid_alive(pid)
-    {
-        println!(
-            "wid-rust start: already-running pid={} log={}",
-            pid,
-            log_file.display()
-        );
-        return Ok(());
+    // Claim the pid file atomically (create_new) so two concurrent starts
+    // cannot both pass a check-then-write race. A stale file left by a dead
+    // daemon is removed and the claim retried once.
+    let mut claimed = None;
+    for _ in 0..2 {
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&pid_file)
+        {
+            Ok(f) => {
+                claimed = Some(f);
+                break;
+            }
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                if let Some(pid) = parse_pid(&pid_file)
+                    && pid_alive(pid)
+                    && pid_is_wid_daemon(pid)
+                {
+                    println!(
+                        "wid-rust start: already-running pid={} log={}",
+                        pid,
+                        log_file.display()
+                    );
+                    return Ok(());
+                }
+                let _ = fs::remove_file(&pid_file);
+            }
+            Err(e) => return Err(format!("failed to create pid file: {e}")),
+        }
     }
+    let Some(mut pid_handle) = claimed else {
+        return Err("failed to claim pid file (concurrent start?)".to_string());
+    };
 
     let log = OpenOptions::new()
         .create(true)
@@ -800,16 +830,37 @@ fn run_start(c: &CanonOpts) -> Result<(), String> {
         .map_err(|e| format!("failed to clone log fd: {e}"))?;
 
     let exe = env::current_exe().map_err(|e| format!("failed to resolve current exe: {e}"))?;
-    let child = Command::new(exe)
-        .arg("__daemon")
+    let mut cmd = Command::new(exe);
+    cmd.arg("__daemon")
         .args(daemon_kv_args(c, "run"))
+        .stdin(Stdio::null())
         .stdout(Stdio::from(log))
-        .stderr(Stdio::from(log_err))
-        .spawn()
-        .map_err(|e| format!("failed to start daemon: {e}"))?;
+        .stderr(Stdio::from(log_err));
+    // Detach into a new session so the daemon survives the terminal/session
+    // that launched it (it would otherwise stay in the launching process
+    // group and die with it).
+    #[cfg(unix)]
+    unsafe {
+        use std::os::unix::process::CommandExt;
+        cmd.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            let _ = fs::remove_file(&pid_file);
+            return Err(format!("failed to start daemon: {e}"));
+        }
+    };
 
-    fs::write(&pid_file, child.id().to_string())
-        .map_err(|e| format!("failed to write pid file: {e}"))?;
+    if let Err(e) = pid_handle.write_all(child.id().to_string().as_bytes()) {
+        let _ = fs::remove_file(&pid_file);
+        return Err(format!("failed to write pid file: {e}"));
+    }
     println!(
         "wid-rust start: started pid={} log={}",
         child.id(),
@@ -843,6 +894,7 @@ fn parse_canonical(args: &[String]) -> Result<CanonOpts, String> {
         a: "next".to_string(),
         w: 4,
         l: 3600,
+        l_explicit: false,
         d: String::new(),
         i: "auto".to_string(),
         e: "state".to_string(),
@@ -891,7 +943,10 @@ fn parse_canonical(args: &[String]) -> Result<CanonOpts, String> {
         match k {
             "A" => o.a = v.to_lowercase(),
             "W" => o.w = v.parse().map_err(|_| "invalid W".to_string())?,
-            "L" => o.l = v.parse().map_err(|_| "invalid L".to_string())?,
+            "L" => {
+                o.l = v.parse().map_err(|_| "invalid L".to_string())?;
+                o.l_explicit = v0 != "#";
+            }
             "D" => o.d = v.to_string(),
             "I" => o.i = v.to_string(),
             "E" => o.e = v.to_string(),
@@ -991,7 +1046,7 @@ fn run_canonical(args: &[String]) -> Result<(), String> {
                 "stream" => {
                     base.push("--count".to_string());
                     base.push(c.n.to_string());
-                    run_stream(&base)
+                    run_stream(&base, if c.l_explicit { c.l as u64 } else { 0 })
                 }
                 "healthcheck" => {
                     base.push("--json".to_string());
@@ -1163,7 +1218,7 @@ fn run_wotp(c: &CanonOpts) -> Result<(), String> {
     }
     let secret = resolve_wotp_secret(&c.key)?;
     let wid = if c.wid.trim().is_empty() && mode == "gen" {
-        WidGen::new_with_time_unit(c.w, c.z, None, c.t)
+        WidGen::new_with_time_unit(c.w, c.z, c.t)
             .map_err(|e| e.to_string())?
             .next_wid()
     } else {
@@ -1251,7 +1306,7 @@ fn sql_allocate_next_wid(
         .unwrap_or((0, -1));
 
     let mut generator =
-        WidGen::new_with_time_unit(c.w, c.z, None, c.t).map_err(|e| e.to_string())?;
+        WidGen::new_with_time_unit(c.w, c.z, c.t).map_err(|e| e.to_string())?;
     generator.restore_state(last_tick, last_seq);
     let id = generator.next_wid();
     let (next_tick, next_seq) = generator.state();
@@ -1292,6 +1347,9 @@ fn run_canonical_sql_stream(c: &CanonOpts) -> Result<(), String> {
         println!("{id}");
         io::stdout().flush().map_err(|e| e.to_string())?;
         emitted += 1;
+        if c.l_explicit && c.l > 0 && (c.n == 0 || emitted < c.n) {
+            thread::sleep(Duration::from_secs(c.l as u64));
+        }
     }
     Ok(())
 }
@@ -1424,12 +1482,12 @@ fn main() {
 
     let res = match cmd {
         "next" => run_next(rest),
-        "stream" => run_stream(rest),
+        "stream" => run_stream(rest, 0),
         "healthcheck" => run_healthcheck(rest),
         "validate" => run_validate(rest),
         "parse" => run_parse(rest),
         "bench" => run_bench(rest),
-        "selftest" => match WidGen::new_with_time_unit(4, 0, None, TimeUnit::Sec) {
+        "selftest" => match WidGen::new_with_time_unit(4, 0, TimeUnit::Sec) {
             Ok(mut g) => {
                 let a = g.next_wid();
                 let b = g.next_wid();

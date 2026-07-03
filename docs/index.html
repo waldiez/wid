@@ -371,7 +371,7 @@ footer a:hover{text-decoration:underline}
 <div class="hero">
 <div class="hero-inner">
 <div class="hero-text">
-  <p class="hero-eyebrow">v1.0.0 &nbsp;·&nbsp; MIT License &nbsp;·&nbsp; 6 implementations</p>
+  <p class="hero-eyebrow">v1.0.0 (pre-release, unpublished) &nbsp;·&nbsp; MIT License &nbsp;·&nbsp; 6 implementations</p>
   <h1>WID</h1>
   <p class="hero-sub">Time-ordered, human-readable, collision-resistant identifiers for distributed systems.</p>
 
@@ -490,7 +490,7 @@ footer a:hover{text-decoration:underline}
     </div>
     <div class="impl-card reveal">
       <div class="impl-name">Python</div>
-      <div class="impl-desc">Async generators, <code>aiosqlite</code> state persistence, full canonical action matrix.</div>
+      <div class="impl-desc">Async generators, <code>aiosqlite</code> state persistence, core canonical action matrix.</div>
       <div class="tags">
         <span class="tag">async</span><span class="tag">aiosqlite</span><span class="tag">crypto</span>
       </div>
@@ -638,6 +638,12 @@ printf(<span class="s">"%s\n"</span>, buf);</pre>
 <span class="k">docker run</span> <span class="v">--rm</span> wid A=stream N=5 L=1</pre>
     </div>
   </div>
+
+  <p style="margin-top:1.2rem;font-size:.85rem;opacity:.7">
+    Note: the Rust, Python, and Go installs each put a binary named
+    <code>wid</code> on your PATH (npm installs <code>wid-ts</code>) — if you
+    install more than one, PATH order silently decides which runs.
+  </p>
 </div>
 
 <!-- ── FOOTER ───────────────────────────────────────────────── -->

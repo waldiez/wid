@@ -1,14 +1,14 @@
 /**
- * SYNAPSE Manifest-Based Binary Files.
+ * WID manifest-based binary files.
  */
 
-/** Fixed header bytes used by SYNAPSE files. */
-export const MANIFEST_MAGIC = new Uint8Array([0x53, 0x59, 0x4e, 0x4d]); // SYNM
+/** Fixed header bytes used by WID manifest files. */
+export const MANIFEST_MAGIC = new Uint8Array([0x57, 0x49, 0x44, 0x4d]); // WIDM
 /** Current manifest version published in all files. */
 export const MANIFEST_VERSION = 1;
 /** Maximum allowed manifest payload size in bytes. */
 export const MAX_MANIFEST_SIZE = 64 * 1024;
-/** Length of the SYNAPSE file header (magic + version + length). */
+/** Length of the WID manifest file header (magic + version + length). */
 const HEADER_SIZE = 10;
 
 /** Supported data media types stored inside a manifest. */
@@ -108,7 +108,7 @@ export class Manifest {
 }
 
 /** Composite object combining a manifest with its binary payload. */
-export class SynapseFile {
+export class WidFile {
   manifest: Manifest;
   payload: Uint8Array;
 
@@ -135,9 +135,9 @@ export class SynapseFile {
     return concatBytes([header, manifestBytes, this.payload]);
   }
 
-  static fromBytes(data: Uint8Array): SynapseFile {
+  static fromBytes(data: Uint8Array): WidFile {
     if (data.length < HEADER_SIZE) {
-      throw new Error('Data too small for SYNAPSE file');
+      throw new Error('Data too small for WID manifest file');
     }
 
     const magic = data.subarray(0, 4);
@@ -156,7 +156,7 @@ export class SynapseFile {
     const manifest = Manifest.fromBytes(manifestBytes);
     const payload = data.subarray(manifestEnd);
 
-    return new SynapseFile(manifest, payload);
+    return new WidFile(manifest, payload);
   }
 
   async verify(): Promise<boolean> {

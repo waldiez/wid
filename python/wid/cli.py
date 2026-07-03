@@ -591,7 +591,7 @@ def _run_canonical(argv: list[str]) -> bool:
         "M": "false",
         "N": "0",
     }
-    l_from_placeholder = False
+    l_explicit = False
 
     for item in argv:
         if "=" not in item:
@@ -600,8 +600,8 @@ def _run_canonical(argv: list[str]) -> bool:
         if key not in CANONICAL_KEYS:
             raise ValueError(f"unknown key: {key}")
         canon[key] = value
-        if key == "L" and value == "#":
-            l_from_placeholder = True
+        if key == "L" and value != "#":
+            l_explicit = True
 
     placeholder_defaults = {
         "A": "next",
@@ -623,8 +623,11 @@ def _run_canonical(argv: list[str]) -> bool:
     if _is_true(canon["M"]):
         canon["T"] = "ms"
 
-    if canon["A"] == "stream" and l_from_placeholder:
-        canon["L"] = "1"
+    # Unified stream cadence (all six implementations): an unset or
+    # placeholder L means emit back-to-back; only an explicit L=n sleeps.
+    # The 3600 default applies to the Rust-only service loops, not here.
+    if canon["A"] == "stream" and not l_explicit:
+        canon["L"] = "0"
 
     if canon["T"] not in {"sec", "ms"}:
         raise ValueError("T must be sec or ms")
@@ -936,6 +939,16 @@ def main() -> None:
     except subprocess.CalledProcessError as exc:
         sys.exit(exc.returncode)
 
+    # Flag-mode subcommands share the canonical mode's error contract:
+    # invalid values exit with a clean `error: ...`, never a traceback.
+    try:
+        _dispatch_flag_mode()
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+
+def _dispatch_flag_mode() -> None:
     # Default: no args => emit ONE id and exit (unless env forces bench/stream).
     if len(sys.argv) == 1:
         default_mode = _env_default_mode()

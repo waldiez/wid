@@ -24,6 +24,14 @@ def _parse_time_unit(value: str) -> Literal["sec", "ms"]:
     return cast(Literal["sec", "ms"], value)
 
 
+def _reject_unknown_kwargs(kwargs: dict[str, Any]) -> None:
+    """Raise on leftovers so a typo (e.g. tine_unit=) cannot pass silently."""
+    if kwargs:
+        raise TypeError(
+            f"unexpected keyword argument(s): {', '.join(sorted(kwargs))}"
+        )
+
+
 class AsyncSqliteWidStateStore:
     """`aiosqlite` backed state store for async code paths."""
 
@@ -131,11 +139,12 @@ async def async_next_wid(W: int = 4, Z: int = 6, **kwargs: Any) -> str:
     if "z" in kwargs:
         Z = int(kwargs.pop("z"))  # pyright: ignore[reportConstantRedefinition]
     database_path = kwargs.pop("database_path", None)
-    time_unit = _parse_time_unit(str(kwargs.pop("time_unit", "sec")))
-    if database_path is None:
-        return WidGen(W, Z, time_unit=time_unit).next()
     prefix = str(kwargs.pop("prefix", "wid"))
     state_key = str(kwargs.pop("state_key", "wid"))
+    time_unit = _parse_time_unit(str(kwargs.pop("time_unit", "sec")))
+    _reject_unknown_kwargs(kwargs)
+    if database_path is None:
+        return WidGen(W, Z, time_unit=time_unit).next()
     store = AsyncSqliteWidStateStore(str(database_path), prefix=prefix)
     return await store.next_wid(key=state_key, w=W, z=Z, time_unit=time_unit)
 
@@ -147,6 +156,7 @@ async def async_next_hlc_wid(node: str = "py", w: int = 4, z: int = 0, **kwargs:
     if "Z" in kwargs:
         z = int(kwargs.pop("Z"))
     time_unit = _parse_time_unit(str(kwargs.pop("time_unit", "sec")))
+    _reject_unknown_kwargs(kwargs)
     return HLCWidGen(node, w=w, z=z, time_unit=time_unit).next()
 
 
@@ -175,6 +185,7 @@ async def async_wid_stream(
     prefix = str(kwargs.pop("prefix", "wid"))
     state_key = str(kwargs.pop("state_key", "wid"))
     time_unit = str(kwargs.pop("time_unit", "sec"))
+    _reject_unknown_kwargs(kwargs)
     parsed_time_unit = _parse_time_unit(time_unit)
     store = (
         AsyncSqliteWidStateStore(str(database_path), prefix=prefix)
@@ -219,6 +230,7 @@ async def async_hlc_wid_stream(
     if "z" in kwargs:
         Z = int(kwargs.pop("z")) # pyright: ignore[reportConstantRedefinition]
     time_unit = _parse_time_unit(str(kwargs.pop("time_unit", "sec")))
+    _reject_unknown_kwargs(kwargs)
     gen = HLCWidGen(node, W=W, Z=Z, time_unit=time_unit)
     emitted = 0
     while count == 0 or emitted < count:

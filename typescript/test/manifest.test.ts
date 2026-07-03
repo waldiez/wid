@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Manifest, SynapseFile, MANIFEST_MAGIC, MANIFEST_VERSION, DataType } from '../src/manifest';
+import { Manifest, WidFile, MANIFEST_MAGIC, MANIFEST_VERSION, DataType } from '../src/manifest';
 
 describe('Manifest', () => {
   it('creates with required fields', () => {
@@ -46,19 +46,19 @@ describe('Manifest', () => {
   });
 });
 
-describe('SynapseFile', () => {
+describe('WidFile', () => {
   it('creates with manifest and payload', () => {
     const manifest = new Manifest({ id: 'test-id' });
-    const payload = new TextEncoder().encode('Hello, SYNAPSE!');
-    const sf = new SynapseFile(manifest, payload);
+    const payload = new TextEncoder().encode('Hello, WID!');
+    const sf = new WidFile(manifest, payload);
     expect(sf.manifest.id).toBe('test-id');
-    expect(new TextDecoder().decode(sf.payload)).toBe('Hello, SYNAPSE!');
+    expect(new TextDecoder().decode(sf.payload)).toBe('Hello, WID!');
   });
 
   it('serializes to bytes with magic header', async () => {
     const manifest = new Manifest({ id: 'test-id' });
     const payload = new TextEncoder().encode('test payload');
-    const sf = new SynapseFile(manifest, payload);
+    const sf = new WidFile(manifest, payload);
     const bytes = await sf.toBytes();
 
     // Check magic
@@ -71,7 +71,7 @@ describe('SynapseFile', () => {
   it('updates data_size and data_hash on serialize', async () => {
     const manifest = new Manifest({ id: 'test-id' });
     const payload = new TextEncoder().encode('test payload');
-    const sf = new SynapseFile(manifest, payload);
+    const sf = new WidFile(manifest, payload);
     await sf.toBytes();
 
     expect(sf.manifest.data_size).toBe(payload.length);
@@ -83,21 +83,21 @@ describe('SynapseFile', () => {
       id: 'test-id',
       node: 'test-node',
     });
-    const payload = new TextEncoder().encode('Hello, SYNAPSE!');
-    const sf = new SynapseFile(manifest, payload);
+    const payload = new TextEncoder().encode('Hello, WID!');
+    const sf = new WidFile(manifest, payload);
 
     const bytes = await sf.toBytes();
-    const restored = SynapseFile.fromBytes(bytes);
+    const restored = WidFile.fromBytes(bytes);
 
     expect(restored.manifest.id).toBe('test-id');
     expect(restored.manifest.node).toBe('test-node');
-    expect(new TextDecoder().decode(restored.payload)).toBe('Hello, SYNAPSE!');
+    expect(new TextDecoder().decode(restored.payload)).toBe('Hello, WID!');
   });
 
   it('verifies payload hash', async () => {
     const manifest = new Manifest({ id: 'test-id' });
     const payload = new TextEncoder().encode('test payload');
-    const sf = new SynapseFile(manifest, payload);
+    const sf = new WidFile(manifest, payload);
     await sf.toBytes(); // This updates the hash
 
     await expect(sf.verify()).resolves.toBe(true);
@@ -106,7 +106,7 @@ describe('SynapseFile', () => {
   it('fails verification with corrupted payload', async () => {
     const manifest = new Manifest({ id: 'test-id' });
     const payload = new TextEncoder().encode('test payload');
-    const sf = new SynapseFile(manifest, payload);
+    const sf = new WidFile(manifest, payload);
     await sf.toBytes();
 
     // Corrupt the payload
@@ -116,12 +116,12 @@ describe('SynapseFile', () => {
 
   it('throws on invalid magic', () => {
     const invalidData = new TextEncoder().encode('XXXX' + '\x00'.repeat(100));
-    expect(() => SynapseFile.fromBytes(invalidData)).toThrow('Invalid magic');
+    expect(() => WidFile.fromBytes(invalidData)).toThrow('Invalid magic');
   });
 
   it('throws on data too small', () => {
     const tooSmall = new TextEncoder().encode('SYN');
-    expect(() => SynapseFile.fromBytes(tooSmall)).toThrow('too small');
+    expect(() => WidFile.fromBytes(tooSmall)).toThrow('too small');
   });
 
   it('throws on oversized serialized manifest in toBytes', async () => {
@@ -129,7 +129,7 @@ describe('SynapseFile', () => {
       id: 'big',
       metadata: { huge: 'x'.repeat(70_000) },
     });
-    const sf = new SynapseFile(manifest, new TextEncoder().encode('payload'));
+    const sf = new WidFile(manifest, new TextEncoder().encode('payload'));
     await expect(sf.toBytes()).rejects.toThrow('Manifest too large');
   });
 
@@ -139,6 +139,6 @@ describe('SynapseFile', () => {
     const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
     view.setUint16(4, MANIFEST_VERSION, false);
     view.setUint32(6, 70_000, false);
-    expect(() => SynapseFile.fromBytes(header)).toThrow('Manifest too large');
+    expect(() => WidFile.fromBytes(header)).toThrow('Manifest too large');
   });
 });

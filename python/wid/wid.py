@@ -151,6 +151,11 @@ class WidGen:
             Z = int(kwargs.pop("z"))
         elif "Z" in kwargs:
             Z = int(kwargs.pop("Z"))
+        if kwargs:
+            # Anything left is a typo (e.g. tine_unit=), not compatibility.
+            raise TypeError(
+                f"unexpected keyword argument(s): {', '.join(sorted(kwargs))}"
+            )
 
         # Bounds match all six implementations: W > 18 would overflow an
         # int64 sequence; Z > 64 exceeds the C implementation's WID_MAX_Z.

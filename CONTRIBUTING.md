@@ -12,11 +12,11 @@ WID is a multi-language, multi-target reference implementation. This guide keeps
 
 ## When you’re ready to contribute
 
-1. Branch from `main` or `master` of the host you push to (GitHub/GitLab).
+1. Branch from `main`.
 2. Pick a clear single intent (feature/fix/test) and update relevant folders only.
 3. Use `make quick-check` for a fast gate, then rerun the detailed suite: `make check` (or the language-specific subset you touched).
 4. `git status` should be clean except for your files, then `git add` and `git commit` with a descriptive message.
-5. Push your branch and open a merge request with the QA checklist filled in the description.
+5. Push your branch and open a pull request with the QA checklist filled in the description.
 
 ## Platform prerequisites
 

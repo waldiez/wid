@@ -37,6 +37,10 @@ typedef struct {
     wid_time_unit_t time_unit;
     int count;
     bool json;
+    /* Canonical L= stream cadence: 0 (the stream default, and always the
+     * flag-mode value) emits back-to-back; an explicit L=n sleeps n seconds
+     * between emissions. */
+    int interval_secs;
 } cli_opts_t;
 
 static int cmd_next(const cli_opts_t *o);
@@ -95,6 +99,10 @@ typedef struct {
     int W;
     int Z;
     int L;
+    /* True only for a real L=<n> (not omitted, not the L=# placeholder).
+     * A=stream treats an unset L as 0 (no sleep); the 3600 default applies
+     * to the Rust-only service loops, not streaming. */
+    bool L_explicit;
     int N;
     char T[8];
     char D[256];
@@ -148,6 +156,7 @@ static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
     o->W = 4;
     o->Z = 6;
     o->L = 3600;
+    o->L_explicit = false;
     o->N = 0;
     strcpy(o->T, "sec");
     strcpy(o->D, "");
@@ -182,6 +191,7 @@ static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
             if (strcmp(v, "#") == 0) v = "6";
             if (!parse_int(v, &o->Z)) return false;
         } else if (klen == 1 && argv[i][0] == 'L') {
+            o->L_explicit = strcmp(v, "#") != 0;
             if (strcmp(v, "#") == 0) v = "3600";
             if (!parse_int(v, &o->L)) return false;
         } else if (klen == 1 && argv[i][0] == 'N') {
@@ -791,6 +801,7 @@ static int run_canonical(const canon_opts_t *c) {
     o.time_unit = unit;
     o.count = c->N;
     o.json = true;
+    o.interval_secs = (c->L_explicit && strcmp(c->A, "stream") == 0) ? c->L : 0;
 
     if (strcmp(c->A, "help-actions") == 0) {
         print_actions();
@@ -845,6 +856,9 @@ static int run_canonical_sql_stream(const canon_opts_t *c, wid_time_unit_t unit)
             return 1;
         }
         puts(out);
+        fflush(stdout);
+        if (c->L_explicit && c->L > 0 && (c->N == 0 || i + 1 < c->N))
+            sleep((unsigned)c->L);
     }
     return 0;
 }
@@ -857,6 +871,7 @@ static bool parse_opts(int argc, char **argv, int start, bool allow_count, cli_o
     o->time_unit = WID_TIME_SEC;
     o->count = 0;
     o->json = false;
+    o->interval_secs = 0;
 
     for (int i = start; i < argc; i++) {
         if (strcmp(argv[i], "--kind") == 0) {
@@ -912,6 +927,9 @@ static int cmd_stream(const cli_opts_t *o) {
             char out[WID_MAX_LEN];
             wid_gen_next(&g, out, sizeof(out));
             puts(out);
+            fflush(stdout);
+            if (o->interval_secs > 0 && (o->count == 0 || i + 1 < o->count))
+                sleep((unsigned)o->interval_secs);
         }
     } else {
         hlc_wid_gen_t g;
@@ -920,6 +938,9 @@ static int cmd_stream(const cli_opts_t *o) {
             char out[WID_MAX_LEN];
             hlc_wid_gen_next(&g, out, sizeof(out));
             puts(out);
+            fflush(stdout);
+            if (o->interval_secs > 0 && (o->count == 0 || i + 1 < o->count))
+                sleep((unsigned)o->interval_secs);
         }
     }
     return 0;
@@ -1157,7 +1178,10 @@ int main(int argc, char **argv) {
      * fallback), so the CLI no longer needs to seed rand() itself. */
     if (argc > 1 && is_kv_arg(argv[1])) {
         canon_opts_t c;
-        if (!parse_canonical(argc, argv, &c)) return 2;
+        if (!parse_canonical(argc, argv, &c)) {
+            fprintf(stderr, "error: invalid canonical arguments (KEY=VALUE)\n");
+            return 2;
+        }
         return run_canonical(&c);
     }
 

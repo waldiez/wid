@@ -71,6 +71,7 @@ All implementations accept the same flag matrix (`--kind`, `--node`, `--W`, `--Z
 All implementations conform to the same [specification](spec/SPEC.md). Cross-language conformance is enforced in CI by executable harnesses that drive every implementation against the shared fixtures in `spec/conformance/`:
 
 - `make id-conformance` — `valid.json` / `invalid.json` (identifier accept/reject) across all six
+- `make cli-surface-check` — `cli_surface.json`: the shared flag matrix, defaults table, stream cadence, and error surface (clean rejection, no crash) across all six
 - `make stream-conformance` — streaming behavior
 - `tools/check_wotp_parity.sh` and `tools/smoke_crypto.sh` — crypto (`sign`/`verify`/`w-otp`) parity and interop
 
@@ -106,7 +107,11 @@ HLC-WID   TIMESTAMP . LC  Z - NODE [ - PAD ]
 | **Z** | 6       | 0–64  | Hex padding length (0 disables)         |
 | **T** | `sec`   | —     | Time unit: `sec` or `ms`               |
 
-Out-of-range `W`/`Z` are rejected (never clamped) by every implementation;
+Out-of-range `W`/`Z` are rejected (never clamped) by every CLI and every
+library API — with one documented exception: the C single-header's
+`wid_gen_init_ex()` returns `void` and cannot report an error, so it clamps
+to the valid range as a last resort. Validate `W`/`Z` before calling it when
+embedding the header (the C CLI does, and rejects).
 `10^18 - 1` is the largest sequence that fits in a signed 64-bit integer.
 
 Full specification with EBNF grammar: [spec/SPEC.md](spec/SPEC.md)
@@ -146,6 +151,11 @@ WIDs to parties who should not learn timing information.
 > `waldiez-wid` to crates.io/PyPI, `@waldiez/wid` to npm, and images to
 > ghcr.io), install straight from this repository — all of the following
 > work today:
+
+> **Binary name collision:** the Rust, Python, and Go installs each put a
+> binary named `wid` on your PATH (npm's is `wid-ts`). If you install more
+> than one, whichever comes first in PATH order silently wins — pick one
+> implementation for your shell, or invoke the others by full path.
 
 ### Rust
 
@@ -238,9 +248,19 @@ CREATE TABLE events (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Time-range scans by WID prefix are zero-cost (lexicographic order = time order)
-CREATE INDEX IF NOT EXISTS ix_events_wid_prefix ON events(wid);
+-- Time-range scans by WID prefix ride the PRIMARY KEY index for free
+-- (lexicographic order = time order); no extra index is needed.
 ```
+
+## Extensions beyond the spec
+
+The Rust and TypeScript libraries additionally ship a **WID manifest
+module** (`Manifest` / `WidFile`): a small binary container format — 4-byte
+magic `WIDM`, versioned header, JSON manifest, SHA-256 payload hash — for
+stamping payload blobs with a WID and integrity hash. This is deliberately
+**not** part of the WID specification and exists only in Rust and
+TypeScript; the CLIs do not expose it and the conformance suite does not
+cover it. Treat it as a library convenience, not a cross-language guarantee.
 
 ## License
 
