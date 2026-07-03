@@ -4,7 +4,7 @@ Date: 2026-02-24
 
 ## 0) Open Repo Root
 
-Open a terminal in the repo root. Before running the fast readiness gates, execute `make doctor` (toolchain check) and `make quick-check` (Python/TS/Go tests + `sh/wid next`) to catch common issues early.
+Open a terminal in the repo root. Before running the fast readiness gates, execute `make doctor` (toolchain check) and `make quick-check` (tests across all six implementations + `sh/wid next`) to catch common issues early.
 
 ## Toolchain expectations
 

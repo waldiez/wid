@@ -87,7 +87,7 @@ lint: rust-lint python-lint c-lint ts-lint go-lint
 
 fmt: python-fmt
 
-quick-check: python-test ts-check go-test next
+quick-check: rust-test python-test ts-check go-test c-check sh-check next
 
 doctor:
 	@tools="bash python3 cargo node npm go"; \

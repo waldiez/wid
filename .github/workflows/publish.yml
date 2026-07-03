@@ -7,7 +7,59 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Gate 1: the pushed tag must match every package manifest. Publishing six
+  # registries from a tag that disagrees with the manifests ships a version
+  # that does not exist in the source tree.
+  check-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: Tag matches Cargo.toml / package.json / pyproject.toml
+        run: |
+          set -eu
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            tag_ver="${GITHUB_REF_NAME#v}"
+          else
+            # workflow_dispatch: still enforce that the manifests agree with
+            # each other, using the Cargo.toml version as the reference.
+            tag_ver="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          fi
+          cargo_ver="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          npm_ver="$(python3 -c 'import json;print(json.load(open("package.json"))["version"])')"
+          py_ver="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n1)"
+          echo "tag=$tag_ver cargo=$cargo_ver npm=$npm_ver py=$py_ver"
+          [ "$tag_ver" = "$cargo_ver" ] && [ "$tag_ver" = "$npm_ver" ] && [ "$tag_ver" = "$py_ver" ] || {
+            echo "::error::version mismatch between tag and package manifests"; exit 1; }
+
+  # Gate 2: the full per-language test battery plus cross-language
+  # conformance. A tag push must never publish code that CI would fail.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v6.2.0
+        with:
+          node-version: "22"
+      - uses: actions/setup-go@v6.2.0
+        with:
+          go-version: "1.22"
+          cache: false
+      - run: python3 -m pip install -e ".[dev]"
+      - run: npm ci --include=optional
+      - run: make rust-check
+      - run: make python-check
+      - run: make ts-check
+      - run: make go-check
+      - run: make c-check
+      - run: make sh-check
+      - run: ID_CONFORMANCE_STRICT=1 make id-conformance
+
   publish-pypi:
+    needs: [check-versions, test]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -24,6 +76,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   publish-npm:
+    needs: [check-versions, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -44,6 +97,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-crates:
+    needs: [check-versions, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -51,6 +105,7 @@ jobs:
       - run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   publish-docker:
+    needs: [check-versions, test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
