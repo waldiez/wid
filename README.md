@@ -71,7 +71,7 @@ All implementations accept the same flag matrix (`--kind`, `--node`, `--W`, `--Z
 All implementations conform to the same [specification](spec/SPEC.md). Cross-language conformance is enforced in CI by executable harnesses that drive every implementation against the shared fixtures in `spec/conformance/`:
 
 - `make id-conformance` — `valid.json` / `invalid.json` (identifier accept/reject) across all six
-- `make cli-surface-check` — `cli_surface.json`: the shared flag matrix, defaults table, stream cadence, and error surface (clean rejection, no crash) across all six
+- `make cli-surface-check` — `cli_surface.json`: the shared flag matrix, defaults table, stream cadence, error surface (clean rejection, no crash), unbounded-stream semantics (`--count 0` / `N=0`), and cross-language output parity (identical w-otp codes from identical inputs, including values containing `=`) across all six
 - `make stream-conformance` — streaming behavior
 - `tools/check_wotp_parity.sh` and `tools/smoke_crypto.sh` — crypto (`sign`/`verify`/`w-otp`) parity and interop
 
@@ -222,6 +222,11 @@ When using `E=sql`, generator state (`last_tick`, `last_seq`) is persisted per k
 The state key is language-agnostic (`wid:W:Z:T`), so all six implementations
 coordinate through the same row per generator shape: different languages can
 safely share one `wid_state.sqlite` without minting duplicate WIDs.
+
+The default database location is `<working directory>/.local/services/wid_state.sqlite`
+in every implementation, so processes only share state when they run from the
+same directory (or pass the same explicit `D=<dir>`). Set `D=` when writers
+start from different places.
 
 State modes:
 

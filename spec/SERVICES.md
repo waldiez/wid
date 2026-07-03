@@ -73,9 +73,11 @@ Safety properties (and their limits):
 
 - The PID file is claimed atomically (`O_CREAT|O_EXCL`); concurrent `start`s
   cannot both win. A stale file left by a dead daemon is reclaimed.
-- `stop`/`status` verify (via `/proc/<pid>/cmdline`, where available) that
-  the recorded PID still belongs to a wid daemon before signaling it, so a
-  recycled PID is never killed.
+- `stop`/`status` verify (via `/proc/<pid>/cmdline`) that the recorded PID
+  still belongs to a wid daemon before signaling it, so on Linux a recycled
+  PID is never killed. Where `/proc` is unavailable (e.g. macOS), the check
+  cannot run and the PID file is trusted as-is — a recycled PID could then
+  be signaled.
 - `stop` sends SIGTERM, waits up to ~2 s, then escalates to SIGKILL.
 
 This is a development-grade runner, not a production supervisor: there is no

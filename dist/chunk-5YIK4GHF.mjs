@@ -8,6 +8,13 @@ function parseTimeUnit(input) {
 function timeDigits(unit) {
   return unit === "ms" ? 9 : 6;
 }
+var MAX_SEC_TICK = 253402300799;
+function clampTick(tick, unit) {
+  const max = unit === "ms" ? MAX_SEC_TICK * 1e3 + 999 : MAX_SEC_TICK;
+  if (tick < 0) return 0;
+  if (tick > max) return max;
+  return tick;
+}
 
 // typescript/src/wid.ts
 var MAX_W = 18;
@@ -241,7 +248,8 @@ var WidGen = class {
     } catch {
     }
   }
-  tsForTick(tick) {
+  tsForTick(rawTick) {
+    const tick = clampTick(rawTick, this.timeUnit);
     if (tick !== this.cachedSec) {
       this.cachedSec = tick;
       const sec = this.timeUnit === "ms" ? Math.floor(tick / 1e3) : tick;
@@ -390,7 +398,8 @@ var HLCWidGen = class {
     }
     return Math.floor(Date.now() / 1e3);
   }
-  tsForTick(tick) {
+  tsForTick(rawTick) {
+    const tick = clampTick(rawTick, this.timeUnit);
     if (tick !== this.cachedTick) {
       this.cachedTick = tick;
       const sec = this.timeUnit === "ms" ? Math.floor(tick / 1e3) : tick;
@@ -574,11 +583,18 @@ var WidFile = class _WidFile {
       throw new Error(`Invalid magic: ${utf8Decode(magic)}`);
     }
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const version = view.getUint16(4, false);
+    if (version !== MANIFEST_VERSION) {
+      throw new Error(`Unsupported manifest version: ${version}`);
+    }
     const manifestSize = view.getUint32(6, false);
     if (manifestSize > MAX_MANIFEST_SIZE) {
       throw new Error(`Manifest too large: ${manifestSize} bytes`);
     }
     const manifestEnd = HEADER_SIZE + manifestSize;
+    if (data.length < manifestEnd) {
+      throw new Error("Data too small for WID manifest file");
+    }
     const manifestBytes = data.subarray(HEADER_SIZE, manifestEnd);
     const manifest = Manifest.fromBytes(manifestBytes);
     const payload = data.subarray(manifestEnd);
@@ -613,4 +629,4 @@ export {
   Manifest,
   WidFile
 };
-//# sourceMappingURL=chunk-IQV3B3X3.mjs.map
+//# sourceMappingURL=chunk-5YIK4GHF.mjs.map

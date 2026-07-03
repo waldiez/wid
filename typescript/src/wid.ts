@@ -3,7 +3,7 @@
  * Format: YYYYMMDDTHHMMSS[mmm].<seqW>Z[-<padZ>]
  */
 
-import { type TimeUnit, timeDigits } from "./time";
+import { type TimeUnit, clampTick, timeDigits } from "./time";
 
 /**
  * Maximum sequence/logical-counter width. 10^18 - 1 is the largest all-nines
@@ -411,7 +411,10 @@ export class WidGen {
     }
   }
 
-  private tsForTick(tick: number): string {
+  private tsForTick(rawTick: number): string {
+    // Saturate instead of formatting a malformed >8-digit-year ID: a
+    // corrupted resume state degrades to a pinned timestamp (see clampTick).
+    const tick = clampTick(rawTick, this.timeUnit);
     if (tick !== this.cachedSec) {
       this.cachedSec = tick;
       const sec = this.timeUnit === "ms" ? Math.floor(tick / 1000) : tick;

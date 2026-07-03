@@ -2,8 +2,13 @@
 """CLI entrypoints for emit, stream, and healthcheck modes."""
 
 # pyright: reportUnusedCallResult=false,reportAny=false
-# pylint: skip-file
 # flake8: noqa: C901, E501
+# Deliberate patterns, not oversights: cryptography imports stay inside the
+# sign/verify handlers so the core CLI works without the optional extra, and
+# the canonical dispatcher is one long function on purpose (it mirrors the
+# other five implementations' dispatch tables).
+# pylint: disable=import-outside-toplevel,broad-exception-caught
+# pylint: disable=too-many-locals,too-many-branches,too-many-statements,too-many-return-statements
 
 from __future__ import annotations
 
@@ -19,7 +24,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TextIO
 
 from .core import WidCore
 from .hlc import HLCWidGen
@@ -76,7 +81,7 @@ State mode:
 """)
 
 
-def _print_usage() -> None:
+def _print_usage(stream: TextIO = sys.stdout) -> None:
     print(
         """wid python CLI
 
@@ -85,7 +90,7 @@ Usage:
   python -m wid A=<action> W=<n> Z=<n> ...
 
 Commands:
-  next         Emit one ID (default with no args).
+  next         Emit one ID.
   stream       Emit IDs continuously (or until --count).
   validate     Validate an ID string.
   parse        Parse an ID string.
@@ -95,31 +100,17 @@ Commands:
   help-actions Show canonical action matrix (A=...).
   sign         Canonical mode only: A=sign WID=<wid> KEY=<priv.pem> [DATA=<path>] [OUT=<path>].
   verify       Canonical mode only: A=verify WID=<wid> KEY=<pub.pem> SIG=<sig> [DATA=<path>].
-  w-otp        Canonical mode only: A=w-otp MODE=gen|verify KEY=<secret|path> [WID=<wid>] [CODE=<otp>] [DIGITS=<n>] [MAX_AGE_SEC=<n>] [MAX_FUTURE_SEC=<n>].
+  w-otp        Canonical mode only: A=w-otp MODE=gen|verify KEY=<secret|path>
+               [WID=<wid>] [CODE=<otp>] [DIGITS=<n>] [MAX_AGE_SEC=<n>] [MAX_FUTURE_SEC=<n>].
 
 Examples:
-  python -m wid
+  python -m wid next
   python -m wid stream --kind wid --W 4 --Z 0
   python -m wid healthcheck --kind hlc --W 4 --Z 0 --node edge01
   python -m wid A=next W=4 Z=0 T=sec
-
-Environment:
-  WID_DEFAULT_MODE=next|stream
-"""
+""",
+        file=stream,
     )
-
-
-def _emit_record(id_value: str, kind: str, out_format: str) -> str:
-    if out_format == "jsonl":
-        return json.dumps(
-            {
-                "id": id_value,
-                "kind": kind,
-                "generated_at": datetime.now(tz=timezone.utc).isoformat(),
-            },
-            separators=(",", ":"),
-        )
-    return id_value
 
 
 def _env_int(name: str, default: int) -> int:
@@ -130,11 +121,6 @@ def _env_int(name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
-
-
-def _env_default_mode() -> str:
-    mode = os.environ.get("WID_DEFAULT_MODE", "next").strip().lower()
-    return mode if mode in {"next", "stream"} else "next"
 
 
 def _run_emit_mode(mode: str, argv: list[str]) -> None:
@@ -148,19 +134,9 @@ def _run_emit_mode(mode: str, argv: list[str]) -> None:
         choices=["sec", "ms"],
         default=os.environ.get("WID_TIME_UNIT", "sec"),
     )
-    ap.add_argument("--format", choices=["text", "jsonl"], default="text")
     ap.add_argument(
         "--count", type=int, default=0, help="0 means infinite (stream mode)"
     )
-    ap.add_argument("--interval-ms", type=int, default=0)
-    ap.add_argument(
-        "--cadence",
-        "--L",
-        dest="cadence",
-        type=int,
-        default=max(1, _env_int("L", 1000)),
-    )
-    ap.add_argument("--healthcheck-cmd", type=str, default="")
     args = ap.parse_args(argv)
 
     gen: Callable[[], str]
@@ -174,28 +150,14 @@ def _run_emit_mode(mode: str, argv: list[str]) -> None:
         gen = g.next
 
     if mode == "next":
-        print(_emit_record(gen(), args.kind, args.format), flush=True)
+        print(gen(), flush=True)
         return
 
     emitted = 0
     try:
         while args.count == 0 or emitted < args.count:
-            print(_emit_record(gen(), args.kind, args.format), flush=True)
+            print(gen(), flush=True)
             emitted += 1
-            if (
-                args.healthcheck_cmd
-                and args.cadence > 0
-                and emitted % args.cadence == 0
-            ):
-                rc = subprocess.run(args.healthcheck_cmd, shell=True).returncode
-                if rc != 0:
-                    print(
-                        f"Healthcheck command failed with exit code {rc}",
-                        file=sys.stderr,
-                    )
-                    sys.exit(rc)
-            if args.interval_ms > 0:
-                time.sleep(args.interval_ms / 1000.0)
     except KeyboardInterrupt:
         sys.exit(130)
 
@@ -420,7 +382,7 @@ def _run_sign_mode(canon: dict[str, str]) -> None:
     out_path_str = canon.get("OUT")
 
     if not key_path.exists():
-        raise FileNotFoundError(f"Private key file not found: {key_path}")
+        raise FileNotFoundError(f"private key file not found: {key_path}")
 
     with open(key_path, "rb") as f:
         private_key = serialization.load_pem_private_key(f.read(), password=None)
@@ -435,7 +397,7 @@ def _run_sign_mode(canon: dict[str, str]) -> None:
     if data_path_str:
         data_path = Path(data_path_str).expanduser().resolve()
         if not data_path.exists():
-            raise FileNotFoundError(f"Data file not found: {data_path}")
+            raise FileNotFoundError(f"data file not found: {data_path}")
         with open(data_path, "rb") as f:
             message += f.read()
 
@@ -461,7 +423,7 @@ def _run_verify_mode(canon: dict[str, str]) -> None:
     data_path_str = canon.get("DATA")
 
     if not key_path.exists():
-        raise FileNotFoundError(f"Public key file not found: {key_path}")
+        raise FileNotFoundError(f"public key file not found: {key_path}")
 
     with open(key_path, "rb") as f:
         public_key = serialization.load_pem_public_key(f.read())
@@ -476,7 +438,7 @@ def _run_verify_mode(canon: dict[str, str]) -> None:
     if data_path_str:
         data_path = Path(data_path_str).expanduser().resolve()
         if not data_path.exists():
-            raise FileNotFoundError(f"Data file not found: {data_path}")
+            raise FileNotFoundError(f"data file not found: {data_path}")
         with open(data_path, "rb") as f:
             message += f.read()
 
@@ -658,10 +620,12 @@ def _run_canonical(argv: list[str]) -> bool:
         _print_actions()
         return True
 
+    # Default matches every other implementation: <cwd>/.local/services.
+    # A ~-anchored default here would silently split the shared SQL state.
     data_dir = (
         Path(d_val).expanduser().resolve()
         if d_val
-        else (Path.home() / ".local" / "wid" / "services").resolve()
+        else (Path.cwd() / ".local" / "services").resolve()
     )
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -773,9 +737,13 @@ def _parse_validate_flags(args: list[str]) -> tuple[str, int, int, str]:
             i += 2
         elif arg in ("--time-unit", "--T") and i + 1 < len(args):
             time_unit = args[i + 1]
+            if time_unit not in ("sec", "ms"):
+                raise ValueError("time-unit must be sec or ms")
             i += 2
+        elif arg in ("--kind", "--W", "--Z", "--time-unit", "--T"):
+            raise ValueError(f"{arg} requires a value")
         else:
-            i += 1
+            raise ValueError(f"unknown flag: {arg}")
     return kind, w, z, time_unit
 
 
@@ -786,7 +754,7 @@ def _run_validate_mode(args: list[str]) -> None:
         sys.exit(2)
     wid_str = args[0]
     kind, w, z, time_unit = _parse_validate_flags(args[1:])
-    tu: Literal["ms", "sec"] = "ms" if "m" in time_unit else "sec"
+    tu: Literal["ms", "sec"] = "ms" if time_unit == "ms" else "sec"
     if kind == "hlc":
         ok = validate_hlc_wid(wid_str, W=w, Z=z, time_unit=tu)
     else:
@@ -933,7 +901,10 @@ def main() -> None:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(2)
-    except RuntimeError as exc:
+    except (RuntimeError, OSError, TypeError, ImportError) as exc:
+        # OSError: missing key/data files; ImportError: cryptography not
+        # installed; TypeError: wrong key type. Same contract as the other
+        # implementations: `error: ...` on stderr, never a traceback.
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
     except subprocess.CalledProcessError as exc:
@@ -946,18 +917,17 @@ def main() -> None:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(2)
+    except (RuntimeError, OSError, TypeError, ImportError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _dispatch_flag_mode() -> None:
-    # Default: no args => emit ONE id and exit (unless env forces bench/stream).
+    # No arguments prints usage and exits 2, matching every other
+    # implementation (a bare `wid` used to silently emit one ID).
     if len(sys.argv) == 1:
-        default_mode = _env_default_mode()
-        if default_mode == "stream":
-            _run_emit_mode("stream", [])
-            return
-        else:
-            _run_emit_mode("next", [])
-            return
+        _print_usage(sys.stderr)
+        sys.exit(2)
 
     cmd = sys.argv[1]
     if cmd in {"next", "stream"}:
@@ -992,15 +962,6 @@ def _dispatch_flag_mode() -> None:
     sys.exit(2)
 
 
-def _run_canonical_entry(action: str) -> None:
-    original = list(sys.argv)
-    try:
-        sys.argv = [sys.argv[0], f"A={action}", *original[1:]]
-        main()
-    finally:
-        sys.argv = original
-
-
 def _run_cli_entry(args: list[str]) -> None:
     original = list(sys.argv)
     try:
@@ -1008,116 +969,6 @@ def _run_cli_entry(args: list[str]) -> None:
         main()
     finally:
         sys.argv = original
-
-
-def id_main() -> None:
-    """Default id command."""
-    _run_canonical_entry("next")
-
-
-def default_main() -> None:
-    """Default main command."""
-    _run_canonical_entry("run")
-
-
-def widas_main() -> None:
-    """Default widas command."""
-    _run_canonical_entry("run")
-
-
-def widas_start_main() -> None:
-    """Default widas start command."""
-    _run_canonical_entry("start")
-
-
-def widas_stop_main() -> None:
-    """Default widas stop command."""
-    _run_canonical_entry("stop")
-
-
-def widas_status_main() -> None:
-    """Default widas stop command."""
-    _run_canonical_entry("status")
-
-
-def widas_logs_main() -> None:
-    """Default widas logs command."""
-    _run_canonical_entry("logs")
-
-
-def saf_main() -> None:
-    """Default saf command."""
-    _run_canonical_entry("saf")
-
-
-def raf_main() -> None:
-    """Default raf command."""
-    _run_canonical_entry("raf")
-
-
-def saf_wid_main() -> None:
-    """Default saf wid command."""
-    _run_canonical_entry("saf-wid")
-
-
-def waf_main() -> None:
-    """Default waf command."""
-    _run_canonical_entry("waf")
-
-
-def wraf_main() -> None:
-    """Default wraf command."""
-    _run_canonical_entry("wraf")
-
-
-def wir_main() -> None:
-    """Default wir command."""
-    _run_canonical_entry("wir")
-
-
-def wer_main() -> None:
-    """Default wer command."""
-    _run_canonical_entry("wir")
-
-
-def witr_main() -> None:
-    """Default witr command."""
-    _run_canonical_entry("witr")
-
-
-def wism_main() -> None:
-    """Default wism command."""
-    _run_canonical_entry("wism")
-
-
-def wim_main() -> None:
-    """Default wim command."""
-    _run_canonical_entry("wim")
-
-
-def wihp_main() -> None:
-    """Default wihp command."""
-    _run_canonical_entry("wihp")
-
-
-def wih_main() -> None:
-    """Default wih command."""
-    _run_canonical_entry("wih")
-
-
-def wipr_main() -> None:
-    """Default wipr command."""
-    _run_canonical_entry("wipr")
-
-
-def wip_main() -> None:
-    """Default wip command."""
-    _run_canonical_entry("wip")
-
-
-def duplex_main() -> None:
-    """Default duplex command."""
-    _run_canonical_entry("duplex")
 
 
 def hlc_wid_main() -> None:

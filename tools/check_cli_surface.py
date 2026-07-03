@@ -13,7 +13,15 @@ repository. This harness drives every real CLI through the shared fixture
   ``min_seconds`` to assert cadence (an explicit ``L=n`` stream must sleep);
 * ``reject`` cases MUST exit nonzero, say something on stderr, and MUST NOT
   crash (no Python traceback, no Rust/Go panic) — a clean diagnostic is part
-  of the shared surface.
+  of the shared surface;
+* ``parity`` cases MUST exit 0 and produce identical output in every
+  implementation (lines that parse as JSON are compared as parsed objects,
+  so key order does not matter) — this catches silent cross-language
+  divergence, e.g. one parser truncating a ``KEY=abc=def`` value and
+  deriving a different OTP from the same secret;
+* ``infinite`` cases MUST still be running after ``run_seconds`` (0 means an
+  unbounded stream everywhere, never "some default count") and must have
+  produced at least ``min_lines`` shape-conformant lines by then.
 
 Exit codes are asserted nonzero, not exact: implementations currently use a
 mix of 1 and 2 and that mix is not (yet) a conformance target.
@@ -105,6 +113,47 @@ def run_case(base: list[str], env: dict[str, str] | None, args: list[str]) -> su
     )
 
 
+def normalized_output(stdout: str) -> list:
+    """Normalize stdout for cross-implementation comparison.
+
+    Lines that parse as JSON are compared as parsed objects so that key
+    order (which legitimately differs between implementations) is ignored.
+    """
+    out: list = []
+    for ln in stdout.splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            out.append(json.loads(ln))
+        except json.JSONDecodeError:
+            out.append(ln)
+    return out
+
+
+def run_infinite_case(
+    base: list[str], env: dict[str, str] | None, args: list[str], run_seconds: float
+) -> tuple[bool, str]:
+    """Run a case that must not terminate; return (still_running, stdout)."""
+    proc = subprocess.Popen(
+        [*base, *args],
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    time.sleep(run_seconds)
+    still_running = proc.poll() is None
+    proc.terminate()
+    try:
+        stdout, _ = proc.communicate(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout, _ = proc.communicate()
+    return still_running, stdout
+
+
 def main() -> int:
     fixture = json.loads(FIXTURE.read_text())
     impls, skipped = available_impls()
@@ -152,6 +201,52 @@ def main() -> int:
                     if marker in combined:
                         failures.append(f"{impl}: reject {case['name']}: crashed instead of clean error ({marker!r})")
                         break
+
+        for case in fixture.get("infinite", []):
+            total += 1
+            args = case_args(impl, list(case["args"]))
+            still_running, stdout = run_infinite_case(base, env, args, float(case["run_seconds"]))
+            lines = [ln for ln in stdout.splitlines() if ln.strip()]
+            pattern = shape_pattern(case.get("params") or {})
+            if not still_running:
+                failures.append(
+                    f"{impl}: infinite {case['name']}: terminated on its own "
+                    f"after {len(lines)} lines (0 must mean unbounded, not a default count)"
+                )
+            elif len(lines) < int(case["min_lines"]):
+                failures.append(
+                    f"{impl}: infinite {case['name']}: only {len(lines)} lines "
+                    f"in {case['run_seconds']}s (expected >= {case['min_lines']})"
+                )
+            else:
+                for ln in lines:
+                    if not pattern.match(ln):
+                        failures.append(f"{impl}: infinite {case['name']}: line {ln!r} !~ {pattern.pattern}")
+                        break
+
+    # Parity cases compare implementations against each other, so they run
+    # after the per-implementation loops.
+    for case in fixture.get("parity", []):
+        outputs: dict[str, list] = {}
+        for impl, (base, env) in impls.items():
+            total += 1
+            args = case_args(impl, list(case["args"]))
+            proc = run_case(base, env, args)
+            if proc.returncode != 0:
+                failures.append(
+                    f"{impl}: parity {case['name']}: rc={proc.returncode} stderr={proc.stderr.strip()[:200]}"
+                )
+                continue
+            outputs[impl] = normalized_output(proc.stdout)
+        if len(outputs) > 1:
+            reference_impl = sorted(outputs)[0]
+            reference = outputs[reference_impl]
+            for impl, got in sorted(outputs.items()):
+                if got != reference:
+                    failures.append(
+                        f"{impl}: parity {case['name']}: output diverges from {reference_impl}: "
+                        f"{got!r} != {reference!r}"
+                    )
 
     for line in skipped:
         print(f"skip: {line}", file=sys.stderr)

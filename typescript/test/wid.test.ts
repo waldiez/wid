@@ -266,3 +266,15 @@ describe('async API', () => {
     }).rejects.toThrow();
   });
 });
+
+describe('extreme restored state', () => {
+  it('saturates to a pinned timestamp instead of a malformed ID (parity with Rust clamp_tick)', () => {
+    const g = new WidGen({ W: 4, Z: 0 });
+    g.restoreState(Number.MAX_SAFE_INTEGER, 0);
+    expect(g.next().startsWith('99991231T235959')).toBe(true);
+
+    const gMs = new WidGen({ W: 4, Z: 0, timeUnit: 'ms' });
+    gMs.restoreState(Number.MAX_SAFE_INTEGER, 0);
+    expect(gMs.next().startsWith('99991231T235959999')).toBe(true);
+  });
+});

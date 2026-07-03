@@ -1,6 +1,9 @@
 package wid
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 // TestWidGenMonotonic verifies generated WIDs stay strictly increasing.
 func TestWidGenMonotonic(t *testing.T) {
@@ -157,5 +160,16 @@ func TestInvalidParams(t *testing.T) {
 	_, err = NewHLCWidGen("bad-node", 4, 0)
 	if err != ErrInvalidNode {
 		t.Errorf("expected ErrInvalidNode, got %v", err)
+	}
+}
+
+// TestExtremeTickSaturates ensures a corrupted resume state degrades to a
+// pinned timestamp instead of a malformed >8-digit-year ID.
+func TestExtremeTickSaturates(t *testing.T) {
+	if got := formatTS(math.MaxInt64, TimeUnitSec); got != "99991231T235959" {
+		t.Errorf("formatTS(MaxInt64, sec) = %q, expected 99991231T235959", got)
+	}
+	if got := formatTS(math.MinInt64, TimeUnitMs); got != "19700101T000000000" {
+		t.Errorf("formatTS(MinInt64, ms) = %q, expected 19700101T000000000", got)
 	}
 }

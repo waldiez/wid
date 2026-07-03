@@ -67,7 +67,29 @@ func nowTick(unit TimeUnit) int64 {
 	return time.Now().Unix()
 }
 
+// maxSecTick is the largest second tick that still formats as a 4-digit
+// year (9999-12-31T23:59:59Z).
+const maxSecTick int64 = 253402300799
+
+// clampTick saturates a tick to the formattable range instead of emitting a
+// malformed >8-digit-year ID: a corrupted resume state (e.g. a hand-edited
+// SQL row) degrades to a pinned timestamp, matching the Rust implementation.
+func clampTick(tick int64, unit TimeUnit) int64 {
+	maxTick := maxSecTick
+	if unit == TimeUnitMs {
+		maxTick = maxSecTick*1000 + 999
+	}
+	if tick < 0 {
+		return 0
+	}
+	if tick > maxTick {
+		return maxTick
+	}
+	return tick
+}
+
 func formatTS(tick int64, unit TimeUnit) string {
+	tick = clampTick(tick, unit)
 	if unit == TimeUnitMs {
 		return time.UnixMilli(tick).UTC().Format("20060102T150405000")
 	}
@@ -110,8 +132,11 @@ func IsValidNode(node string) bool {
 	return isValidNode(node)
 }
 
-func pow10(n int) int {
-	v := 1
+// pow10 returns 10^n as int64: pow10(18) overflows a 32-bit int, and W may
+// legitimately be 18 (the parser already learned this lesson; see ParseInt
+// below). Callers keep sequence state in int64 for the same reason.
+func pow10(n int) int64 {
+	v := int64(1)
 	for i := 0; i < n; i++ {
 		v *= 10
 	}
@@ -331,9 +356,9 @@ type WidGen struct {
 	W        int
 	Z        int
 	TimeUnit TimeUnit
-	maxSeq   int
+	maxSeq   int64
 	lastTick int64
-	lastSeq  int
+	lastSeq  int64
 	mu       sync.Mutex
 }
 
@@ -364,7 +389,7 @@ func (g *WidGen) Next() string {
 	if tick <= g.lastTick {
 		tick = g.lastTick
 	}
-	seq := 0
+	seq := int64(0)
 	if tick == g.lastTick {
 		seq = g.lastSeq + 1
 	}
@@ -390,13 +415,13 @@ func (g *WidGen) NextN(n int) []string {
 	return out
 }
 
-func (g *WidGen) State() (int64, int) {
+func (g *WidGen) State() (int64, int64) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.lastTick, g.lastSeq
 }
 
-func (g *WidGen) RestoreState(lastTick int64, lastSeq int) {
+func (g *WidGen) RestoreState(lastTick, lastSeq int64) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.lastTick = lastTick
@@ -409,9 +434,9 @@ type HLCWidGen struct {
 	Z        int
 	Node     string
 	TimeUnit TimeUnit
-	maxLC    int
+	maxLC    int64
 	pt       int64
-	lc       int
+	lc       int64
 	mu       sync.Mutex
 }
 
@@ -445,7 +470,7 @@ func (g *HLCWidGen) rollover() {
 }
 
 // Observe merges remote timestamps into the local hybrid clock.
-func (g *HLCWidGen) Observe(remotePT int64, remoteLC int) error {
+func (g *HLCWidGen) Observe(remotePT, remoteLC int64) error {
 	if remotePT < 0 || remoteLC < 0 {
 		return ErrInvalidRemoteClock
 	}
@@ -508,14 +533,14 @@ func (g *HLCWidGen) NextN(n int) []string {
 }
 
 // State reports the current physical and logical counter.
-func (g *HLCWidGen) State() (int64, int) {
+func (g *HLCWidGen) State() (int64, int64) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.pt, g.lc
 }
 
 // RestoreState forces the generator to a previous hybrid clock state.
-func (g *HLCWidGen) RestoreState(pt int64, lc int) error {
+func (g *HLCWidGen) RestoreState(pt, lc int64) error {
 	if pt < 0 || lc < 0 {
 		return ErrInvalidRemoteClock
 	}

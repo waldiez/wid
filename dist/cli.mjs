@@ -7,7 +7,7 @@ import {
   parseWid,
   validateHlcWid,
   validateWid
-} from "./chunk-IQV3B3X3.mjs";
+} from "./chunk-5YIK4GHF.mjs";
 
 // typescript/src/cli.ts
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -237,7 +237,10 @@ function parseCanonical(args) {
     LExplicit: false
   };
   for (const arg of args) {
-    const [k, vRaw] = arg.split("=", 2);
+    const eq = arg.indexOf("=");
+    if (eq < 0) throw new Error(`expected KEY=VALUE, got '${arg}'`);
+    const k = arg.slice(0, eq);
+    const vRaw = arg.slice(eq + 1);
     if (!vRaw) throw new Error(`expected KEY=VALUE, got '${arg}'`);
     const v = vRaw === "#" ? defaultValueFor(k) : vRaw;
     switch (k) {

@@ -50,8 +50,4 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 libc = "0.2"
 
 [dev-dependencies]
-nanoid = "0.4"
-ulid = "1.2.1"
-svix-ksuid = "0.8.0"
-criterion = "0.8.2"
 futures = "0.3.32"

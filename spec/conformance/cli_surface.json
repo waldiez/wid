@@ -1,5 +1,5 @@
 {
-  "description": "Shared CLI-surface conformance: the flag matrix, defaults table, and error behavior that all six implementations re-implement by hand. Driven by tools/check_cli_surface.py against every real CLI. 'emit' cases must exit 0 and every stdout line must match the shape implied by params; 'reject' cases must exit nonzero with a diagnostic on stderr and no crash artifact (traceback/panic).",
+  "description": "Shared CLI-surface conformance: the flag matrix, defaults table, and error behavior that all six implementations re-implement by hand. Driven by tools/check_cli_surface.py against every real CLI. 'emit' cases must exit 0 and every stdout line must match the shape implied by params; 'reject' cases must exit nonzero with a diagnostic on stderr and no crash artifact (traceback/panic); 'parity' cases must exit 0 and produce byte-identical (JSON-normalized) output in every implementation; 'infinite' cases must still be running after run_seconds and have emitted at least min_lines shape-conformant lines.",
   "defaults": { "W": 4, "Z": 6, "time_unit": "sec", "kind": "wid" },
   "emit": [
     { "name": "flag-next-defaults", "args": ["next"], "lines": 1,
@@ -25,6 +25,7 @@
       "params": { "W": 4, "Z": 6, "time_unit": "sec", "kind": "wid" } }
   ],
   "reject": [
+    { "name": "no-args", "args": [] },
     { "name": "flag-W-too-large", "args": ["next", "--W", "19"] },
     { "name": "flag-W-zero", "args": ["next", "--W", "0"] },
     { "name": "flag-Z-too-large", "args": ["next", "--Z", "65"] },
@@ -35,11 +36,36 @@
     { "name": "flag-bad-kind", "args": ["next", "--kind", "banana"] },
     { "name": "flag-bad-hlc-node", "args": ["next", "--kind", "hlc", "--node", "bad.node"] },
     { "name": "flag-stream-count-not-integer", "args": ["stream", "--count", "x"] },
+    { "name": "flag-validate-bad-time-unit",
+      "args": ["validate", "20260217T143052.0000Z-a3f91c", "--time-unit", "moo"] },
+    { "name": "flag-validate-unknown-flag",
+      "args": ["validate", "20260217T143052.0000Z-a3f91c", "--bogus", "x"] },
+    { "name": "flag-parse-bad-kind",
+      "args": ["parse", "20260217T143052.0000Z-a3f91c", "--kind", "banana"] },
+    { "name": "flag-stream-no-private-extras", "args": ["stream", "--format", "jsonl"] },
+    { "name": "canonical-sign-missing-key-file",
+      "args": ["A=sign", "KEY=/nonexistent-wid-key.pem", "WID=20260217T143052.0000Z-a3f91c"] },
     { "name": "canonical-bad-time-unit", "args": ["A=next", "T=min"] },
     { "name": "canonical-empty-W", "args": ["A=next", "W="] },
     { "name": "canonical-W-too-large", "args": ["A=next", "W=19"] },
     { "name": "canonical-unknown-action", "args": ["A=nonexistent"] },
     { "name": "canonical-unknown-key", "args": ["A=next", "X=1"] },
     { "name": "validate-missing-id", "args": ["validate"] }
+  ],
+  "parity": [
+    { "name": "wotp-deterministic",
+      "args": ["A=w-otp", "MODE=gen", "KEY=parity-secret", "WID=20260217T143052.0000Z-a3f91c"] },
+    { "name": "wotp-key-containing-equals",
+      "args": ["A=w-otp", "MODE=gen", "KEY=abc=def", "WID=20260217T143052.0000Z-a3f91c"] },
+    { "name": "wotp-key-base64ish-trailing-equals",
+      "args": ["A=w-otp", "MODE=gen", "KEY=c2VjcmV0PT0=", "WID=20260217T143052.0000Z-a3f91c"] }
+  ],
+  "infinite": [
+    { "name": "flag-stream-count-0", "args": ["stream", "--count", "0"],
+      "run_seconds": 1.5, "min_lines": 10,
+      "params": { "W": 4, "Z": 6, "time_unit": "sec", "kind": "wid" } },
+    { "name": "canonical-stream-N0", "args": ["A=stream", "N=0"],
+      "run_seconds": 1.5, "min_lines": 10,
+      "params": { "W": 4, "Z": 6, "time_unit": "sec", "kind": "wid" } }
   ]
 }

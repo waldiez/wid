@@ -227,9 +227,12 @@ go-test:
 	cd go && go test -v ./...
 
 go-lint:
-	@command -v golangci-lint >/dev/null 2>&1 && \
-		cd go && golangci-lint run || \
-		cd go && go vet ./...
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		cd go && golangci-lint run; \
+	else \
+		echo "golangci-lint not found; falling back to go vet"; \
+		cd go && go vet ./...; \
+	fi
 
 go-check: go-lint go-test
 

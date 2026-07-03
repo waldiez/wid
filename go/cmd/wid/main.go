@@ -808,7 +808,7 @@ func sqlEnsureState(dbPath string, key string) error {
 	return err
 }
 
-func sqlLoadState(dbPath string, key string) (int64, int, error) {
+func sqlLoadState(dbPath string, key string) (int64, int64, error) {
 	escaped := sqlEscapeSingle(key)
 	sql := fmt.Sprintf("SELECT last_tick || '|' || last_seq FROM wid_state WHERE k='%s';", escaped)
 	raw, err := sqliteExec(dbPath, sql)
@@ -823,14 +823,14 @@ func sqlLoadState(dbPath string, key string) (int64, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	lastSeq64, err := strconv.ParseInt(parts[1], 10, 64)
+	lastSeq, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
 		return 0, 0, err
 	}
-	return lastTick, int(lastSeq64), nil
+	return lastTick, lastSeq, nil
 }
 
-func sqlCompareAndSwapState(dbPath string, key string, oldTick int64, oldSeq int, newTick int64, newSeq int) (bool, error) {
+func sqlCompareAndSwapState(dbPath string, key string, oldTick, oldSeq, newTick, newSeq int64) (bool, error) {
 	escaped := sqlEscapeSingle(key)
 	sql := fmt.Sprintf(
 		"UPDATE wid_state SET last_tick=%d,last_seq=%d WHERE k='%s' AND last_tick=%d AND last_seq=%d;SELECT changes();",
@@ -1085,18 +1085,6 @@ func dataDir(c canon) string {
 		return filepath.Clean(".local/services")
 	}
 	return filepath.Clean(c.d)
-}
-
-func printJSON(v any) {
-	b, _ := json.Marshal(v)
-	fmt.Println(string(b))
-}
-
-func valueOrHash(s string) string {
-	if strings.TrimSpace(s) == "" {
-		return "#"
-	}
-	return s
 }
 
 func runSelftest() int {

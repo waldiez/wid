@@ -313,7 +313,12 @@ function parseCanonical(args: string[]): Canon {
   };
 
   for (const arg of args) {
-    const [k, vRaw] = arg.split("=", 2);
+    // indexOf, not split("=", 2): JS split drops the remainder after the
+    // second '=', which silently truncates values like KEY=abc=def.
+    const eq = arg.indexOf("=");
+    if (eq < 0) throw new Error(`expected KEY=VALUE, got '${arg}'`);
+    const k = arg.slice(0, eq);
+    const vRaw = arg.slice(eq + 1);
     if (!vRaw) throw new Error(`expected KEY=VALUE, got '${arg}'`);
     const v = vRaw === "#" ? defaultValueFor(k) : vRaw;
 

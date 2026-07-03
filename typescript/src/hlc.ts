@@ -3,7 +3,7 @@
  * Format: YYYYMMDDTHHMMSS[mmm].<lcW>Z-<node>[-<padZ>]
  */
 
-import { type TimeUnit, timeDigits } from "./time";
+import { type TimeUnit, clampTick, timeDigits } from "./time";
 import { MAX_W, MAX_Z } from "./wid";
 
 /** Parsed components of an HLC-WID after a successful parse. */
@@ -177,7 +177,10 @@ export class HLCWidGen {
     return Math.floor(Date.now() / 1000);
   }
 
-  private tsForTick(tick: number): string {
+  private tsForTick(rawTick: number): string {
+    // Saturate instead of formatting a malformed >8-digit-year ID: a
+    // corrupted resume state degrades to a pinned timestamp (see clampTick).
+    const tick = clampTick(rawTick, this.timeUnit);
     if (tick !== this.cachedTick) {
       this.cachedTick = tick;
       const sec = this.timeUnit === "ms" ? Math.floor(tick / 1000) : tick;

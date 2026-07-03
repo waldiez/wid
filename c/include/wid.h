@@ -523,7 +523,22 @@ static inline int64_t wid_now_monotonic_ns(void) {
     return (int64_t)clock() * (1000000000LL / CLOCKS_PER_SEC);
 }
 
+/* Largest second tick that still formats as a 4-digit year
+ * (9999-12-31T23:59:59Z). */
+#define WID_MAX_SEC_TICK 253402300799LL
+
+/* Saturate a tick to the formattable range instead of handing strftime an
+ * out-of-range struct tm (empty/garbage output): a corrupted resume state
+ * degrades to a pinned timestamp, matching the Rust implementation. */
+static inline int64_t wid_clamp_tick(wid_time_unit_t unit, int64_t tick) {
+    int64_t max_tick = (unit == WID_TIME_MS) ? WID_MAX_SEC_TICK * 1000LL + 999LL : WID_MAX_SEC_TICK;
+    if (tick < 0) return 0;
+    if (tick > max_tick) return max_tick;
+    return tick;
+}
+
 static inline void wid_fmt_tick(wid_time_unit_t unit, int64_t tick, char out[24]) {
+    tick = wid_clamp_tick(unit, tick);
     int64_t sec = tick;
     int ms = 0;
 

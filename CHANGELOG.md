@@ -32,6 +32,28 @@ called out at the bottom.
   spec").
 
 ### Fixed
+- TypeScript canonical parser: values containing `=` (e.g.
+  `KEY=abc=def`, base64 secrets) were silently truncated at the second `=`
+  by `split("=", 2)`, so the same w-otp secret produced a *different* code
+  than the other five implementations. Now parses on the first `=` only;
+  a cross-language parity gate in `cli_surface.json` pins this.
+- TypeScript manifest (`WidFile.fromBytes`): now rejects unknown header
+  versions and truncated manifest bodies, matching Rust's
+  `UnsupportedVersion`/`DataTooSmall`.
+- Unified the default `E=sql` state database location to
+  `<cwd>/.local/services/wid_state.sqlite` in all six implementations.
+  Python previously defaulted to `~/.local/wid/services/` and sh to the
+  repository root, silently splitting the shared monotonic state.
+- sh: `stream --count 0` streamed 10 IDs instead of forever; 0 now means
+  unbounded everywhere (flag and canonical mode alike).
+- Python CLI flag mode: unknown flags were silently ignored in
+  `validate`/`parse`, `--time-unit moo` was silently read as `ms`, and a
+  missing key file (or missing `cryptography` install) printed a raw
+  traceback. All now exit with a clean `error: …`.
+- Extreme/corrupt resume-state ticks now saturate to the formattable range
+  in **all six** implementations (previously Rust-only): TS/Go emitted
+  malformed >8-digit-year IDs, Python raised, C's `strftime` could return
+  garbage.
 - Unified the canonical `A=stream` cadence across all six CLIs: an unset or
   placeholder `L` emits back-to-back; only an explicit `L=n` sleeps n seconds
   between emissions. Previously Rust/Go/C ignored `L=` entirely while
@@ -50,6 +72,8 @@ called out at the bottom.
   now saturate instead of panicking.
 - Renamed the manifest container type `SynapseFile` → `WidFile` and its magic
   `SYNM` → `WIDM` (Rust + TypeScript; format was never released).
+- `make go-lint` had a broken `&&`/`||` chain that could never fail on
+  golangci-lint findings (and hid dead code, since deleted).
 
 ### Pre-release breaking reshapes (never released, listed for `main` trackers)
 - Signing message framing (`wid-sig-v1:` + WID byte length) replaced bare
@@ -60,3 +84,12 @@ called out at the bottom.
   the service layer is Rust-only.
 - W/Z bounds unified to W∈[1,18], Z∈[0,64], reject-not-clamp, in every CLI.
 - TypeScript's non-standard plain-WID "scope" extension removed.
+- Running `wid` with no arguments now prints usage and exits 2 in every
+  implementation (Python and sh used to silently emit one ID); the
+  Python-only `WID_DEFAULT_MODE` environment variable is gone.
+- Python-only flag-mode extras removed (`--format jsonl`, `--interval-ms`,
+  `--cadence`, `--healthcheck-cmd`, and ~20 unregistered service entry
+  points): the flag surface is now identical across implementations.
+- Go library: sequence state widened to `int64`
+  (`State`/`RestoreState`/`Observe` signatures changed) so `W=18` cannot
+  overflow on 32-bit GOARCH.

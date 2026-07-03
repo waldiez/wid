@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, final
 
+from .core import clamp_tick
 from .parse import MAX_W, MAX_Z
 
 
@@ -145,12 +146,8 @@ class WidGen:
         # Backwards-compatible keyword names: accept both `W`/`Z` and `w`/`z`.
         if "w" in kwargs:
             W = int(kwargs.pop("w"))
-        elif "W" in kwargs:
-            W = int(kwargs.pop("W"))
         if "z" in kwargs:
             Z = int(kwargs.pop("z"))
-        elif "Z" in kwargs:
-            Z = int(kwargs.pop("Z"))
         if kwargs:
             # Anything left is a typo (e.g. tine_unit=), not compatibility.
             raise TypeError(
@@ -196,6 +193,9 @@ class WidGen:
             return
 
     def _ts_for_sec(self, sec: int) -> str:
+        # Saturate instead of raising from datetime.fromtimestamp: a
+        # corrupted resume state degrades to a pinned timestamp.
+        sec = clamp_tick(sec, self.time_unit)
         if sec != self._cached_sec:
             self._cached_sec = sec
             if self.time_unit == "ms":

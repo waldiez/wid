@@ -16,6 +16,13 @@ function parseTimeUnit(input) {
 function timeDigits(unit) {
   return unit === "ms" ? 9 : 6;
 }
+var MAX_SEC_TICK = 253402300799;
+function clampTick(tick, unit) {
+  const max = unit === "ms" ? MAX_SEC_TICK * 1e3 + 999 : MAX_SEC_TICK;
+  if (tick < 0) return 0;
+  if (tick > max) return max;
+  return tick;
+}
 
 // typescript/src/wid.ts
 var MAX_W = 18;
@@ -143,7 +150,8 @@ var WidGen = class {
     } catch {
     }
   }
-  tsForTick(tick) {
+  tsForTick(rawTick) {
+    const tick = clampTick(rawTick, this.timeUnit);
     if (tick !== this.cachedSec) {
       this.cachedSec = tick;
       const sec = this.timeUnit === "ms" ? Math.floor(tick / 1e3) : tick;
@@ -292,7 +300,8 @@ var HLCWidGen = class {
     }
     return Math.floor(Date.now() / 1e3);
   }
-  tsForTick(tick) {
+  tsForTick(rawTick) {
+    const tick = clampTick(rawTick, this.timeUnit);
     if (tick !== this.cachedTick) {
       this.cachedTick = tick;
       const sec = this.timeUnit === "ms" ? Math.floor(tick / 1e3) : tick;
@@ -592,7 +601,10 @@ function parseCanonical(args) {
     LExplicit: false
   };
   for (const arg of args) {
-    const [k, vRaw] = arg.split("=", 2);
+    const eq = arg.indexOf("=");
+    if (eq < 0) throw new Error(`expected KEY=VALUE, got '${arg}'`);
+    const k = arg.slice(0, eq);
+    const vRaw = arg.slice(eq + 1);
     if (!vRaw) throw new Error(`expected KEY=VALUE, got '${arg}'`);
     const v = vRaw === "#" ? defaultValueFor(k) : vRaw;
     switch (k) {

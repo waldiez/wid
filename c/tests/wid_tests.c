@@ -185,6 +185,16 @@ static void test_low_level_helpers(void) {
     CHECK(!wid_valid_suffix("-a3f91c", 0), "suffix not allowed when Z=0");
 }
 
+static void test_extreme_tick_saturates(void) {
+    /* A corrupted resume state must degrade to a pinned timestamp, not an
+     * empty/garbage strftime buffer. */
+    char out[24];
+    wid_fmt_tick(WID_TIME_SEC, INT64_MAX, out);
+    CHECK(strcmp(out, "99991231T235959") == 0, "extreme sec tick saturates high");
+    wid_fmt_tick(WID_TIME_MS, INT64_MIN, out);
+    CHECK(strcmp(out, "19700101T000000000") == 0, "extreme ms tick saturates low");
+}
+
 int main(void) {
     srand(1);
 
@@ -197,6 +207,7 @@ int main(void) {
     test_bulk_sync_api();
     test_async_poll_api();
     test_low_level_helpers();
+    test_extreme_tick_saturates();
 
     if (g_failures != 0) {
         fprintf(stderr, "\\n%d test(s) failed.\\n", g_failures);

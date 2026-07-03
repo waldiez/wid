@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal, final
 
+from .core import clamp_tick
 from .parse import MAX_W, MAX_Z
 
 
@@ -89,6 +90,9 @@ class HLCWidGen:
         self._cached_ts = ""
 
     def _ts_for_sec(self, sec: int) -> str:
+        # Saturate instead of raising from datetime.fromtimestamp: a
+        # corrupted resume state degrades to a pinned timestamp.
+        sec = clamp_tick(sec, self.time_unit)
         if sec != self._cached_sec:
             self._cached_sec = sec
             if self.time_unit == "ms":

@@ -146,12 +146,19 @@ export class WidFile {
     }
 
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const version = view.getUint16(4, false);
+    if (version !== MANIFEST_VERSION) {
+      throw new Error(`Unsupported manifest version: ${version}`);
+    }
     const manifestSize = view.getUint32(6, false);
     if (manifestSize > MAX_MANIFEST_SIZE) {
       throw new Error(`Manifest too large: ${manifestSize} bytes`);
     }
 
     const manifestEnd = HEADER_SIZE + manifestSize;
+    if (data.length < manifestEnd) {
+      throw new Error('Data too small for WID manifest file');
+    }
     const manifestBytes = data.subarray(HEADER_SIZE, manifestEnd);
     const manifest = Manifest.fromBytes(manifestBytes);
     const payload = data.subarray(manifestEnd);

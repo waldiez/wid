@@ -141,4 +141,22 @@ describe('WidFile', () => {
     view.setUint32(6, 70_000, false);
     expect(() => WidFile.fromBytes(header)).toThrow('Manifest too large');
   });
+
+  it('throws on unsupported header version (parity with Rust UnsupportedVersion)', async () => {
+    const manifest = new Manifest({ id: 'v-test' });
+    const sf = new WidFile(manifest, new TextEncoder().encode('payload'));
+    const bytes = await sf.toBytes();
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    view.setUint16(4, 9, false);
+    expect(() => WidFile.fromBytes(bytes)).toThrow('Unsupported manifest version: 9');
+  });
+
+  it('throws on truncated manifest body (parity with Rust DataTooSmall)', async () => {
+    const manifest = new Manifest({ id: 'trunc-test' });
+    const sf = new WidFile(manifest, new TextEncoder().encode('payload'));
+    const bytes = await sf.toBytes();
+    // Keep the full header but cut the declared manifest body short.
+    const truncated = bytes.subarray(0, 12);
+    expect(() => WidFile.fromBytes(truncated)).toThrow('too small');
+  });
 });

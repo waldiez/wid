@@ -471,6 +471,17 @@ class TestWidGenEdgeCases:
         with pytest.raises(ValueError):
             gen.restore_state(0, -2)
 
+    def test_extreme_state_saturates_instead_of_raising(self) -> None:
+        # A corrupted resume state degrades to a pinned timestamp instead of
+        # raising from datetime.fromtimestamp (parity with Rust clamp_tick).
+        gen = WidGen(W=4, Z=0)
+        gen.restore_state(2**62, 0)
+        assert gen.next().startswith("99991231T235959")
+
+        gen_ms = WidGen(W=4, Z=0, time_unit="ms")
+        gen_ms.restore_state(2**62, 0)
+        assert gen_ms.next().startswith("99991231T235959999")
+
     def test_call_alias_and_rollover(self) -> None:
         gen = WidGen(W=1, Z=0)  # max_seq=9
         gen.restore_state(100, 9)
