@@ -30,8 +30,7 @@
     "lint": "eslint typescript/src --ext .ts",
     "typecheck": "tsc -p typescript/tsconfig.json --noEmit",
     "check": "npm run lint && npm run typecheck && npm run test",
-    "all": "npm run check && npm run build",
-    "gen:preview": "node -e \"const{chromium}=require('playwright');(async()=>{const b=await chromium.launch();const p=await b.newPage();await p.setViewportSize({width:1280,height:640});await p.goto('file://'+require('path').resolve('docs/social-preview.html'));await p.screenshot({path:'docs/social-preview.png'});await b.close();})();\""
+    "all": "npm run check && npm run build"
   },
   "repository": {
     "type": "git",
@@ -39,12 +38,17 @@
   },
   "homepage": "https://waldiez.github.io/wid",
   "license": "MIT",
+  "optionalDependencies": {
+    "@rollup/rollup-darwin-arm64": "^4.57.1",
+    "@rollup/rollup-darwin-x64": "^4.57.1",
+    "@rollup/rollup-linux-arm64-gnu": "^4.57.1",
+    "@rollup/rollup-linux-x64-gnu": "^4.57.1"
+  },
   "devDependencies": {
     "@types/node": "^25.3.3",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
     "eslint": "^10.0.2",
-    "playwright": "^1.58.2",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"

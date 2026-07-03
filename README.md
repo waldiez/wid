@@ -107,22 +107,28 @@ Full specification with EBNF grammar: [spec/SPEC.md](spec/SPEC.md)
 
 ## Install
 
+> No release has been tagged yet, so the packages are not on the public
+> registries. Until the first tagged release (which will publish
+> `waldiez-wid` to crates.io/PyPI, `@waldiez/wid` to npm, and images to
+> ghcr.io), install straight from this repository — all of the following
+> work today:
+
 ### Rust
 
 ```bash
-cargo install waldiez-wid
+cargo install --git https://github.com/waldiez/wid
 ```
 
 ### Python
 
 ```bash
-pip install waldiez-wid
+pip install git+https://github.com/waldiez/wid
 ```
 
 ### TypeScript
 
 ```bash
-npm install @waldiez/wid
+npm install github:waldiez/wid   # dist/ is committed, so git installs work
 ```
 
 ### Go
@@ -141,8 +147,7 @@ go install github.com/waldiez/wid/go/cmd/wid@latest
 ### Docker
 
 ```bash
-docker pull ghcr.io/waldiez/wid
-docker run --rm ghcr.io/waldiez/wid next
+docker build -t wid . && docker run --rm wid next
 ```
 
 ## Build

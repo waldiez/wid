@@ -49,7 +49,8 @@ jobs:
           go-version: "1.22"
           cache: false
       - run: python3 -m pip install -e ".[dev]"
-      - run: npm ci --include=optional
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
       - run: make rust-check
       - run: make python-check
       - run: make ts-check
@@ -84,13 +85,8 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
-      - run: npm ci --include=optional
-      - run: |
-          if [ "$(uname -m)" = "x86_64" ]; then
-            npm i --no-save @rollup/rollup-linux-x64-gnu || true
-          elif [ "$(uname -m)" = "aarch64" ]; then
-            npm i --no-save @rollup/rollup-linux-arm64-gnu || true
-          fi
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
       - run: npm run build
       - run: npm publish --access public
         env:

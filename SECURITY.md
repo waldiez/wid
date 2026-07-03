@@ -2,7 +2,9 @@
 
 ## Supported Versions
 
-Security fixes are applied to the latest released `1.x` line. Older pre-1.0
+Security fixes are applied to the tip of `main` (no release has been tagged
+yet; once `1.x` releases exist, fixes will target the latest released `1.x`
+line). Older pre-1.0
 snapshots are not maintained.
 
 | Version | Supported |

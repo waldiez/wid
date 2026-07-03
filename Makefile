@@ -6,7 +6,6 @@
        go-setup go-test go-check go-clean go-lint go-bench go-next \
        sh-test sh-next \
        next id stream do healthcheck start stop status sign verify otp otp-gen otp-verify crypto-demo \
-       mobile-arcade-fix-links mobile-arcade-zip \
        conformance bench-matrix docker capabilities-check stream-conformance id-conformance crypto-smoke signed-envelope-check security-matrix-check key-rotation-drill-check soak-check envelope-compat-check release-check \
        wotp-parity-check \
        hardening-check
@@ -48,8 +47,6 @@ help:
 	@echo "  make otp-gen             # generate WID-bound OTP"
 	@echo "  make otp-verify          # verify WID-bound OTP"
 	@echo "  make crypto-demo         # end-to-end sign/verify + OTP demo"
-	@echo "  make mobile-arcade-fix-links # patch web demo links in flutter web bundle"
-	@echo "  make mobile-arcade-zip   # patch links + package build/pages/mobile-arcade"
 	@echo ""
 	@echo "QA:"
 	@echo "  make release-check       # capabilities + stream-conformance + check"
@@ -192,15 +189,11 @@ c-next:
 
 # ─── TypeScript ───────────────────────────────────────────────────────
 
+# Bun is the package manager (bun.lock is the only lockfile); node stays the
+# script runtime. Rollup's per-platform binaries are pinned as top-level
+# optionalDependencies in package.json, so no post-install patching is needed.
 ts-setup:
-	npm install
-	@if [ "$$(uname -s)" = "Linux" ]; then \
-		if [ "$$(uname -m)" = "aarch64" ]; then \
-			npm i --no-save @rollup/rollup-linux-arm64-gnu 2>/dev/null || true; \
-		elif [ "$$(uname -m)" = "x86_64" ]; then \
-			npm i --no-save @rollup/rollup-linux-x64-gnu 2>/dev/null || true; \
-		fi; \
-	fi
+	bun install
 	npm run build
 
 ts-test:
@@ -352,13 +345,6 @@ crypto-demo:
 	OTP_CODE="$$(printf '%s\n' "$$OTP_JSON" | sed -nE 's/.*\"otp\":\"([0-9]+)\".*/\1/p')"; \
 	echo "$$OTP_JSON"; \
 	bash sh/wid A=w-otp MODE=verify KEY='demo-secret' WID=$$WID_VAL CODE=$$OTP_CODE DIGITS=$(DIGITS)
-
-mobile-arcade-fix-links:
-	bash tools/patch_mobile_arcade_links.sh
-
-mobile-arcade-zip: mobile-arcade-fix-links
-	@mkdir -p dist
-	@cd build/pages && zip -r ../../dist/mobile-arcade-web-$(shell date +%Y%m%d).zip mobile-arcade
 
 # ─── Cross-cutting ───────────────────────────────────────────────────
 
