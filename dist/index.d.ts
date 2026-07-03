@@ -23,6 +23,11 @@ interface ParsedWid {
     /** UTC timestamp extracted from the WID envelope. */
     timestamp: Date;
     /** Sequential component embedded in the identifier. */
+    /**
+     * Sequential component embedded in the identifier. Note: JS numbers are
+     * IEEE-754 doubles, so values above 2^53 (sequences with 16+ digits) lose
+     * precision here; validation itself is exact (string/regex based).
+     */
     sequence: number;
     /** Optional padding hex string when Z > 0. */
     padding: string | null;

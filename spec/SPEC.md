@@ -108,7 +108,8 @@ mmm        ::= DIGIT DIGIT DIGIT            (* 000–999 *)
 SEQ        ::= DIGIT{W}                     (* fixed width, zero-padded *)
 LC         ::= DIGIT{W}                     (* logical counter, zero-padded *)
 
-NODE       ::= ALNUM { ALNUM | "_" }        (* no hyphens allowed *)
+NODE       ::= NODE_CHAR { NODE_CHAR }      (* ASCII alnum or "_" only *)
+NODE_CHAR  ::= ALNUM | "_"
 
 PAD        ::= HEX{Z}                       (* lowercase random hex *)
 

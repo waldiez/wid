@@ -15,7 +15,9 @@ use crate::wid::{TimeUnit, WidError};
 pub struct ParsedHlcWid {
     pub raw: String,
     pub timestamp: DateTime<Utc>,
-    pub logical_counter: u32,
+    /// i64, not u32: the spec allows W up to 18, and an all-nines W=10
+    /// counter (9999999999) already exceeds u32::MAX.
+    pub logical_counter: i64,
     pub node: String,
     pub padding: Option<String>,
 }
@@ -116,7 +118,7 @@ pub fn parse_hlc_wid_with_unit(
     }
 
     let timestamp = parse_ts(time_unit, date_str, time_str).ok_or(WidError::InvalidTimestamp)?;
-    let logical_counter: u32 = lc_str
+    let logical_counter: i64 = lc_str
         .parse()
         .map_err(|_| WidError::InvalidFormat(wid.to_string()))?;
 

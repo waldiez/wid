@@ -74,7 +74,8 @@ Anchors: `spec/SIGNED_ENVELOPE_SPEC.md`, `spec/conformance/security_matrix.json`
   demonstrate that any of the six CLIs implement signed envelopes — none do yet.
 - `encrypt` / `decrypt` / `hash` are unimplemented; no claim is made about them.
 - It does not prove safety against all side-channel, supply-chain, or
-  operational key-management failures. In particular, the `sh` implementation
-  passes the OTP/HMAC secret to `openssl(1)` as a process argument (visible via
-  `ps`/`/proc` to same-user processes); prefer a non-`sh` implementation when
-  secret exposure to local users is a concern.
+  operational key-management failures. In particular, an inline `KEY=<secret>`
+  is visible via `ps`/`/proc` to same-user processes in *every* implementation
+  (and the `sh` implementation additionally re-exposes it to `openssl(1)`);
+  pass a key file path (`KEY=<path>`) when secret exposure to local users is a
+  concern. See SECURITY.md's known limitations.

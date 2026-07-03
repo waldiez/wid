@@ -25,7 +25,7 @@ const (
 var (
 	ErrInvalidW            = errors.New("W must be between 1 and 18")
 	ErrInvalidZ            = errors.New("Z must be between 0 and 64")
-	ErrInvalidNode         = errors.New("node must be non-empty, no whitespace or hyphens")
+	ErrInvalidNode         = errors.New("node must be one or more ASCII alphanumerics or underscores")
 	ErrInvalidFormat       = errors.New("invalid WID format")
 	ErrInvalidTimestamp    = errors.New("invalid timestamp in WID")
 	ErrInvalidRemoteClock  = errors.New("remote clock values must be non-negative")
@@ -80,21 +80,25 @@ func randomHex(z int) string {
 	}
 	b := make([]byte, (z+1)/2)
 	if _, err := rand.Read(b); err != nil {
-		// fallback path is deterministic enough for non-security use in tests
-		now := time.Now().UnixNano()
-		for i := range b {
-			b[i] = byte(now >> uint((i%8)*8))
-		}
+		// Padding is the collision/unpredictability defense; silently
+		// degrading to time-derived bytes defeats it. crypto/rand never
+		// fails on supported platforms, so treat failure as fatal.
+		panic("wid: crypto/rand failed: " + err.Error())
 	}
 	return hex.EncodeToString(b)[:z]
 }
 
+// isValidNode enforces the spec's NODE charset: one or more ASCII
+// alphanumerics or underscores, matching the Rust/C/TypeScript validators.
+// Merely excluding whitespace/hyphens let nodes like "node.01" through here
+// while half the implementations rejected them.
 func isValidNode(node string) bool {
 	if node == "" {
 		return false
 	}
 	for _, c := range node {
-		if c == '-' || c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+		alnum := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+		if !alnum && c != '_' {
 			return false
 		}
 	}
@@ -142,7 +146,7 @@ func parseCalendar(dateStr, timeStr string, unit TimeUnit) (time.Time, error) {
 type ParsedWid struct {
 	Raw         string
 	Timestamp   time.Time
-	Sequence    int
+	Sequence    int64
 	Padding     *string
 	Millisecond int
 }
@@ -151,7 +155,7 @@ type ParsedWid struct {
 type ParsedHlcWid struct {
 	Raw            string
 	Timestamp      time.Time
-	LogicalCounter int
+	LogicalCounter int64
 	Node           string
 	Padding        *string
 	Millisecond    int
@@ -248,7 +252,12 @@ func ParseWidWithUnit(wid string, w, z int, unit TimeUnit) (*ParsedWid, error) {
 	if err != nil {
 		return nil, err
 	}
-	seq, _ := strconv.Atoi(seqStr)
+	// ParseInt(..., 64), checked: Atoi silently truncates on 32-bit
+	// platforms and swallowed its error entirely.
+	seq, err := strconv.ParseInt(seqStr, 10, 64)
+	if err != nil {
+		return nil, ErrInvalidFormat
+	}
 	var padding *string
 	if suffix != "" {
 		if !strings.HasPrefix(suffix, "-") {
@@ -295,7 +304,10 @@ func ParseHlcWidWithUnit(wid string, w, z int, unit TimeUnit) (*ParsedHlcWid, er
 	if err != nil {
 		return nil, err
 	}
-	lc, _ := strconv.Atoi(lcStr)
+	lc, err := strconv.ParseInt(lcStr, 10, 64)
+	if err != nil {
+		return nil, ErrInvalidFormat
+	}
 	var padding *string
 	if suffix != "" {
 		if !strings.HasPrefix(suffix, "-") {

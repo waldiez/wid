@@ -222,7 +222,7 @@ var WidGen = class {
     this.W = W;
     this.Z = Z;
     this.timeUnit = timeUnit;
-    this.maxSeq = Math.pow(10, W) - 1;
+    this.maxSeq = Math.min(Math.pow(10, W) - 1, Number.MAX_SAFE_INTEGER - 1);
     this.stateStore = stateStore ?? null;
     this.stateKey = stateKey;
     this.autoPersist = autoPersist;
@@ -382,7 +382,7 @@ var HLCWidGen = class {
     this.Z = Z;
     this.node = node;
     this.timeUnit = timeUnit;
-    this.maxLC = Math.pow(10, W) - 1;
+    this.maxLC = Math.min(Math.pow(10, W) - 1, Number.MAX_SAFE_INTEGER - 1);
   }
   nowTick() {
     if (this.timeUnit === "ms") {
@@ -613,4 +613,4 @@ export {
   Manifest,
   SynapseFile
 };
-//# sourceMappingURL=chunk-MMSXEV4M.mjs.map
+//# sourceMappingURL=chunk-I3HMNKLV.mjs.map

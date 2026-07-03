@@ -7,7 +7,7 @@ import {
   parseWid,
   validateHlcWid,
   validateWid
-} from "./chunk-MMSXEV4M.mjs";
+} from "./chunk-I3HMNKLV.mjs";
 
 // typescript/src/cli.ts
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "fs";

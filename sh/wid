@@ -237,10 +237,12 @@ valid_ymdhms() {
 # - must NOT contain '-' (to avoid ambiguity with -<pad>)
 valid_node() {
     local node=$1
-    [[ -n "$node" ]] || return 1
-    [[ "$node" != *[[:space:]]* ]] || return 1
-    [[ "$node" != *-* ]] || return 1
-    return 0
+    # Spec NODE charset: one or more ASCII alphanumerics or underscores,
+    # matching the Rust/C/TypeScript validators. A looser "no whitespace or
+    # hyphen" rule accepted nodes like "node.01" that they reject. The charset
+    # is spelled out (no a-z ranges) so it stays ASCII in any locale.
+    local re='^[abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_]+$'
+    [[ -n "$node" && "$node" =~ $re ]]
 }
 
 rand_hex() {

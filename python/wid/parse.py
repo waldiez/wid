@@ -14,7 +14,10 @@ _HEX_LOWER_RE_CACHE: dict[int, re.Pattern[str]] = {}
 _WID_BASE_RE_CACHE: dict[tuple[int, str], re.Pattern[str]] = {}
 _HLC_BASE_RE_CACHE: dict[tuple[int, str], re.Pattern[str]] = {}
 
-_NODE_RE = re.compile(r"^\S+\Z")  # no whitespace; \Z (not $) rejects a trailing newline
+# Spec NODE charset: ASCII alphanumerics/underscore only (\Z, not $, so a
+# trailing newline is rejected). A looser "no whitespace" rule accepted nodes
+# like "node.01" that Rust/C/TypeScript reject.
+_NODE_RE = re.compile(r"^[A-Za-z0-9_]+\Z")
 
 # Maximum sequence/logical-counter width: 10^18 - 1 is the largest all-nines
 # value that fits in an int64 (10^19 overflows), so W > 18 cannot be

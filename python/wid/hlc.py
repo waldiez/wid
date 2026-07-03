@@ -58,8 +58,10 @@ class HLCWidGen:
         if "z" in kwargs:
             Z = int(kwargs.pop("z"))  # pyright: ignore[reportConstantRedefinition]
 
-        if not node or any(c.isspace() for c in node) or "-" in node:
-            raise ValueError("node must be a non-empty token (no whitespace or '-')")
+        if not node or not all(c.isascii() and (c.isalnum() or c == "_") for c in node):
+            raise ValueError(
+                "node must be one or more ASCII alphanumerics or underscores"
+            )
         # Bounds match all six implementations: W > 18 would overflow an
         # int64 logical counter; Z > 64 exceeds the C implementation's WID_MAX_Z.
         if W <= 0 or W > MAX_W:

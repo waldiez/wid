@@ -22,6 +22,11 @@ export interface ParsedWid {
   /** UTC timestamp extracted from the WID envelope. */
   timestamp: Date;
   /** Sequential component embedded in the identifier. */
+  /**
+   * Sequential component embedded in the identifier. Note: JS numbers are
+   * IEEE-754 doubles, so values above 2^53 (sequences with 16+ digits) lose
+   * precision here; validation itself is exact (string/regex based).
+   */
   sequence: number;
   /** Optional padding hex string when Z > 0. */
   padding: string | null;
@@ -374,7 +379,10 @@ export class WidGen {
     this.W = W;
     this.Z = Z;
     this.timeUnit = timeUnit;
-    this.maxSeq = Math.pow(10, W) - 1;
+    // 10^W - 1 is not exactly representable above 2^53 (Math.pow(10,18) - 1
+    // evaluates to 10^18). Cap at MAX_SAFE_INTEGER - 1 so `seq > maxSeq`
+    // still triggers rollover before `seq + 1` stops incrementing.
+    this.maxSeq = Math.min(Math.pow(10, W) - 1, Number.MAX_SAFE_INTEGER - 1);
     this.stateStore = stateStore ?? null;
     this.stateKey = stateKey;
     this.autoPersist = autoPersist;

@@ -69,7 +69,9 @@ impl TimeUnit {
 pub struct ParsedWid {
     pub raw: String,
     pub timestamp: DateTime<Utc>,
-    pub sequence: u32,
+    /// i64, not u32: the spec allows W up to 18, and an all-nines W=10
+    /// sequence (9999999999) already exceeds u32::MAX.
+    pub sequence: i64,
     pub padding: Option<String>,
 }
 
@@ -170,7 +172,7 @@ pub fn parse_wid_with_unit(
     let timestamp =
         parse_timestamp(time_unit, date_str, time_str).ok_or(WidError::InvalidTimestamp)?;
 
-    let sequence: u32 = seq_str
+    let sequence: i64 = seq_str
         .parse()
         .map_err(|_| WidError::InvalidFormat(wid.to_string()))?;
 

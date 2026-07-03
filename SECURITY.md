@@ -32,11 +32,19 @@ concept to reproduce.
 
 ## Known limitations (not tracked as vulnerabilities)
 
-- **`sh` implementation and secrets.** The `sh` implementation passes the
-  `w-otp` HMAC secret to `openssl(1)` as a process argument, so it can be
-  visible via `ps`/`/proc` to other processes of the same user. Prefer a
-  non-`sh` implementation when local secret exposure matters. See the
-  "Security considerations" section of `spec/CRYPTO_SPEC.md`.
+- **Secrets on the command line.** *Every* implementation accepts the
+  `w-otp` secret inline as `KEY=<secret>`, which makes it visible via
+  `ps`/`/proc` to other processes of the same user — switching languages does
+  not avoid this. To keep the secret out of process arguments, pass a file
+  path instead (`KEY=<path>`): all implementations read the key material from
+  the file. The `sh` implementation additionally re-exposes an inline secret
+  to `openssl(1)` as a process argument. See the "Security considerations"
+  section of `spec/CRYPTO_SPEC.md`.
+- **`KEY` path/secret ambiguity.** `KEY=<value>` is treated as a file path if
+  a file with that exact name exists, and as the literal secret otherwise —
+  uniformly in all implementations. An inline secret that happens to match an
+  existing filename will silently be replaced by that file's contents. Prefer
+  the explicit file form for anything beyond ad-hoc use.
 - **`w-otp` is a truncated MAC, not a rotating OTP.** Verifiers must apply
   rate-limiting/lockout and (if needed) single-use tracking; see
   `spec/CRYPTO_SPEC.md`.

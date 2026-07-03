@@ -166,7 +166,8 @@ export class HLCWidGen {
     this.Z = Z;
     this.node = node;
     this.timeUnit = timeUnit;
-    this.maxLC = Math.pow(10, W) - 1;
+    // Capped like WidGen.maxSeq: see the comment there (IEEE-754 precision).
+    this.maxLC = Math.min(Math.pow(10, W) - 1, Number.MAX_SAFE_INTEGER - 1);
   }
 
   private nowTick(): number {
