@@ -47,6 +47,12 @@ concept to reproduce.
   uniformly in all implementations. An inline secret that happens to match an
   existing filename will silently be replaced by that file's contents. Prefer
   the explicit file form for anything beyond ad-hoc use.
+- **WIDs embed timestamps in cleartext.** This is by design (sortability),
+  but it means any party that sees a WID learns when it was minted, a
+  WID-keyed SQL table reveals row creation times to anyone who can read it,
+  and HLC-WIDs additionally name the minting node. Do not use raw WIDs as
+  identifiers for people or other privacy-sensitive entities; see "Privacy
+  Considerations" in `spec/SPEC.md`.
 - **`w-otp` is a truncated MAC, not a rotating OTP.** Verifiers must apply
   rate-limiting/lockout and (if needed) single-use tracking; see
   `spec/CRYPTO_SPEC.md`.

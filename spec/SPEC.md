@@ -267,6 +267,31 @@ WIDs are designed to be **lexicographically sortable**:
 | Merge support | No | Yes (`observe` function) |
 | Example | `...0042Z-a3f91c` | `...0042Z-node01-a3f91c` |
 
+## Privacy Considerations
+
+WIDs expose information by design, and implementers MUST treat this as a
+feature to be consciously accepted rather than discovered later:
+
+- **Timestamps are cleartext.** Anyone who sees a WID learns when it was
+  minted, to second or millisecond precision. Sorted storage (e.g. a WID
+  primary key in a database) therefore reveals row creation times to any
+  reader of the index, and IDs shared across trust boundaries reveal activity
+  timing.
+- **Sequences reveal rate.** The SEQ/LC component discloses how many IDs were
+  minted within the same tick, i.e. activity volume.
+- **HLC nodes reveal origin.** The `node` tag identifies the minting node to
+  every consumer of the ID.
+
+Consequently, WIDs are intended for *event/occurrence* identifiers, where
+"when and where did this happen" is the point. They are NOT recommended as
+long-lived identifiers for people or other privacy-sensitive entities: use a
+stable, non-temporal identifier for the entity (e.g. derived from key
+material) and WIDs for the occurrences involving it. Where IDs must not leak
+timing at all, WID is the wrong format.
+
+(The `E=sql` state database stores only the latest `last_tick`/`last_seq` per
+generator shape — recent-activity metadata, not a per-ID history.)
+
 ## Conformance
 
 Implementations MUST pass all test cases in `conformance/` to be considered compliant.

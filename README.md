@@ -105,6 +105,34 @@ Out-of-range `W`/`Z` are rejected (never clamped) by every implementation;
 
 Full specification with EBNF grammar: [spec/SPEC.md](spec/SPEC.md)
 
+## Identity vs. Events — the recommended pattern
+
+WIDs name *moments*, not *things*. They embed their creation timestamp in
+cleartext on purpose (that is what makes them sortable and debuggable), so
+they are the right identifier for occurrences — sensor readings, presence
+events, zone transitions, transactions — and the wrong one for long-lived
+entities such as people, devices, or places.
+
+Give entities a stable, non-temporal identifier (for example one derived from
+the entity's public key), and stamp every occurrence involving them with a
+WID:
+
+```sql
+CREATE TABLE events (
+  wid       TEXT PRIMARY KEY,   -- when/what happened (sortable, HLC-mergeable)
+  entity_id TEXT NOT NULL,      -- stable key-derived identity (no timestamp)
+  payload   BLOB
+);
+```
+
+For distributed writers, use HLC-WIDs and derive the `node` tag from something
+globally meaningful (e.g. a public-key fingerprint) rather than a chosen name,
+and raise `Z` (up to 64 hex chars = 256 random bits; `Z=32` gives UUID-class
+collision resistance) when IDs are minted without coordination.
+
+See "Privacy considerations" in [spec/SPEC.md](spec/SPEC.md) before exposing
+WIDs to parties who should not learn timing information.
+
 ## Install
 
 > No release has been tagged yet, so the packages are not on the public
