@@ -44,9 +44,8 @@ Help:
   A=help-actions`);
 }
 function parseIntStrict(value, name) {
-  const n = Number.parseInt(value, 10);
-  if (!Number.isFinite(n) || Number.isNaN(n)) throw new Error(`invalid integer for ${name}`);
-  return n;
+  if (!/^-?[0-9]+$/.test(value)) throw new Error(`invalid integer for ${name}`);
+  return Number.parseInt(value, 10);
 }
 function parseOpts(args, allowCount) {
   const opts = {
@@ -691,14 +690,6 @@ function main() {
   if (args.length === 0) {
     printHelp();
     return 2;
-  }
-  if (args[0] === "__daemon") {
-    try {
-      return runCanonical(args.slice(1));
-    } catch (e) {
-      console.error(`error: ${e.message}`);
-      return 1;
-    }
   }
   if (args.some((a) => a.includes("="))) {
     try {

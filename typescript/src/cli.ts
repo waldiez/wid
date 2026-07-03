@@ -86,9 +86,10 @@ Help:
 }
 
 function parseIntStrict(value: string, name: string): number {
-  const n = Number.parseInt(value, 10);
-  if (!Number.isFinite(n) || Number.isNaN(n)) throw new Error(`invalid integer for ${name}`);
-  return n;
+  // Number.parseInt("2+2", 10) parses the prefix and yields 2; the whole
+  // string must be an integer so garbage is an error, never a silent guess.
+  if (!/^-?[0-9]+$/.test(value)) throw new Error(`invalid integer for ${name}`);
+  return Number.parseInt(value, 10);
 }
 
 function parseOpts(args: string[], allowCount: boolean): Opts {
@@ -826,15 +827,6 @@ function main(): number {
   if (args.length === 0) {
     printHelp();
     return 2;
-  }
-
-  if (args[0] === "__daemon") {
-    try {
-      return runCanonical(args.slice(1));
-    } catch (e) {
-      console.error(`error: ${(e as Error).message}`);
-      return 1;
-    }
   }
 
   if (args.some((a) => a.includes("="))) {

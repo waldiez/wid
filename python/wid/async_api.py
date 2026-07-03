@@ -131,15 +131,13 @@ async def async_next_wid(W: int = 4, Z: int = 6, **kwargs: Any) -> str:
     if "z" in kwargs:
         Z = int(kwargs.pop("z"))  # pyright: ignore[reportConstantRedefinition]
     database_path = kwargs.pop("database_path", None)
+    time_unit = _parse_time_unit(str(kwargs.pop("time_unit", "sec")))
     if database_path is None:
-        return WidGen(W, Z).next()
+        return WidGen(W, Z, time_unit=time_unit).next()
     prefix = str(kwargs.pop("prefix", "wid"))
     state_key = str(kwargs.pop("state_key", "wid"))
-    time_unit = str(kwargs.pop("time_unit", "sec"))
     store = AsyncSqliteWidStateStore(str(database_path), prefix=prefix)
-    return await store.next_wid(
-        key=state_key, w=W, z=Z, time_unit=_parse_time_unit(time_unit)
-    )
+    return await store.next_wid(key=state_key, w=W, z=Z, time_unit=time_unit)
 
 
 async def async_next_hlc_wid(node: str = "py", w: int = 4, z: int = 0, **kwargs: Any) -> str:
@@ -148,7 +146,8 @@ async def async_next_hlc_wid(node: str = "py", w: int = 4, z: int = 0, **kwargs:
         w = int(kwargs.pop("W"))
     if "Z" in kwargs:
         z = int(kwargs.pop("Z"))
-    return HLCWidGen(node, w=w, z=z).next()
+    time_unit = _parse_time_unit(str(kwargs.pop("time_unit", "sec")))
+    return HLCWidGen(node, w=w, z=z, time_unit=time_unit).next()
 
 
 async def async_wid_stream(
@@ -219,7 +218,8 @@ async def async_hlc_wid_stream(
         W = int(kwargs.pop("w")) # pyright: ignore[reportConstantRedefinition]
     if "z" in kwargs:
         Z = int(kwargs.pop("z")) # pyright: ignore[reportConstantRedefinition]
-    gen = HLCWidGen(node, W=W, Z=Z)
+    time_unit = _parse_time_unit(str(kwargs.pop("time_unit", "sec")))
+    gen = HLCWidGen(node, W=W, Z=Z, time_unit=time_unit)
     emitted = 0
     while count == 0 or emitted < count:
         yield gen.next()

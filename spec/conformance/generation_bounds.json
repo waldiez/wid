@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WID Generation Bounds Test Cases",
+  "description": "Canonical-mode generation (A=next) MUST reject out-of-range or non-integer W/Z (SPEC.md, Parameters) and accept boundary values; accepted output must round-trip through the same implementation's validate. Consumed by tools/check_id_conformance.py.",
+  "test_cases": [
+    {
+      "id": "gen_w_max_boundary",
+      "description": "W=18 is the maximum valid width",
+      "params": {"W": 18, "Z": 0},
+      "expect": "accept"
+    },
+    {
+      "id": "gen_w_min_z_max_boundary",
+      "description": "W=1 and Z=64 are the remaining valid extremes",
+      "params": {"W": 1, "Z": 64},
+      "expect": "accept"
+    },
+    {
+      "id": "gen_w_19_out_of_range",
+      "description": "W=19 would overflow an int64 sequence",
+      "params": {"W": 19, "Z": 0},
+      "expect": "reject"
+    },
+    {
+      "id": "gen_w_25_out_of_range",
+      "description": "W=25 must be rejected, not emitted",
+      "params": {"W": 25, "Z": 0},
+      "expect": "reject"
+    },
+    {
+      "id": "gen_w_zero_out_of_range",
+      "description": "W=0 is below the minimum width",
+      "params": {"W": 0, "Z": 0},
+      "expect": "reject"
+    },
+    {
+      "id": "gen_z_65_out_of_range",
+      "description": "Z=65 exceeds the maximum padding length",
+      "params": {"W": 4, "Z": 65},
+      "expect": "reject"
+    },
+    {
+      "id": "gen_z_100_out_of_range",
+      "description": "Z=100 must be rejected, not emitted as 100 hex chars",
+      "params": {"W": 4, "Z": 100},
+      "expect": "reject"
+    },
+    {
+      "id": "gen_z_negative",
+      "description": "negative Z is invalid",
+      "params": {"W": 4, "Z": -1},
+      "expect": "reject"
+    },
+    {
+      "id": "gen_w_not_an_integer",
+      "description": "non-integer W must be a clean error (never evaluated as arithmetic)",
+      "params": {"W": "2+2", "Z": 0},
+      "expect": "reject"
+    }
+  ]
+}

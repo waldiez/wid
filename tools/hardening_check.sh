@@ -17,7 +17,9 @@ make envelope-compat-check
 SOAK_SECONDS="${SOAK_SECONDS:-15}" make soak-check
 
 echo "[hardening] path hygiene"
-if rg -n -e "/Users/[A-Za-z0-9._-]+" -e "/home/[A-Za-z0-9._-]+" README.md docs spec tools Makefile; then
+# /home/runner is the well-known GitHub Actions user whose nvm install
+# ensure_bash.sh deliberately probes -- not a leaked host path.
+if rg -n -e "/Users/[A-Za-z0-9._-]+" -e "/home/[A-Za-z0-9._-]+" README.md docs spec tools Makefile | rg -v '/home/runner'; then
   echo "[hardening] FAIL: absolute host paths found in public files"
   exit 1
 fi

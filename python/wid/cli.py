@@ -87,7 +87,11 @@ Usage:
 Commands:
   next         Emit one ID (default with no args).
   stream       Emit IDs continuously (or until --count).
+  validate     Validate an ID string.
+  parse        Parse an ID string.
   healthcheck  Generate one sample and validate format.
+  bench        Benchmark generation throughput.
+  selftest     Run built-in sanity checks (silent, exit 0/1).
   help-actions Show canonical action matrix (A=...).
   sign         Canonical mode only: A=sign WID=<wid> KEY=<priv.pem> [DATA=<path>] [OUT=<path>].
   verify       Canonical mode only: A=verify WID=<wid> KEY=<pub.pem> SIG=<sig> [DATA=<path>].
@@ -239,6 +243,75 @@ def _run_healthcheck_mode(argv: list[str]) -> None:
     else:
         print(f"ok={str(payload['ok']).lower()} kind={args.kind} sample={sample}")
 
+    if not ok:
+        sys.exit(1)
+
+
+def _run_bench_mode(argv: list[str]) -> None:
+    ap = argparse.ArgumentParser(description="Benchmark WID/HLC generation throughput")
+    ap.add_argument("--kind", choices=["wid", "hlc"], default="wid")
+    ap.add_argument("--W", type=int, default=_env_int("W", 4))
+    ap.add_argument("--Z", type=int, default=_env_int("Z", 6))
+    ap.add_argument("--node", type=str, default=os.environ.get("NODE", "py"))
+    ap.add_argument(
+        "--time-unit",
+        choices=["sec", "ms"],
+        default=os.environ.get("WID_TIME_UNIT", "sec"),
+    )
+    ap.add_argument("--count", type=int, default=0, help="0 means the default 100000")
+    args = ap.parse_args(argv)
+
+    n = args.count if args.count > 0 else 100000
+    effective_time_unit = WidCore.TimeUnit.from_string(args.time_unit)
+    g: WidGen | HLCWidGen
+    if args.kind == "wid":
+        g = WidGen(w=args.W, z=args.Z, time_unit=effective_time_unit)
+    else:
+        g = HLCWidGen(args.node, w=args.W, z=args.Z, time_unit=effective_time_unit)
+
+    start = time.perf_counter()
+    for _ in range(n):
+        g.next()
+    seconds = max(time.perf_counter() - start, 1e-9)
+
+    print(
+        json.dumps(
+            {
+                "impl": "python",
+                "kind": args.kind,
+                "W": args.W,
+                "Z": args.Z,
+                "time_unit": args.time_unit,
+                "n": n,
+                "seconds": seconds,
+                "ids_per_sec": n / seconds,
+            },
+            separators=(",", ":"),
+        )
+    )
+
+
+def _run_selftest_mode() -> None:
+    """Run the same checks as the other implementations' selftest (silent, exit 0/1)."""
+    wg = WidGen(w=4, z=0, time_unit="sec")
+    a = wg.next()
+    b = wg.next()
+    ok = (
+        a < b
+        and validate_wid(a, W=4, Z=0, time_unit="sec")
+        and validate_hlc_wid(
+            HLCWidGen("node01", w=4, z=0, time_unit="sec").next(),
+            W=4,
+            Z=0,
+            time_unit="sec",
+        )
+        and not validate_wid("20260212T091530.0000Z-node01", W=4, Z=0, time_unit="sec")
+        and not validate_hlc_wid("20260212T091530.0000Z", W=4, Z=0, time_unit="sec")
+        and validate_wid("20260212T091530123.0000Z", W=4, Z=0, time_unit="ms")
+        and validate_hlc_wid(
+            "20260212T091530123.0000Z-node01", W=4, Z=0, time_unit="ms"
+        )
+    )
     if not ok:
         sys.exit(1)
 
@@ -506,7 +579,7 @@ def _run_canonical(argv: list[str]) -> bool:
         return False
 
     canon: dict[str, str] = {
-        "A": "run",
+        "A": "next",
         "W": "4",
         "L": "3600",
         "D": "",
@@ -823,7 +896,7 @@ complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck v
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a parse -d 'Parse a WID string'
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a help-actions -d 'Show canonical action matrix'
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a completion -d 'Print shell completion script'
-complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=start A=stop A=status A=logs A=help-actions' -d 'Action'
+complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=help-actions' -d 'Action'
 complete -c wid -f -a 'T=sec T=ms' -d 'Time unit'
 complete -c wid -f -a 'I=auto I=sh I=bash' -d 'Input source'
 complete -c wid -f -a 'E=state E=stateless E=sql' -d 'State mode'
@@ -840,19 +913,6 @@ complete -c wid -f -a 'L=' -d 'Interval seconds'""")
 
 def main() -> None:
     """Wid main entrypoint."""
-    if len(sys.argv) >= 2 and sys.argv[1] == "__daemon":
-        try:
-            _run_canonical(sys.argv[2:])
-            return
-        except ValueError as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            sys.exit(2)
-        except RuntimeError as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            sys.exit(1)
-        except subprocess.CalledProcessError as exc:
-            sys.exit(exc.returncode)
-
     if len(sys.argv) >= 2 and sys.argv[1] in {"-h", "--help", "help"}:
         _print_usage()
         return
@@ -905,6 +965,14 @@ def main() -> None:
 
     if cmd == "parse":
         _run_parse_mode(sys.argv[2:])
+        return
+
+    if cmd == "bench":
+        _run_bench_mode(sys.argv[2:])
+        return
+
+    if cmd == "selftest":
+        _run_selftest_mode()
         return
 
     print(f"Unknown command: {cmd}", file=sys.stderr)

@@ -84,7 +84,9 @@
         "stream",
         "validate",
         "parse",
-        "healthcheck"
+        "healthcheck",
+        "bench",
+        "selftest"
       ],
       "native_service_actions": [],
       "canonical_transports": [

@@ -13,10 +13,11 @@ readme = "README.md"
 [project.urls]
 Repository = "https://github.com/waldiez/wid"
 Homepage = "https://waldiez.github.io/wid"
+"Bug Tracker" = "https://github.com/waldiez/wid/issues"
 
 [project.scripts]
 wid = "wid.cli:main"
-hlc-wid = "wid.cli:main_hlc"
+hlc-wid = "wid.cli:hlc_wid_main"
 
 [project.optional-dependencies]
 crypto = [

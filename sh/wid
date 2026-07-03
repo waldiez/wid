@@ -346,6 +346,9 @@ parse_wid_fn() {
     fi
     local year=${ts:0:4} month=${ts:4:2} day=${ts:6:2}
     local hour=${ts:9:2} minute=${ts:11:2} second=${ts:13:2}
+    # parse must reject the same impossible calendar values validate rejects
+    # (hour=25, minute=60, ...), matching the other five implementations.
+    valid_ymdhms "$year" "$month" "$day" "$hour" "$minute" "$second" || { printf 'null\n'; return 1; }
     local timestamp="${year}-${month}-${day}T${hour}:${minute}:${second}+00:00"
     local seq_int=$((10#$seq))
     if $json; then
@@ -369,6 +372,9 @@ parse_hlc_wid_fn() {
     lc=${BASH_REMATCH[2]}
     node=${BASH_REMATCH[3]}
     suffix=${BASH_REMATCH[4]}
+    # Same node charset rule as validate_hlc_wid; the other implementations
+    # reject invalid nodes in parse as well.
+    valid_node "$node" || { printf 'null\n'; return 1; }
     local pad=""
     if [[ -n "$suffix" ]]; then
         # When present, padding must be a correctly-sized lowercase-hex pad and
@@ -379,6 +385,9 @@ parse_hlc_wid_fn() {
     fi
     local year=${ts:0:4} month=${ts:4:2} day=${ts:6:2}
     local hour=${ts:9:2} minute=${ts:11:2} second=${ts:13:2}
+    # parse must reject the same impossible calendar values validate rejects
+    # (hour=25, minute=60, ...), matching the other five implementations.
+    valid_ymdhms "$year" "$month" "$day" "$hour" "$minute" "$second" || { printf 'null\n'; return 1; }
     local timestamp="${year}-${month}-${day}T${hour}:${minute}:${second}+00:00"
     local lc_int=$((10#$lc))
     if $json; then
@@ -529,7 +538,7 @@ run_canonical() {
     local ROOT_DIR
     ROOT_DIR="$(repo_root)"
 
-    local A="run" W="4" L="3600" D="" I="auto" E="state" Z="6" T="sec" R="auto" M="false" N="0"
+    local A="next" W="4" L="3600" D="" I="auto" E="state" Z="6" T="sec" R="auto" M="false" N="0"
     local WID="" KEY="" SIG="" DATA="" OUT="" MODE="" CODE="" DIGITS="6" MAX_AGE_SEC="0" MAX_FUTURE_SEC="5"
     local L_FROM_PLACEHOLDER="false"
     local arg key val
@@ -768,6 +777,13 @@ run_canonical() {
     [[ "$T" == "sec" || "$T" == "ms" ]] || die "T must be sec or ms"
     [[ "$N" =~ ^[0-9]+$ ]] || die "N must be a non-negative integer"
     is_interval "$L" || die "L must be a non-negative integer (seconds)"
+    # SPEC.md: out-of-range W/Z MUST be rejected in generation as well as
+    # validation. is_int must run first -- unvalidated input inside (( ))
+    # would be evaluated as bash arithmetic (W=2+2 would pass as 4).
+    is_int "$W" || die "W must be an integer"
+    is_int "$Z" || die "Z must be an integer"
+    ((W > 0 && W <= 18)) || die "W must be between 1 and 18"
+    ((Z >= 0 && Z <= 64)) || die "Z must be between 0 and 64"
 
     run_python_wid_cli() {
         local impl_dir="$ROOT_DIR/python"
@@ -1089,12 +1105,6 @@ FISH_COMPLETION
 }
 
 main() {
-    if [[ $# -gt 0 && "${1:-}" == "__daemon" ]]; then
-        shift
-        run_canonical "$@"
-        exit $?
-    fi
-
     # Canonical mode: KEY=VALUE args
     if [[ $# -gt 0 ]]; then
         local has_kv="false"

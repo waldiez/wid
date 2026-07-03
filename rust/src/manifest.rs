@@ -20,6 +20,8 @@ const HEADER_SIZE: usize = 10;
 pub enum ManifestError {
     #[error("Invalid magic bytes")]
     InvalidMagic,
+    #[error("Unsupported manifest version: {0}")]
+    UnsupportedVersion(u16),
     #[error("Manifest too large: {0} bytes")]
     ManifestTooLarge(usize),
     #[error("Data too small for SYNAPSE file")]
@@ -126,6 +128,10 @@ impl SynapseFile {
         if &data[0..4] != MANIFEST_MAGIC {
             return Err(ManifestError::InvalidMagic);
         }
+        let version = u16::from_be_bytes([data[4], data[5]]);
+        if version != MANIFEST_VERSION {
+            return Err(ManifestError::UnsupportedVersion(version));
+        }
         let manifest_size = u32::from_be_bytes([data[6], data[7], data[8], data[9]]) as usize;
         if manifest_size > MAX_MANIFEST_SIZE {
             return Err(ManifestError::ManifestTooLarge(manifest_size));
@@ -216,6 +222,18 @@ mod tests {
         let loaded = SynapseFile::from_bytes(&bytes).unwrap();
         assert_eq!(loaded.manifest.id, "test-id");
         assert!(loaded.verify());
+    }
+
+    #[test]
+    fn test_unsupported_version_rejected() {
+        let mut sf = SynapseFile::new(Manifest::new("test-id"), b"Hello!".to_vec());
+        let mut bytes = sf.to_bytes().unwrap();
+        bytes[4..6].copy_from_slice(&2u16.to_be_bytes());
+        let err = SynapseFile::from_bytes(&bytes).map(|_| ()).unwrap_err();
+        match err {
+            ManifestError::UnsupportedVersion(2) => {}
+            other => panic!("expected UnsupportedVersion(2), got {other:?}"),
+        }
     }
 
     #[test]
