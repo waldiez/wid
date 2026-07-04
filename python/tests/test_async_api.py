@@ -1,10 +1,9 @@
 """Tests for async API wrappers."""
 
-# pylint: skip-file
+# pylint: disable=missing-function-docstring
 # pyright: reportUnusedCallResult=false, reportOptionalMemberAccess=false
 # pyright: reportMissingTypeStubs=false, reportUnknownArgumentType=false
 # pyright: reportUnknownVariableType=false
-# flake8: noqa: D102,D103
 
 import asyncio
 from collections.abc import AsyncIterable

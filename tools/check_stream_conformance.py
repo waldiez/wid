@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Cross-language conformance checks for canonical stream semantics."""
+"""Cross-language conformance checks for canonical stream semantics.
 
-# pylint: skip-file
-# flake8: noqa: D103, C901, E501
-# pyright: reportArgumentType=false,reportAny=false
+Drives every buildable implementation through the ``A=stream`` cases in
+``spec/conformance/stream.json``: bounded cases must emit exactly N lines
+and exit 0; infinite cases must still be producing output when the timeout
+fires. Set ``WID_STRICT_TOOLCHAINS=1`` to fail on skipped implementations.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "spec" / "conformance" / "stream.json"
@@ -21,6 +24,7 @@ FIXTURE = ROOT / "spec" / "conformance" / "stream.json"
 def run(
     cmd: list[str], timeout_sec: int | None = None, env: dict[str, str] | None = None
 ) -> tuple[int, str, bool]:
+    """Run a command; return (returncode, stdout, timed_out)."""
     try:
         p = subprocess.run(
             cmd,
@@ -40,12 +44,14 @@ def run(
 
 
 def ensure_builds() -> dict[str, str]:
+    """Build any missing implementation binaries; map name -> block reason."""
     blocked: dict[str, str] = {}
     # C binary
     if not (ROOT / "c" / ".build" / "wid").exists():
         subprocess.run(["make", "-C", "c", "setup"], cwd=ROOT, check=True)
     # TypeScript dist
-    if shutil.which("node") and shutil.which("npm") and not (ROOT / "dist" / "cli.js").exists():
+    has_node = shutil.which("node") and shutil.which("npm")
+    if has_node and not (ROOT / "dist" / "cli.js").exists():
         if not (ROOT / "node_modules").exists():
             subprocess.run(["npm", "install"], cwd=ROOT, check=True)
         subprocess.run(["npm", "run", "build"], cwd=ROOT, check=True)
@@ -72,36 +78,34 @@ def ensure_builds() -> dict[str, str]:
 
 
 def kv_args(d: dict[str, str]) -> list[str]:
+    """Render a dict as canonical KEY=VALUE CLI arguments."""
     return [f"{k}={v}" for k, v in d.items()]
 
 
 def choose_python_cmd() -> list[str]:
+    """Prefer the repo venv's interpreter, else the current one."""
     venv_py = ROOT / ".venv" / "bin" / "python"
     if venv_py.exists():
         return [str(venv_py)]
     return [sys.executable]
 
 
-def main() -> int:
-    strict_toolchains = os.environ.get("WID_STRICT_TOOLCHAINS", "").lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    blocked = ensure_builds()
-    fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    cases = fixture["test_cases"]
+def pick_impls(
+    blocked: dict[str, str],
+) -> tuple[dict[str, tuple[list[str], dict[str, str] | None]], list[str]]:
+    """Select runnable implementations; return (impls, skipped descriptions)."""
     py_cmd = choose_python_cmd()
     go_env = {**os.environ, "GOCACHE": str((ROOT / ".local" / "go-cache").resolve())}
-
     candidate_impls: dict[str, tuple[list[str], dict[str, str] | None]] = {
         "sh": (["bash", "sh/wid"], None),
         "rust": (["target/debug/wid"], None),
         "c": (["c/.build/wid"], None),
         "go": ([str(ROOT / "go" / "cmd" / "wid" / "wid")], go_env),
         "typescript": (["node", "dist/cli.js"], None),
-        "python": (py_cmd + ["-m", "wid"], {**os.environ, "PYTHONPATH": "python", "PYTHONUNBUFFERED": "1"}),
+        "python": (
+            py_cmd + ["-m", "wid"],
+            {**os.environ, "PYTHONPATH": "python", "PYTHONUNBUFFERED": "1"},
+        ),
     }
     impls: dict[str, tuple[list[str], dict[str, str] | None]] = {}
     skipped: list[str] = []
@@ -119,57 +123,52 @@ def main() -> int:
                 skipped.append(f"{impl} (missing runtime: {exe})")
                 continue
         impls[impl] = (base, extra_env)
+    return impls, skipped
 
-    if not impls:
-        print(
-            "Stream conformance skipped: no runnable implementations found in this environment.",
-            file=sys.stderr,
+
+# One early return per failure mode keeps the checks table-shaped.
+def run_stream_case(  # pylint: disable=too-many-return-statements
+    impl: str,
+    base: list[str],
+    extra_env: dict[str, str] | None,
+    case: dict[str, Any],
+) -> str | None:
+    """Run one stream case; return a failure description or None."""
+    cid = case["id"]
+    canonical: dict[str, str] = dict(case["canonical"])
+    if impl == "sh":
+        canonical.setdefault("I", "sh")
+    canon = kv_args(canonical)
+    expect: dict[str, Any] = case["expect"]
+
+    if expect["mode"] == "infinite":
+        rc, out, timed_out = run(
+            base + canon, timeout_sec=int(expect["timeout_sec"]), env=extra_env
         )
-        return 0
-    if strict_toolchains and skipped:
-        print("Stream conformance strict mode failed: missing implementations:", file=sys.stderr)
-        for item in skipped:
-            print(f"- {item}", file=sys.stderr)
-        return 1
+        lines = len([ln for ln in out.splitlines() if ln.strip()])
+        if not timed_out:
+            return f"{impl}:{cid}: expected timeout/infinite, got rc={rc}"
+        if lines < int(expect["min_lines"]):
+            return (
+                f"{impl}:{cid}: expected >= {expect['min_lines']} lines"
+                + f" before timeout, got {lines}"
+            )
+        return None
+    if expect["mode"] == "bounded":
+        rc, out, timed_out = run(base + canon, timeout_sec=10, env=extra_env)
+        lines = len([ln for ln in out.splitlines() if ln.strip()])
+        if timed_out:
+            return f"{impl}:{cid}: unexpected timeout"
+        if rc != 0:
+            return f"{impl}:{cid}: non-zero exit rc={rc}"
+        if lines != int(expect["lines"]):
+            return f"{impl}:{cid}: expected {expect['lines']} lines, got {lines}"
+        return None
+    return f"{impl}:{cid}: unknown mode {expect['mode']}"
 
-    failures: list[str] = []
 
-    for impl, (base, extra_env) in impls.items():
-        for case in cases:
-            cid = case["id"]
-            canonical = dict(case["canonical"])
-            if impl == "sh":
-                canonical.setdefault("I", "sh")
-            canon = kv_args(canonical)
-            expect = case["expect"]
-
-            if expect["mode"] == "infinite":
-                rc, out, timed_out = run(
-                    base + canon, timeout_sec=int(expect["timeout_sec"]), env=extra_env
-                )
-                lines = len([ln for ln in out.splitlines() if ln.strip()])
-                if not timed_out:
-                    failures.append(
-                        f"{impl}:{cid}: expected timeout/infinite, got rc={rc}"
-                    )
-                elif lines < int(expect["min_lines"]):
-                    failures.append(
-                        f"{impl}:{cid}: expected >= {expect['min_lines']} lines before timeout, got {lines}"
-                    )
-            elif expect["mode"] == "bounded":
-                rc, out, timed_out = run(base + canon, timeout_sec=10, env=extra_env)
-                lines = len([ln for ln in out.splitlines() if ln.strip()])
-                if timed_out:
-                    failures.append(f"{impl}:{cid}: unexpected timeout")
-                elif rc != 0:
-                    failures.append(f"{impl}:{cid}: non-zero exit rc={rc}")
-                elif lines != int(expect["lines"]):
-                    failures.append(
-                        f"{impl}:{cid}: expected {expect['lines']} lines, got {lines}"
-                    )
-            else:
-                failures.append(f"{impl}:{cid}: unknown mode {expect['mode']}")
-
+def report(failures: list[str], skipped: list[str]) -> int:
+    """Print the outcome; return the process exit code."""
     if failures:
         print("Stream conformance failed:", file=sys.stderr)
         for f in failures:
@@ -182,6 +181,45 @@ def main() -> int:
             print(f"- {item}")
     print("Stream conformance passed")
     return 0
+
+
+def main() -> int:
+    """Run every stream fixture against every implementation; 0 iff green."""
+    strict_toolchains = os.environ.get("WID_STRICT_TOOLCHAINS", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    blocked = ensure_builds()
+    fixture: dict[str, Any] = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    cases: list[dict[str, Any]] = fixture["test_cases"]
+    impls, skipped = pick_impls(blocked)
+
+    if not impls:
+        print(
+            "Stream conformance skipped: no runnable implementations found"
+            + " in this environment.",
+            file=sys.stderr,
+        )
+        return 0
+    if strict_toolchains and skipped:
+        print(
+            "Stream conformance strict mode failed: missing implementations:",
+            file=sys.stderr,
+        )
+        for item in skipped:
+            print(f"- {item}", file=sys.stderr)
+        return 1
+
+    failures: list[str] = []
+    for impl, (base, extra_env) in impls.items():
+        for case in cases:
+            failure = run_stream_case(impl, base, extra_env, case)
+            if failure is not None:
+                failures.append(failure)
+
+    return report(failures, skipped)
 
 
 if __name__ == "__main__":

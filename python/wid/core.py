@@ -28,6 +28,8 @@ def clamp_tick(tick: int, time_unit: TimeUnitName) -> int:
 
 @dataclass(frozen=True, slots=True)
 class _TimeUnit:
+    """Internal enum-like wrapper pairing a time-unit name with helpers."""
+
     value: TimeUnitName
 
     def __str__(self) -> str:

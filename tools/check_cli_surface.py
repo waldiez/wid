@@ -43,31 +43,40 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "spec" / "conformance" / "cli_surface.json"
 
 CRASH_MARKERS = ("Traceback (most recent call last)", "panicked at", "goroutine 1 [")
 
+# argv prefix + optional environment override for one implementation
+Impl = tuple[list[str], dict[str, str] | None]
+
 
 def choose_python_cmd() -> list[str]:
+    """Pick the first available Python interpreter command."""
     for candidate in (["python3"], ["python"]):
         if shutil.which(candidate[0]):
             return candidate
     return ["python3"]
 
 
-def available_impls() -> tuple[dict[str, tuple[list[str], dict[str, str] | None]], list[str]]:
+def available_impls() -> tuple[dict[str, Impl], list[str]]:
+    """Map implementation name to (argv prefix, env), plus skipped names."""
     go_env = {**os.environ, "GOCACHE": str((ROOT / ".local" / "go-cache").resolve())}
-    candidates: dict[str, tuple[list[str], dict[str, str] | None]] = {
+    candidates: dict[str, Impl] = {
         "sh": (["bash", "sh/wid"], None),
-        "python": (choose_python_cmd() + ["-m", "wid"], {**os.environ, "PYTHONPATH": "python"}),
+        "python": (
+            choose_python_cmd() + ["-m", "wid"],
+            {**os.environ, "PYTHONPATH": "python"},
+        ),
         "typescript": (["node", "dist/cli.js"], None),
         "go": ([str(ROOT / "go" / "cmd" / "wid" / "wid")], go_env),
         "rust": (["target/debug/wid"], None),
         "c": (["c/.build/wid"], None),
     }
-    impls: dict[str, tuple[list[str], dict[str, str] | None]] = {}
+    impls: dict[str, Impl] = {}
     skipped: list[str] = []
     for name, (base, env) in candidates.items():
         exe = base[0]
@@ -82,7 +91,8 @@ def available_impls() -> tuple[dict[str, tuple[list[str], dict[str, str] | None]
     return impls, skipped
 
 
-def shape_pattern(params: dict) -> re.Pattern[str]:
+def shape_pattern(params: dict[str, Any]) -> re.Pattern[str]:
+    """Build the exact-match regex for the WID shape a case's params imply."""
     w = int(params.get("W", 4))
     z = int(params.get("Z", 6))
     ts = r"\d{8}T\d{9}" if params.get("time_unit", "sec") == "ms" else r"\d{8}T\d{6}"
@@ -96,13 +106,17 @@ def shape_pattern(params: dict) -> re.Pattern[str]:
 
 
 def case_args(impl: str, args: list[str]) -> list[str]:
-    # Pin sh to its native canonical parser instead of Python delegation.
-    if impl == "sh" and any("=" in a for a in args) and not any(a.startswith("I=") for a in args):
+    """Pin sh to its native canonical parser instead of Python delegation."""
+    has_kv = any("=" in a for a in args)
+    if impl == "sh" and has_kv and not any(a.startswith("I=") for a in args):
         return [*args, "I=sh"]
     return args
 
 
-def run_case(base: list[str], env: dict[str, str] | None, args: list[str]) -> subprocess.CompletedProcess:
+def run_case(
+    base: list[str], env: dict[str, str] | None, args: list[str]
+) -> subprocess.CompletedProcess[str]:
+    """Run one bounded case to completion, capturing text output."""
     return subprocess.run(
         [*base, *args],
         cwd=ROOT,
@@ -110,16 +124,17 @@ def run_case(base: list[str], env: dict[str, str] | None, args: list[str]) -> su
         capture_output=True,
         text=True,
         timeout=60,
+        check=False,
     )
 
 
-def normalized_output(stdout: str) -> list:
+def normalized_output(stdout: str) -> list[Any]:
     """Normalize stdout for cross-implementation comparison.
 
     Lines that parse as JSON are compared as parsed objects so that key
     order (which legitimately differs between implementations) is ignored.
     """
-    out: list = []
+    out: list[Any] = []
     for ln in stdout.splitlines():
         ln = ln.strip()
         if not ln:
@@ -135,7 +150,7 @@ def run_infinite_case(
     base: list[str], env: dict[str, str] | None, args: list[str], run_seconds: float
 ) -> tuple[bool, str]:
     """Run a case that must not terminate; return (still_running, stdout)."""
-    proc = subprocess.Popen(
+    proc = subprocess.Popen(  # pylint: disable=consider-using-with
         [*base, *args],
         cwd=ROOT,
         env=env,
@@ -154,8 +169,119 @@ def run_infinite_case(
     return still_running, stdout
 
 
+def check_emit(
+    impl: str, base: list[str], env: dict[str, str] | None, case: dict[str, Any]
+) -> str | None:
+    """Check one emit case; return a failure description or None."""
+    tag = f"{impl}: emit {case['name']}"
+    args = case_args(impl, list(case["args"]))
+    started = time.monotonic()
+    proc = run_case(base, env, args)
+    elapsed = time.monotonic() - started
+    lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+    pattern = shape_pattern(case.get("params") or {})
+    min_seconds = float(case.get("min_seconds", 0))
+    if proc.returncode != 0:
+        return f"{tag}: rc={proc.returncode} stderr={proc.stderr.strip()[:200]}"
+    if len(lines) != int(case["lines"]):
+        return f"{tag}: expected {case['lines']} lines, got {len(lines)}"
+    if elapsed < min_seconds:
+        return (
+            f"{tag}: finished in {elapsed:.2f}s but the case requires"
+            + f" >= {min_seconds}s (L= cadence ignored?)"
+        )
+    for ln in lines:
+        if not pattern.match(ln):
+            return f"{tag}: line {ln!r} !~ {pattern.pattern}"
+    return None
+
+
+def check_reject(
+    impl: str, base: list[str], env: dict[str, str] | None, case: dict[str, Any]
+) -> str | None:
+    """Check one reject case; return a failure description or None."""
+    tag = f"{impl}: reject {case['name']}"
+    args = case_args(impl, list(case["args"]))
+    proc = run_case(base, env, args)
+    combined = proc.stdout + proc.stderr
+    if proc.returncode == 0:
+        return f"{tag}: accepted (rc=0, stdout={proc.stdout.strip()[:120]!r})"
+    if not proc.stderr.strip():
+        return f"{tag}: rc={proc.returncode} but stderr is empty"
+    for marker in CRASH_MARKERS:
+        if marker in combined:
+            return f"{tag}: crashed instead of clean error ({marker!r})"
+    return None
+
+
+def check_infinite(
+    impl: str, base: list[str], env: dict[str, str] | None, case: dict[str, Any]
+) -> str | None:
+    """Check one unbounded-stream case; return a failure description or None."""
+    tag = f"{impl}: infinite {case['name']}"
+    args = case_args(impl, list(case["args"]))
+    run_seconds = float(case["run_seconds"])
+    still_running, stdout = run_infinite_case(base, env, args, run_seconds)
+    lines = [ln for ln in stdout.splitlines() if ln.strip()]
+    pattern = shape_pattern(case.get("params") or {})
+    if not still_running:
+        return (
+            f"{tag}: terminated on its own after {len(lines)} lines"
+            + " (0 must mean unbounded, not a default count)"
+        )
+    if len(lines) < int(case["min_lines"]):
+        return (
+            f"{tag}: only {len(lines)} lines in {case['run_seconds']}s"
+            + f" (expected >= {case['min_lines']})"
+        )
+    for ln in lines:
+        if not pattern.match(ln):
+            return f"{tag}: line {ln!r} !~ {pattern.pattern}"
+    return None
+
+
+SECTION_CHECKS = (
+    ("emit", check_emit),
+    ("reject", check_reject),
+    ("infinite", check_infinite),
+)
+
+
+def check_parity(
+    impls: dict[str, Impl], case: dict[str, Any]
+) -> list[str]:
+    """Run one parity case across all implementations; return failures.
+
+    Parity cases compare implementations against each other, so they run
+    after the per-implementation loops.
+    """
+    failures: list[str] = []
+    outputs: dict[str, list[Any]] = {}
+    for impl, (base, env) in impls.items():
+        args = case_args(impl, list(case["args"]))
+        proc = run_case(base, env, args)
+        if proc.returncode != 0:
+            err = proc.stderr.strip()[:200]
+            failures.append(
+                f"{impl}: parity {case['name']}: rc={proc.returncode} stderr={err}"
+            )
+            continue
+        outputs[impl] = normalized_output(proc.stdout)
+    if len(outputs) > 1:
+        reference_impl = sorted(outputs)[0]
+        reference = outputs[reference_impl]
+        for impl, got in sorted(outputs.items()):
+            if got != reference:
+                failures.append(
+                    f"{impl}: parity {case['name']}: output diverges from"
+                    + f" {reference_impl}: {got!r} != {reference!r}"
+                )
+    return failures
+
+
 def main() -> int:
-    fixture = json.loads(FIXTURE.read_text())
+    """Run every fixture section against every implementation; 0 iff green."""
+    fixture: dict[str, Any] = json.loads(FIXTURE.read_text())
     impls, skipped = available_impls()
     strict = os.environ.get("CLI_SURFACE_STRICT", "0") == "1"
 
@@ -163,90 +289,16 @@ def main() -> int:
     total = 0
 
     for impl, (base, env) in impls.items():
-        for case in fixture["emit"]:
-            total += 1
-            args = case_args(impl, list(case["args"]))
-            started = time.monotonic()
-            proc = run_case(base, env, args)
-            elapsed = time.monotonic() - started
-            lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
-            pattern = shape_pattern(case.get("params") or {})
-            min_seconds = float(case.get("min_seconds", 0))
-            if proc.returncode != 0:
-                failures.append(f"{impl}: emit {case['name']}: rc={proc.returncode} stderr={proc.stderr.strip()[:200]}")
-            elif len(lines) != int(case["lines"]):
-                failures.append(f"{impl}: emit {case['name']}: expected {case['lines']} lines, got {len(lines)}")
-            elif elapsed < min_seconds:
-                failures.append(
-                    f"{impl}: emit {case['name']}: finished in {elapsed:.2f}s "
-                    f"but the case requires >= {min_seconds}s (L= cadence ignored?)"
-                )
-            else:
-                for ln in lines:
-                    if not pattern.match(ln):
-                        failures.append(f"{impl}: emit {case['name']}: line {ln!r} !~ {pattern.pattern}")
-                        break
+        for section, check in SECTION_CHECKS:
+            for case in fixture.get(section, []):
+                total += 1
+                failure = check(impl, base, env, case)
+                if failure is not None:
+                    failures.append(failure)
 
-        for case in fixture["reject"]:
-            total += 1
-            args = case_args(impl, list(case["args"]))
-            proc = run_case(base, env, args)
-            combined = proc.stdout + proc.stderr
-            if proc.returncode == 0:
-                failures.append(f"{impl}: reject {case['name']}: accepted (rc=0, stdout={proc.stdout.strip()[:120]!r})")
-            elif not proc.stderr.strip():
-                failures.append(f"{impl}: reject {case['name']}: rc={proc.returncode} but stderr is empty")
-            else:
-                for marker in CRASH_MARKERS:
-                    if marker in combined:
-                        failures.append(f"{impl}: reject {case['name']}: crashed instead of clean error ({marker!r})")
-                        break
-
-        for case in fixture.get("infinite", []):
-            total += 1
-            args = case_args(impl, list(case["args"]))
-            still_running, stdout = run_infinite_case(base, env, args, float(case["run_seconds"]))
-            lines = [ln for ln in stdout.splitlines() if ln.strip()]
-            pattern = shape_pattern(case.get("params") or {})
-            if not still_running:
-                failures.append(
-                    f"{impl}: infinite {case['name']}: terminated on its own "
-                    f"after {len(lines)} lines (0 must mean unbounded, not a default count)"
-                )
-            elif len(lines) < int(case["min_lines"]):
-                failures.append(
-                    f"{impl}: infinite {case['name']}: only {len(lines)} lines "
-                    f"in {case['run_seconds']}s (expected >= {case['min_lines']})"
-                )
-            else:
-                for ln in lines:
-                    if not pattern.match(ln):
-                        failures.append(f"{impl}: infinite {case['name']}: line {ln!r} !~ {pattern.pattern}")
-                        break
-
-    # Parity cases compare implementations against each other, so they run
-    # after the per-implementation loops.
     for case in fixture.get("parity", []):
-        outputs: dict[str, list] = {}
-        for impl, (base, env) in impls.items():
-            total += 1
-            args = case_args(impl, list(case["args"]))
-            proc = run_case(base, env, args)
-            if proc.returncode != 0:
-                failures.append(
-                    f"{impl}: parity {case['name']}: rc={proc.returncode} stderr={proc.stderr.strip()[:200]}"
-                )
-                continue
-            outputs[impl] = normalized_output(proc.stdout)
-        if len(outputs) > 1:
-            reference_impl = sorted(outputs)[0]
-            reference = outputs[reference_impl]
-            for impl, got in sorted(outputs.items()):
-                if got != reference:
-                    failures.append(
-                        f"{impl}: parity {case['name']}: output diverges from {reference_impl}: "
-                        f"{got!r} != {reference!r}"
-                    )
+        total += len(impls)
+        failures.extend(check_parity(impls, case))
 
     for line in skipped:
         print(f"skip: {line}", file=sys.stderr)
@@ -255,8 +307,8 @@ def main() -> int:
 
     ok = not failures and (not strict or not skipped)
     print(
-        f"cli-surface: impls={len(impls)} cases={total} "
-        f"fail={len(failures)} skipped={len(skipped)} -> {'OK' if ok else 'FAIL'}"
+        f"cli-surface: impls={len(impls)} cases={total}"
+        + f" fail={len(failures)} skipped={len(skipped)} -> {'OK' if ok else 'FAIL'}"
     )
     return 0 if ok else 1
 

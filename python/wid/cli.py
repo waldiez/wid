@@ -2,13 +2,10 @@
 """CLI entrypoints for emit, stream, and healthcheck modes."""
 
 # pyright: reportUnusedCallResult=false,reportAny=false
-# flake8: noqa: C901, E501
 # Deliberate patterns, not oversights: cryptography imports stay inside the
 # sign/verify handlers so the core CLI works without the optional extra, and
 # the canonical dispatcher is one long function on purpose (it mirrors the
 # other five implementations' dispatch tables).
-# pylint: disable=import-outside-toplevel,broad-exception-caught
-# pylint: disable=too-many-locals,too-many-branches,too-many-statements,too-many-return-statements
 
 from __future__ import annotations
 
@@ -63,6 +60,7 @@ TRANSPORTS = {"null", "stdout", "auto"}
 
 
 def _print_actions() -> None:
+    """Print the canonical action matrix (A=...)."""
     print("""wid action matrix
 
 Core ID:
@@ -82,6 +80,7 @@ State mode:
 
 
 def _print_usage(stream: TextIO = sys.stdout) -> None:
+    """Print CLI usage to ``stream`` (stdout for help, stderr on error)."""
     print(
         """wid python CLI
 
@@ -98,10 +97,13 @@ Commands:
   bench        Benchmark generation throughput.
   selftest     Run built-in sanity checks (silent, exit 0/1).
   help-actions Show canonical action matrix (A=...).
-  sign         Canonical mode only: A=sign WID=<wid> KEY=<priv.pem> [DATA=<path>] [OUT=<path>].
-  verify       Canonical mode only: A=verify WID=<wid> KEY=<pub.pem> SIG=<sig> [DATA=<path>].
-  w-otp        Canonical mode only: A=w-otp MODE=gen|verify KEY=<secret|path>
-               [WID=<wid>] [CODE=<otp>] [DIGITS=<n>] [MAX_AGE_SEC=<n>] [MAX_FUTURE_SEC=<n>].
+  sign         Canonical mode only:
+               A=sign WID=<wid> KEY=<priv.pem> [DATA=<path>] [OUT=<path>].
+  verify       Canonical mode only:
+               A=verify WID=<wid> KEY=<pub.pem> SIG=<sig> [DATA=<path>].
+  w-otp        Canonical mode only:
+               A=w-otp MODE=gen|verify KEY=<secret|path> [WID=<wid>]
+               [CODE=<otp>] [DIGITS=<n>] [MAX_AGE_SEC=<n>] [MAX_FUTURE_SEC=<n>].
 
 Examples:
   python -m wid next
@@ -114,6 +116,7 @@ Examples:
 
 
 def _env_int(name: str, default: int) -> int:
+    """Read an integer environment variable, falling back to ``default``."""
     raw = os.environ.get(name)
     if raw is None:
         return default
@@ -124,6 +127,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _run_emit_mode(mode: str, argv: list[str]) -> None:
+    """Handle flag-mode ``next``/``stream``: emit one or N identifiers."""
     ap = argparse.ArgumentParser(description=f"Emit WID values ({mode})")
     ap.add_argument("--kind", choices=["wid", "hlc"], default="wid")
     ap.add_argument("--W", type=int, default=_env_int("W", 4))
@@ -163,6 +167,7 @@ def _run_emit_mode(mode: str, argv: list[str]) -> None:
 
 
 def _run_healthcheck_mode(argv: list[str]) -> None:
+    """Generate one sample identifier and validate its shape."""
     ap = argparse.ArgumentParser(description="Healthcheck WID/HLC generator (strict)")
     ap.add_argument("--kind", choices=["wid", "hlc"], default="wid")
     ap.add_argument("--W", type=int, default=_env_int("W", 4))
@@ -210,6 +215,7 @@ def _run_healthcheck_mode(argv: list[str]) -> None:
 
 
 def _run_bench_mode(argv: list[str]) -> None:
+    """Benchmark generation throughput and print ids/sec."""
     ap = argparse.ArgumentParser(description="Benchmark WID/HLC generation throughput")
     ap.add_argument("--kind", choices=["wid", "hlc"], default="wid")
     ap.add_argument("--W", type=int, default=_env_int("W", 4))
@@ -279,10 +285,12 @@ def _run_selftest_mode() -> None:
 
 
 def _is_true(raw: str) -> bool:
+    """Interpret a canonical boolean value (true/1/yes/on)."""
     return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _repo_root() -> Path | None:
+    """Return the repository root (three levels above this file)."""
     here = Path(__file__).resolve()
     for parent in [here.parent, *here.parents]:
         if (parent / "sh" / "wid").exists() and (parent / "README.md").exists():
@@ -293,11 +301,12 @@ def _repo_root() -> Path | None:
 def _run_cmd(
     cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None
 ) -> None:
+    """Run a subprocess, streaming its output; return the exit code."""
     subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env, check=True)
 
 
-
 def _run_shell_wid(root_dir: Path, canon: dict[str, str]) -> None:
+    """Delegate a canonical invocation to the sh implementation."""
     sh_impl = root_dir / "sh" / "wid"
     if not sh_impl.exists():
         raise RuntimeError(f"shell implementation not found: {sh_impl}")
@@ -309,6 +318,7 @@ def _run_shell_wid(root_dir: Path, canon: dict[str, str]) -> None:
 
 
 def _sql_state_path(data_dir: Path) -> Path:
+    """Return the SQLite state DB path inside ``data_dir``."""
     return data_dir / "wid_state.sqlite"
 
 
@@ -316,12 +326,14 @@ def _sql_state_key(w_val: int, z_val: int, time_unit: str) -> str:
     # Deliberately language-agnostic (wid:W:Z:T, no implementation tag): all
     # six implementations share one row per generator shape, so mixing
     # languages on the same database cannot mint duplicate WIDs.
+    """Build the language-agnostic state key ``wid:W:Z:T``."""
     return f"wid:{w_val}:{z_val}:{time_unit}"
 
 
 def _sql_allocate_next_wid(
     w_val: int, z_val: int, time_unit: str, db_path: Path
 ) -> str:
+    """Mint one WID via the shared SQLite compare-and-swap state row."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     try:
@@ -373,6 +385,7 @@ def _sql_allocate_next_wid(
 
 
 def _run_sign_mode(canon: dict[str, str]) -> None:
+    """Handle ``A=sign``: Ed25519-sign a WID (plus optional payload)."""
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import ed25519
 
@@ -413,6 +426,7 @@ def _run_sign_mode(canon: dict[str, str]) -> None:
 
 
 def _run_verify_mode(canon: dict[str, str]) -> None:
+    """Handle ``A=verify``: check an Ed25519 signature for a WID."""
     from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import ed25519
@@ -457,6 +471,7 @@ def _run_verify_mode(canon: dict[str, str]) -> None:
 
 
 def _resolve_wotp_secret(raw_key: str) -> str:
+    """Treat KEY= as a file path if one exists, else as the literal secret."""
     key_path = Path(raw_key).expanduser().resolve()
     if key_path.exists() and key_path.is_file():
         return key_path.read_text(encoding="utf-8").strip()
@@ -464,12 +479,15 @@ def _resolve_wotp_secret(raw_key: str) -> str:
 
 
 def _wotp_code(secret: str, wid: str, digits: int) -> str:
-    digest = hmac.new(secret.encode("utf-8"), wid.encode("utf-8"), hashlib.sha256).digest()
+    """Derive the truncated HMAC-SHA256 OTP for ``wid`` (CRYPTO_SPEC)."""
+    key = secret.encode("utf-8")
+    digest = hmac.new(key, wid.encode("utf-8"), hashlib.sha256).digest()
     binary = int.from_bytes(digest[:4], "big", signed=False)
     return str(binary % (10**digits)).zfill(digits)
 
 
 def _wotp_wid_tick_ms(wid_str: str) -> int:
+    """Extract the WID's timestamp in epoch milliseconds for age checks."""
     ts = wid_str.split(".", 1)[0]
     if "T" not in ts:
         raise ValueError("WID timestamp is invalid for time-window verification")
@@ -481,7 +499,11 @@ def _wotp_wid_tick_ms(wid_str: str) -> int:
     return int(dt.timestamp() * 1000)
 
 
-def _run_wotp_mode(canon: dict[str, str], w_val: int, z_val: int, time_unit: str) -> None:
+# One branch per MODE/parameter rule; mirrors the other implementations.
+def _run_wotp_mode(  # noqa: C901
+    canon: dict[str, str], w_val: int, z_val: int, time_unit: str
+) -> None:
+    """Handle ``A=w-otp MODE=gen|verify``: WID-bound one-time codes."""
     mode = canon.get("MODE", "gen").strip().lower()
     if mode not in {"gen", "verify"}:
         raise ValueError("MODE must be gen or verify for A=w-otp")
@@ -508,14 +530,16 @@ def _run_wotp_mode(canon: dict[str, str], w_val: int, z_val: int, time_unit: str
 
     wid_str = canon.get("WID", "").strip()
     if not wid_str and mode == "gen":
-        gen = WidGen(w=w_val, z=z_val, time_unit=WidCore.TimeUnit.from_string(time_unit))
+        unit = WidCore.TimeUnit.from_string(time_unit)
+        gen = WidGen(w=w_val, z=z_val, time_unit=unit)
         wid_str = gen.next()
     if not wid_str:
         raise ValueError("WID=<wid_string> required for A=w-otp MODE=verify")
 
     otp = _wotp_code(secret, wid_str, digits)
     if mode == "gen":
-        print(json.dumps({"wid": wid_str, "otp": otp, "digits": digits}, separators=(",", ":")))
+        record = {"wid": wid_str, "otp": otp, "digits": digits}
+        print(json.dumps(record, separators=(",", ":")))
         return
 
     code = canon.get("CODE", "").strip()
@@ -536,7 +560,10 @@ def _run_wotp_mode(canon: dict[str, str], w_val: int, z_val: int, time_unit: str
     sys.exit(1)
 
 
-def _run_canonical(argv: list[str]) -> bool:
+# The canonical KEY=VALUE dispatcher is one deliberate action table,
+# mirroring the switch/case dispatchers of the other five implementations.
+def _run_canonical(argv: list[str]) -> bool:  # noqa: C901
+    """Parse and dispatch canonical KEY=VALUE mode; False if not canonical."""
     if not argv or not any("=" in item for item in argv):
         return False
 
@@ -603,8 +630,8 @@ def _run_canonical(argv: list[str]) -> bool:
         raise ValueError("L must be a non-negative integer (seconds)")
     if canon["R"] not in TRANSPORTS:
         raise ValueError(
-            f"transport R={canon['R']} is only available in the Rust "
-            "implementation (services/transports are Rust-only)"
+            f"transport R={canon['R']} is only available in the Rust"
+            + " implementation (services/transports are Rust-only)"
         )
 
     action: str = canon["A"].strip().lower()
@@ -748,7 +775,7 @@ def _parse_validate_flags(args: list[str]) -> tuple[str, int, int, str]:
 
 
 def _run_validate_mode(args: list[str]) -> None:
-    """Handle: wid validate <id> [--kind wid|hlc] [--W n] [--Z n] [--time-unit sec|ms]."""
+    """Handle ``wid validate <id>`` plus --kind/--W/--Z/--time-unit flags."""
     if not args or args[0].startswith("--"):
         print("error: validate requires an id", file=sys.stderr)
         sys.exit(2)
@@ -765,7 +792,7 @@ def _run_validate_mode(args: list[str]) -> None:
 
 
 def _run_parse_mode(args: list[str]) -> None:
-    """Handle: wid parse <id> [--kind wid|hlc] [--W n] [--Z n] [--time-unit sec|ms] [--json]."""
+    """Handle ``wid parse <id>`` plus --kind/--W/--Z/--time-unit/--json flags."""
     if not args or args[0].startswith("--"):
         print("error: parse requires an id", file=sys.stderr)
         sys.exit(2)
@@ -780,13 +807,18 @@ def _run_parse_mode(args: list[str]) -> None:
             print(f"error: invalid hlc-wid: {wid_str}", file=sys.stderr)
             sys.exit(1)
         if json_out:
-            print(json.dumps({
-                "raw": result_h.raw,
-                "timestamp": result_h.timestamp.isoformat(),
-                "logical_counter": result_h.logical_counter,
-                "node": result_h.node,
-                "padding": result_h.padding,
-            }, separators=(",", ":")))
+            print(
+                json.dumps(
+                    {
+                        "raw": result_h.raw,
+                        "timestamp": result_h.timestamp.isoformat(),
+                        "logical_counter": result_h.logical_counter,
+                        "node": result_h.node,
+                        "padding": result_h.padding,
+                    },
+                    separators=(",", ":"),
+                )
+            )
         else:
             print(f"raw={result_h.raw}")
             print(f"timestamp={result_h.timestamp.isoformat()}")
@@ -799,12 +831,17 @@ def _run_parse_mode(args: list[str]) -> None:
             print(f"error: invalid wid: {wid_str}", file=sys.stderr)
             sys.exit(1)
         if json_out:
-            print(json.dumps({
-                "raw": result.raw,
-                "timestamp": result.timestamp.isoformat(),
-                "sequence": result.sequence,
-                "padding": result.padding,
-            }, separators=(",", ":")))
+            print(
+                json.dumps(
+                    {
+                        "raw": result.raw,
+                        "timestamp": result.timestamp.isoformat(),
+                        "sequence": result.sequence,
+                        "padding": result.padding,
+                    },
+                    separators=(",", ":"),
+                )
+            )
         else:
             print(f"raw={result.raw}")
             print(f"timestamp={result.timestamp.isoformat()}")
@@ -812,24 +849,67 @@ def _run_parse_mode(args: list[str]) -> None:
             print(f"padding={result.padding or ''}")
 
 
+def _fish_completion() -> str:
+    """Build the fish completion script line by line."""
+    guard = (
+        "not __fish_seen_subcommand_from next stream healthcheck validate"
+        + " parse help-actions bench selftest completion"
+    )
+    subcommands = (
+        ("next", "Emit one WID"),
+        ("stream", "Stream WIDs continuously"),
+        ("healthcheck", "Generate and validate a sample WID"),
+        ("validate", "Validate a WID string"),
+        ("parse", "Parse a WID string"),
+        ("help-actions", "Show canonical action matrix"),
+        ("completion", "Print shell completion script"),
+    )
+    lines = ["complete -c wid -e"]
+    lines += [
+        f"complete -c wid -f -n '{guard}' -a {cmd} -d '{desc}'"
+        for cmd, desc in subcommands
+    ]
+    lines += [
+        "complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign"
+        + " A=verify A=w-otp A=help-actions' -d 'Action'",
+        "complete -c wid -f -a 'T=sec T=ms' -d 'Time unit'",
+        "complete -c wid -f -a 'I=auto I=sh I=bash' -d 'Input source'",
+        "complete -c wid -f -a 'E=state E=stateless E=sql' -d 'State mode'",
+        "complete -c wid -f -a 'R=auto R=null R=stdout' -d 'Transport'",
+        "complete -c wid -f -a 'M=true M=false' -d 'Milliseconds mode'",
+        "complete -c wid -f -a 'W=' -d 'Sequence width'",
+        "complete -c wid -f -a 'Z=' -d 'Padding length'",
+        "complete -c wid -f -a 'N=' -d 'Count'",
+        "complete -c wid -f -a 'L=' -d 'Interval seconds'",
+    ]
+    return "\n".join(lines)
+
+
 def _print_completion(shell: str) -> None:
-    """Print shell completion script for wid."""
+    """Print a bash/zsh/fish completion script for the wid CLI.
+
+    Only values the CLI actually accepts are advertised: service actions
+    and broker transports are Rust-only and rejected here.
+    """
     if shell == "bash":
         print(r"""_wid_complete() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
-  local cmds="next stream healthcheck validate parse help-actions bench selftest completion"
+  local cmds="next stream healthcheck validate parse help-actions bench \
+selftest completion"
   if [[ "$cur" == *=* ]]; then
     local key="${cur%%=*}" val="${cur#*=}" vals=""
     case "$key" in
-      A) vals="next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions" ;;
+      A) vals="next stream healthcheck sign verify w-otp help-actions" ;;
       T) vals="sec ms" ;;
       I) vals="auto sh bash" ;;
       E) vals="state stateless sql" ;;
-      R) vals="auto mqtt ws redis null stdout" ;;
+      R) vals="auto null stdout" ;;
       M) vals="true false" ;;
     esac
     local IFS=$'\n'
-    COMPREPLY=($(for v in $vals; do [[ "$v" == "$val"* ]] && printf '%s\n' "${key}=${v}"; done))
+    COMPREPLY=($(for v in $vals; do
+      [[ "$v" == "$val"* ]] && printf '%s\n' "${key}=${v}"
+    done))
   else
     local kv="A= W= Z= T= N= L= D= I= E= R= M="
     COMPREPLY=($(compgen -W "$cmds $kv" -- "$cur"))
@@ -840,16 +920,19 @@ complete -o nospace -F _wid_complete wid""")
         print(r"""#compdef wid
 _wid_complete() {
   local cur="${words[-1]}"
-  local -a cmds=(next stream healthcheck validate parse help-actions bench selftest completion)
+  local -a cmds=(
+    next stream healthcheck validate parse
+    help-actions bench selftest completion
+  )
   if [[ "$cur" == *=* ]]; then
     local key="${cur%%=*}"
     local -a vals=()
     case "$key" in
-      A) vals=(next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions) ;;
+      A) vals=(next stream healthcheck sign verify w-otp help-actions) ;;
       T) vals=(sec ms) ;;
       I) vals=(auto sh bash) ;;
       E) vals=(state stateless sql) ;;
-      R) vals=(auto mqtt ws redis null stdout) ;;
+      R) vals=(auto null stdout) ;;
       M) vals=(true false) ;;
     esac
     compadd -P "${key}=" -- "${vals[@]}"
@@ -859,26 +942,12 @@ _wid_complete() {
 }
 _wid_complete """ + '"$@"')
     elif shell == "fish":
-        print(r"""complete -c wid -e
-complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a next -d 'Emit one WID'
-complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a stream -d 'Stream WIDs continuously'
-complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a healthcheck -d 'Generate and validate a sample WID'
-complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a validate -d 'Validate a WID string'
-complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a parse -d 'Parse a WID string'
-complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a help-actions -d 'Show canonical action matrix'
-complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a completion -d 'Print shell completion script'
-complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=help-actions' -d 'Action'
-complete -c wid -f -a 'T=sec T=ms' -d 'Time unit'
-complete -c wid -f -a 'I=auto I=sh I=bash' -d 'Input source'
-complete -c wid -f -a 'E=state E=stateless E=sql' -d 'State mode'
-complete -c wid -f -a 'R=auto R=mqtt R=ws R=redis R=null R=stdout' -d 'Transport'
-complete -c wid -f -a 'M=true M=false' -d 'Milliseconds mode'
-complete -c wid -f -a 'W=' -d 'Sequence width'
-complete -c wid -f -a 'Z=' -d 'Padding length'
-complete -c wid -f -a 'N=' -d 'Count'
-complete -c wid -f -a 'L=' -d 'Interval seconds'""")
+        print(_fish_completion())
     else:
-        print(f"error: unknown shell '{shell}'. Use: wid completion bash|zsh|fish", file=sys.stderr)
+        print(
+            f"error: unknown shell '{shell}'. Use: wid completion bash|zsh|fish",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 
@@ -925,6 +994,7 @@ def main() -> None:
 def _dispatch_flag_mode() -> None:
     # No arguments prints usage and exits 2, matching every other
     # implementation (a bare `wid` used to silently emit one ID).
+    """Dispatch flag-mode subcommands (next, stream, validate, ...)."""
     if len(sys.argv) == 1:
         _print_usage(sys.stderr)
         sys.exit(2)
@@ -963,6 +1033,7 @@ def _dispatch_flag_mode() -> None:
 
 
 def _run_cli_entry(args: list[str]) -> None:
+    """Run the CLI with an explicit argv (used by the hlc-wid entry point)."""
     original = list(sys.argv)
     try:
         sys.argv = [sys.argv[0], *args, *original[1:]]

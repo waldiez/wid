@@ -13,12 +13,16 @@ use crate::wid::{TimeUnit, WidError};
 /// Parsed HLC-WID components.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedHlcWid {
+    /// The original HLC-WID string.
     pub raw: String,
+    /// The embedded UTC timestamp.
     pub timestamp: DateTime<Utc>,
     /// i64, not u32: the spec allows W up to 18, and an all-nines W=10
     /// counter (9999999999) already exceeds u32::MAX.
     pub logical_counter: i64,
+    /// Node tag identifying the minting writer.
     pub node: String,
+    /// Random hex pad (`None` when Z=0).
     pub padding: Option<String>,
 }
 
@@ -139,7 +143,9 @@ pub fn parse_hlc_wid(wid: &str, w: usize, z: usize) -> Result<ParsedHlcWid, WidE
 /// HLC generator state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HLCState {
+    /// Physical time tick (seconds or milliseconds per the generator's unit).
     pub pt: i64,
+    /// Logical counter within the physical tick.
     pub lc: i64,
 }
 

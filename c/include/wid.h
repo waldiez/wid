@@ -114,28 +114,34 @@ typedef struct {
     bool initialized;
 } wid_async_hlc_stream_t;
 
+/* ASCII digit test (locale-independent). */
 static inline bool wid_is_digit(char c) {
     return c >= '0' && c <= '9';
 }
 
+/* ASCII letter test (locale-independent). */
 static inline bool wid_is_alpha(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
+/* ASCII letter-or-digit test (locale-independent). */
 static inline bool wid_is_alnum(char c) {
     return wid_is_digit(c) || wid_is_alpha(c);
 }
 
+/* Lowercase hex digit test (pad charset). */
 static inline bool wid_is_lower_hex(char c) {
     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
 }
 
+/* Gregorian leap-year test. */
 static inline bool wid_is_leap_year(int year) {
     if (year % 400 == 0) return true;
     if (year % 100 == 0) return false;
     return (year % 4) == 0;
 }
 
+/* Validate calendar fields (real month/day, 24h time). */
 static inline bool wid_valid_ymdhms(
     int year,
     int month,
@@ -157,10 +163,12 @@ static inline bool wid_valid_ymdhms(
     return day >= 1 && day <= dim;
 }
 
+/* Node charset test: [A-Za-z0-9_]. */
 static inline bool wid_is_node_char(char c) {
     return wid_is_alnum(c) || c == '_';
 }
 
+/* Validate a non-empty HLC node tag. */
 static inline bool wid_valid_node(const char *node) {
     if (!node || node[0] == '\0') return false;
     for (const char *p = node; *p; p++) {
@@ -169,6 +177,7 @@ static inline bool wid_valid_node(const char *node) {
     return true;
 }
 
+/* Validate the random pad: exactly Z lowercase hex chars. */
 static inline bool wid_valid_suffix(const char *suffix, int Z) {
     if (!suffix || suffix[0] == '\0') return true;
     if (suffix[0] != '-') return false;
@@ -183,6 +192,7 @@ static inline bool wid_valid_suffix(const char *suffix, int Z) {
     return true;
 }
 
+/* Parse "sec"/"ms"; false for anything else. */
 static inline bool wid_time_unit_from_str(const char *s, wid_time_unit_t *out) {
     if (!s || !out) return false;
     if (strcmp(s, "sec") == 0) {
@@ -196,14 +206,17 @@ static inline bool wid_time_unit_from_str(const char *s, wid_time_unit_t *out) {
     return false;
 }
 
+/* Spec name of the unit: "sec" or "ms". */
 static inline const char *wid_time_unit_to_str(wid_time_unit_t u) {
     return u == WID_TIME_MS ? "ms" : "sec";
 }
 
+/* Timestamp field length: 15 (sec) or 18 (ms). */
 static inline int wid_timestamp_len(wid_time_unit_t unit) {
     return unit == WID_TIME_MS ? 18 : 15;
 }
 
+/* Parse exactly n digits into an int64; -1 on any non-digit. */
 static inline int64_t wid_parse_digits_i64(const char *s, int n) {
     int64_t v = 0;
     for (int i = 0; i < n; i++) {
@@ -213,6 +226,7 @@ static inline int64_t wid_parse_digits_i64(const char *s, int n) {
     return v;
 }
 
+/* Parse and calendar-validate the timestamp field. */
 static inline bool wid_parse_timestamp(
     const char *s,
     wid_time_unit_t unit,
@@ -258,6 +272,7 @@ static inline bool wid_parse_timestamp(
     return true;
 }
 
+/* Validate a plain WID against W/Z and the given time unit. */
 static inline bool wid_validate_ex(const char *wid, int W, int Z, wid_time_unit_t unit) {
     if (!wid || W <= 0 || Z < 0) return false;
     if (W > WID_MAX_W || Z > WID_MAX_Z) return false;
@@ -312,6 +327,7 @@ static inline bool hlc_wid_validate_ex(const char *wid, int W, int Z, wid_time_u
     return wid_valid_suffix(suffix_dash, Z);
 }
 
+/* Validate a plain WID (second precision). */
 static inline bool wid_validate(const char *wid, int W, int Z) {
     return wid_validate_ex(wid, W, Z, WID_TIME_SEC);
 }
@@ -320,6 +336,7 @@ static inline bool hlc_wid_validate(const char *wid, int W, int Z) {
     return hlc_wid_validate_ex(wid, W, Z, WID_TIME_SEC);
 }
 
+/* Parse a plain WID into parsed_wid_t; false if non-conformant. */
 static inline bool wid_parse_ex(
     const char *wid,
     int W,
@@ -423,6 +440,7 @@ static inline bool hlc_wid_parse_ex(
     return true;
 }
 
+/* Parse a plain WID (second precision). */
 static inline bool wid_parse(const char *wid, int W, int Z, parsed_wid_t *out) {
     return wid_parse_ex(wid, W, Z, WID_TIME_SEC, out);
 }
@@ -441,6 +459,7 @@ static inline bool hlc_wid_parse(const char *wid, int W, int Z, parsed_hlc_wid_t
 void arc4random_buf(void *buf, size_t nbytes);
 #endif
 
+/* Fill buf with len random lowercase hex chars (not crypto-grade). */
 static inline void wid_random_hex(char *buf, int len) {
     static const char hex[] = "0123456789abcdef";
     /* One random byte is consumed per hex char, so the buffer must hold up to
@@ -494,6 +513,7 @@ static inline void wid_random_hex(char *buf, int len) {
     buf[len] = '\0';
 }
 
+/* Current wall-clock tick in the given unit. */
 static inline int64_t wid_now_tick(wid_time_unit_t unit) {
     if (unit == WID_TIME_MS) {
 #if defined(TIME_UTC)
@@ -507,6 +527,7 @@ static inline int64_t wid_now_tick(wid_time_unit_t unit) {
     return (int64_t)time(NULL);
 }
 
+/* Monotonic nanoseconds for benchmarking. */
 static inline int64_t wid_now_monotonic_ns(void) {
 #if defined(CLOCK_MONOTONIC)
     struct timespec ts_mono;
@@ -537,6 +558,7 @@ static inline int64_t wid_clamp_tick(wid_time_unit_t unit, int64_t tick) {
     return tick;
 }
 
+/* Format a (clamped) tick as the WID timestamp field. */
 static inline void wid_fmt_tick(wid_time_unit_t unit, int64_t tick, char out[24]) {
     tick = wid_clamp_tick(unit, tick);
     int64_t sec = tick;
@@ -571,6 +593,7 @@ static inline void wid_fmt_tick(wid_time_unit_t unit, int64_t tick, char out[24]
     }
 }
 
+/* 10^n as int64 (n <= 18). */
 static inline int64_t wid_pow10_i64(int n) {
     int64_t v = 1;
     for (int i = 0; i < n; i++) {
@@ -580,6 +603,7 @@ static inline int64_t wid_pow10_i64(int n) {
     return v;
 }
 
+/* Init a generator; out-of-range W/Z clamp (void API cannot reject - validate first). */
 static inline void wid_gen_init_ex(wid_gen_t *gen, int W, int Z, wid_time_unit_t unit) {
     gen->W = W > 0 ? W : WID_DEFAULT_W;
     gen->Z = Z >= 0 ? Z : WID_DEFAULT_Z;
@@ -596,10 +620,12 @@ static inline void wid_gen_init_ex(wid_gen_t *gen, int W, int Z, wid_time_unit_t
     gen->max_seq = wid_pow10_i64(gen->W) - 1;
 }
 
+/* Init a generator with second precision. */
 static inline void wid_gen_init(wid_gen_t *gen, int W, int Z) {
     wid_gen_init_ex(gen, W, Z, WID_TIME_SEC);
 }
 
+/* Mint the next monotonic WID into out. */
 static inline void wid_gen_next(wid_gen_t *gen, char *out, size_t out_len) {
     int64_t now_tick = wid_now_tick(gen->time_unit);
     int64_t tick = now_tick > gen->last_tick ? now_tick : gen->last_tick;
@@ -752,10 +778,12 @@ static inline bool wid_async_wid_stream_init(
     return true;
 }
 
+/* True once the bounded stream has emitted its count. */
 static inline bool wid_async_wid_stream_done(const wid_async_wid_stream_t *s) {
     return !s || !s->initialized || s->remaining == 0;
 }
 
+/* Emit the next stream WID if due; false when done/not due. */
 static inline bool wid_async_wid_stream_poll(
     wid_async_wid_stream_t *s,
     char *out,
@@ -775,6 +803,7 @@ static inline bool wid_async_wid_stream_poll(
     return true;
 }
 
+/* Init an incremental HLC-WID stream (count 0 = unbounded). */
 static inline bool wid_async_hlc_stream_init(
     wid_async_hlc_stream_t *s,
     const char *node,
@@ -794,10 +823,12 @@ static inline bool wid_async_hlc_stream_init(
     return true;
 }
 
+/* True once the bounded HLC stream has emitted its count. */
 static inline bool wid_async_hlc_stream_done(const wid_async_hlc_stream_t *s) {
     return !s || !s->initialized || s->remaining == 0;
 }
 
+/* Emit the next stream HLC-WID if due; false when done/not due. */
 static inline bool wid_async_hlc_stream_poll(
     wid_async_hlc_stream_t *s,
     char *out,

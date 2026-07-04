@@ -381,6 +381,8 @@ func NewWidGenWithUnit(w, z int, unit TimeUnit) (*WidGen, error) {
 	return &WidGen{W: w, Z: z, TimeUnit: unit, maxSeq: pow10(w) - 1, lastSeq: -1}, nil
 }
 
+// Next mints the next monotonic WID, advancing the tick when the
+// sequence for the current tick is exhausted. Safe for concurrent use.
 func (g *WidGen) Next() string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -407,6 +409,7 @@ func (g *WidGen) Next() string {
 	return fmt.Sprintf("%s.%sZ", ts, seqStr)
 }
 
+// NextN mints n consecutive WIDs.
 func (g *WidGen) NextN(n int) []string {
 	out := make([]string, n)
 	for i := range out {
@@ -415,12 +418,15 @@ func (g *WidGen) NextN(n int) []string {
 	return out
 }
 
+// State returns the generator's (lastTick, lastSeq) resume state.
 func (g *WidGen) State() (int64, int64) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.lastTick, g.lastSeq
 }
 
+// RestoreState resumes from persisted (lastTick, lastSeq) state;
+// out-of-range ticks saturate to the formattable range on output.
 func (g *WidGen) RestoreState(lastTick, lastSeq int64) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

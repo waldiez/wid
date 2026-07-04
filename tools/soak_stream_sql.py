@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
+"""Soak test for the shared SQLite-backed generator state.
+
+Runs several async workers minting WIDs against one ``wid_state.sqlite``
+for a fixed duration, asserting no duplicates across workers and monotonic
+local order within each worker. Emits a one-line JSON summary.
+"""
+
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 import time
 from pathlib import Path
@@ -10,11 +18,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 
-from wid import parse_wid
-from wid.async_api import async_next_wid
+# Imports below need the repo's python/ dir on sys.path first.
+# pylint: disable=wrong-import-position
+from wid import parse_wid  # noqa: E402
+from wid.async_api import async_next_wid  # noqa: E402
 
 
-async def worker(
+# Keyword-only args make the shared state explicit at each call site.
+async def worker(  # pylint: disable=too-many-arguments
     *,
     worker_id: int,
     stop_at: float,
@@ -23,6 +34,7 @@ async def worker(
     lock: asyncio.Lock,
     failures: list[str],
 ) -> int:
+    """Mint WIDs until ``stop_at``; record duplicates/order violations."""
     count = 0
     last_key = None
     while time.time() < stop_at:
@@ -44,13 +56,21 @@ async def worker(
 
 
 async def run(duration_sec: int, workers: int, db_path: str) -> tuple[int, float]:
+    """Run the soak with N workers; return (total ids, ids per second)."""
     stop_at = time.time() + duration_sec
     seen: set[str] = set()
     lock = asyncio.Lock()
     failures: list[str] = []
     tasks = [
         asyncio.create_task(
-            worker(worker_id=i, stop_at=stop_at, db_path=db_path, seen=seen, lock=lock, failures=failures)
+            worker(
+                worker_id=i,
+                stop_at=stop_at,
+                db_path=db_path,
+                seen=seen,
+                lock=lock,
+                failures=failures,
+            )
         )
         for i in range(workers)
     ]
@@ -63,6 +83,7 @@ async def run(duration_sec: int, workers: int, db_path: str) -> tuple[int, float
 
 
 def main() -> None:
+    """Parse CLI options, run the soak, print the JSON summary."""
     p = argparse.ArgumentParser()
     p.add_argument("--duration-sec", type=int, default=30)
     p.add_argument("--workers", type=int, default=4)
@@ -71,9 +92,14 @@ def main() -> None:
 
     Path(args.db_path).parent.mkdir(parents=True, exist_ok=True)
     total, rate = asyncio.run(run(args.duration_sec, args.workers, args.db_path))
-    print(
-        f'{{"ok":true,"duration_sec":{args.duration_sec},"workers":{args.workers},"total":{total},"ids_per_sec":{rate:.2f}}}'
-    )
+    summary = {
+        "ok": True,
+        "duration_sec": args.duration_sec,
+        "workers": args.workers,
+        "total": total,
+        "ids_per_sec": round(rate, 2),
+    }
+    print(json.dumps(summary, separators=(",", ":")))
 
 
 if __name__ == "__main__":

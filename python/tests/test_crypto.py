@@ -5,7 +5,6 @@
 # pylint: disable=unexpected-keyword-arg
 
 # pyright: reportPrivateUsage=false
-# flake8: noqa: D102,D103,C901
 
 import json
 import os
@@ -95,7 +94,7 @@ def run_wid_cli(args: list[str], expected_exit_code: int = 0) -> str:
         sys.stderr.write(f"Command failed with exit code {result.returncode}\n")
         sys.stderr.write(f"Stdout:\n{result.stdout}\n")
         sys.stderr.write(f"Stderr:\n{result.stderr}\n")
-        msg =  f"Expected: {expected_exit_code}, Got: {result.returncode}"
+        msg = f"Expected: {expected_exit_code}, Got: {result.returncode}"
         cmd_str = " ".join(cmd)
         pytest.fail(
             f"CLI command failed with unexpected exit code. Command: {cmd_str}. {msg}"
@@ -110,7 +109,8 @@ def load_conformance_tests() -> Any:
 
 
 @pytest.mark.parametrize("test_case", load_conformance_tests())
-def test_crypto_conformance(
+# One assertion branch per fixture case type keeps the table flat.
+def test_crypto_conformance(  # noqa: C901
     test_case: dict[str, Any],
     temp_dir: Path,
     ed25519_key_pair: tuple[Path, Path],

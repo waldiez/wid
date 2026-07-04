@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Execute the negative-path security matrix from the conformance spec.
+
+``spec/conformance/security_matrix.json`` lists attack scenarios that MUST
+fail verification (tampered WID, tampered payload hash, wrong key, expired
+envelope, malformed ciphertext). This script builds a real signed envelope
+with ``cryptography`` and asserts every required scenario is rejected.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -6,14 +14,17 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
-from cryptography.hazmat.primitives import hashes, hmac, serialization
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 @dataclass
 class Envelope:
+    """Signed-envelope fields as defined in spec/CRYPTO_SPEC.md."""
+
     wid: str
     sig: str
     key_id: str
@@ -24,33 +35,38 @@ class Envelope:
 
 
 def b64url(raw: bytes) -> str:
+    """Encode bytes as unpadded URL-safe base64."""
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
 
 def b64url_decode(s: str) -> bytes:
+    """Decode unpadded URL-safe base64 back to bytes."""
     pad = "=" * ((4 - len(s) % 4) % 4)
     return base64.urlsafe_b64decode(s + pad)
 
 
 def sha256_hex(data: bytes) -> str:
+    """Return the hex SHA-256 digest of ``data``."""
     digest = hashes.Hash(hashes.SHA256())
     digest.update(data)
     return digest.finalize().hex()
 
 
 def canonical_payload(env: Envelope) -> bytes:
-    return (
-        f"{env.wid}\n{env.key_id}\n{env.alg}\n{env.issued_at}\n{env.expires_at}\n{env.data_hash}".encode("utf-8")
-    )
+    """Serialize the envelope fields into the canonical signing message."""
+    parts = [env.wid, env.key_id, env.alg, env.issued_at, env.expires_at, env.data_hash]
+    return "\n".join(parts).encode("utf-8")
 
 
 def parse_utc(v: str) -> datetime:
+    """Parse an ISO-8601 timestamp (with Z or offset) into aware UTC."""
     if v.endswith("Z"):
         v = v[:-1] + "+00:00"
     return datetime.fromisoformat(v).astimezone(UTC)
 
 
 def verify_envelope(env: Envelope, pub: ed25519.Ed25519PublicKey) -> bool:
+    """Verify signature, algorithm, and expiry; return False on any failure."""
     if env.alg != "Ed25519":
         return False
     if parse_utc(env.expires_at) < datetime.now(UTC):
@@ -58,12 +74,14 @@ def verify_envelope(env: Envelope, pub: ed25519.Ed25519PublicKey) -> bool:
     try:
         pub.verify(b64url_decode(env.sig), canonical_payload(env))
         return True
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return False
 
 
-def main() -> None:
-    matrix = json.loads(Path("spec/conformance/security_matrix.json").read_text(encoding="utf-8"))
+def main() -> None:  # pylint: disable=too-many-locals
+    """Run every required security-matrix scenario and assert it fails."""
+    matrix_path = Path("spec/conformance/security_matrix.json")
+    matrix: list[dict[str, Any]] = json.loads(matrix_path.read_text(encoding="utf-8"))
     ids = {x["id"] for x in matrix if x.get("required")}
 
     wid = "20260218T170000.0000Z-edge01-event"
@@ -116,12 +134,18 @@ def main() -> None:
     failed = False
     try:
         _ = aes.decrypt(nonce, malformed, None)
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         failed = True
     assert failed, "malformed_ciphertext should fail"
 
     # Ensure required ids covered
-    covered = {"tampered_wid", "tampered_data", "wrong_key", "expired_envelope", "malformed_ciphertext"}
+    covered = {
+        "tampered_wid",
+        "tampered_data",
+        "wrong_key",
+        "expired_envelope",
+        "malformed_ciphertext",
+    }
     missing = ids - covered
     assert not missing, f"missing required security cases: {sorted(missing)}"
 

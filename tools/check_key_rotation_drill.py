@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Key-rotation drill: overlap, cutover, and revocation must behave.
+
+Simulates the documented rotation procedure with two Ed25519 key
+generations: during overlap both keys verify, after cutover only the new
+key does, and an explicitly revoked key id always fails regardless of
+trust-store contents.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -10,15 +18,18 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 
 
 def b64url(raw: bytes) -> str:
+    """Encode bytes as unpadded URL-safe base64."""
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
 
 def b64url_decode(s: str) -> bytes:
+    """Decode unpadded URL-safe base64 back to bytes."""
     pad = "=" * ((4 - len(s) % 4) % 4)
     return base64.urlsafe_b64decode(s + pad)
 
 
 def sha256_hex(data: bytes) -> str:
+    """Return the hex SHA-256 digest of ``data``."""
     h = hashes.Hash(hashes.SHA256())
     h.update(data)
     return h.finalize().hex()
@@ -26,6 +37,8 @@ def sha256_hex(data: bytes) -> str:
 
 @dataclass
 class Envelope:
+    """Signed-envelope fields as defined in spec/CRYPTO_SPEC.md."""
+
     wid: str
     key_id: str
     alg: str
@@ -36,12 +49,13 @@ class Envelope:
 
 
 def canonical_payload(env: Envelope) -> bytes:
-    return (
-        f"{env.wid}\n{env.key_id}\n{env.alg}\n{env.issued_at}\n{env.expires_at}\n{env.data_hash}".encode("utf-8")
-    )
+    """Serialize the envelope fields into the canonical signing message."""
+    parts = [env.wid, env.key_id, env.alg, env.issued_at, env.expires_at, env.data_hash]
+    return "\n".join(parts).encode("utf-8")
 
 
 def sign(wid: str, key_id: str, sk: ed25519.Ed25519PrivateKey) -> Envelope:
+    """Build and sign a five-minute envelope for ``wid`` under ``key_id``."""
     now = datetime.now(UTC)
     iat = now.isoformat().replace("+00:00", "Z")
     exp = (now + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
@@ -58,22 +72,27 @@ def sign(wid: str, key_id: str, sk: ed25519.Ed25519PrivateKey) -> Envelope:
     return env
 
 
-def verify(env: Envelope, trusted: dict[str, ed25519.Ed25519PublicKey], revoked: set[str]) -> bool:
+def verify(
+    env: Envelope, trusted: dict[str, ed25519.Ed25519PublicKey], revoked: set[str]
+) -> bool:
+    """Verify against a trust store; revocation beats trust, expiry beats both."""
     if env.key_id in revoked:
         return False
     pk = trusted.get(env.key_id)
     if pk is None or env.alg != "Ed25519":
         return False
-    if datetime.fromisoformat(env.expires_at.replace("Z", "+00:00")).astimezone(UTC) < datetime.now(UTC):
+    expires = datetime.fromisoformat(env.expires_at.replace("Z", "+00:00"))
+    if expires.astimezone(UTC) < datetime.now(UTC):
         return False
     try:
         pk.verify(b64url_decode(env.sig), canonical_payload(env))
         return True
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         return False
 
 
 def main() -> None:
+    """Run the three rotation phases and assert each verification outcome."""
     # Phase 0: two key generations for drill.
     old_sk = ed25519.Ed25519PrivateKey.generate()
     new_sk = ed25519.Ed25519PrivateKey.generate()

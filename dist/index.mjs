@@ -20,7 +20,7 @@ import {
   parseWid,
   validateHlcWid,
   validateWid
-} from "./chunk-5YIK4GHF.mjs";
+} from "./chunk-OIJIOXDB.mjs";
 export {
   DataType,
   HLCWidGen,

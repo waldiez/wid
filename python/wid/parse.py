@@ -1,7 +1,6 @@
 """Parse WIDs."""
 
 # pylint: disable=invalid-name,line-too-long
-# flake8: noqa: N803
 
 from __future__ import annotations
 
@@ -49,6 +48,7 @@ class ParsedHlcWid:
 
 
 def _hex_re(z: int) -> re.Pattern[str]:
+    """Regex fragment for exactly ``z`` lowercase hex characters."""
     p = _HEX_LOWER_RE_CACHE.get(z)
     if p is None:
         p = re.compile(rf"^[0-9a-f]{{{z}}}\Z")
@@ -58,6 +58,7 @@ def _hex_re(z: int) -> re.Pattern[str]:
 
 def _wid_base_re(W: int, time_unit: Literal["sec", "ms"]) -> re.Pattern[str]:
     # Captures: date(8), time(6|9), seq(W), suffix (optional)
+    """Compiled regex for a plain WID with width ``W``."""
     key = (W, time_unit)
     p = _WID_BASE_RE_CACHE.get(key)
     if p is None:
@@ -74,6 +75,7 @@ def _wid_base_re(W: int, time_unit: Literal["sec", "ms"]) -> re.Pattern[str]:
 
 def _hlc_base_re(W: int, time_unit: Literal["sec", "ms"]) -> re.Pattern[str]:
     # Captures: date(8), time(6|9), lc(W), node, suffix (optional)
+    """Compiled regex for an HLC-WID with width ``W``."""
     key = (W, time_unit)
     p = _HLC_BASE_RE_CACHE.get(key)
     if p is None:
@@ -89,6 +91,7 @@ def _hlc_base_re(W: int, time_unit: Literal["sec", "ms"]) -> re.Pattern[str]:
 def _parse_ts(
     date_str: str, time_str: str, time_unit: Literal["sec", "ms"] = "sec"
 ) -> datetime | None:
+    """Parse the date/time fields into an aware UTC datetime, or None."""
     try:
         year = int(date_str[0:4])
         month = int(date_str[4:6])

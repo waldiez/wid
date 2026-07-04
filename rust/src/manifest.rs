@@ -35,13 +35,17 @@ pub enum ManifestError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 /// Supported MIME-like types stored inside manifests.
 pub enum DataType {
+    /// Unclassified payload.
     #[default]
     #[serde(rename = "unknown")]
     Unknown,
+    /// Plain UTF-8 text.
     #[serde(rename = "text/plain")]
     Text,
+    /// JSON document.
     #[serde(rename = "application/json")]
     Json,
+    /// Arbitrary bytes.
     #[serde(rename = "application/octet-stream")]
     Binary,
 }
@@ -49,17 +53,24 @@ pub enum DataType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Manifest metadata container with serialization helpers.
 pub struct Manifest {
+    /// WID naming the payload (the manifest's identity).
     pub id: String,
+    /// Container format version (currently 1).
     #[serde(default = "default_version")]
     pub version: u16,
+    /// Node tag of the writer that produced the payload.
     #[serde(default)]
     pub node: String,
+    /// MIME-like payload type (see [`DataType`]).
     #[serde(default)]
     pub data_type: String,
+    /// Payload size in bytes (filled in by [`WidFile::to_bytes`]).
     #[serde(default)]
     pub data_size: usize,
+    /// Hex SHA-256 of the payload (filled in by [`WidFile::to_bytes`]).
     #[serde(default)]
     pub data_hash: String,
+    /// Free-form user metadata.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, serde_json::Value>,
 }
@@ -69,6 +80,7 @@ fn default_version() -> u16 {
 }
 
 impl Manifest {
+    /// Create an empty manifest identified by `id`.
     pub fn new(id: impl Into<String>) -> Self {
         Self {
             id: id.into(),
@@ -81,10 +93,12 @@ impl Manifest {
         }
     }
 
+    /// Serialize the manifest as pretty-printed JSON.
     pub fn to_json(&self) -> Result<String, ManifestError> {
         Ok(serde_json::to_string_pretty(self)?)
     }
 
+    /// Deserialize a manifest from JSON.
     pub fn from_json(data: &str) -> Result<Self, ManifestError> {
         Ok(serde_json::from_str(data)?)
     }
@@ -92,15 +106,20 @@ impl Manifest {
 
 /// Combined manifest payload used for WID manifest file blobs.
 pub struct WidFile {
+    /// Metadata describing (and hashing) the payload.
     pub manifest: Manifest,
+    /// The payload bytes themselves.
     pub payload: Vec<u8>,
 }
 
 impl WidFile {
+    /// Pair a manifest with its payload.
     pub fn new(manifest: Manifest, payload: Vec<u8>) -> Self {
         Self { manifest, payload }
     }
 
+    /// Encode as the binary container (magic, version, manifest, payload),
+    /// updating `data_size`/`data_hash` from the payload first.
     pub fn to_bytes(&mut self) -> Result<Vec<u8>, ManifestError> {
         self.manifest.data_size = self.payload.len();
         let hash = Sha256::digest(&self.payload);
@@ -121,6 +140,7 @@ impl WidFile {
         Ok(result)
     }
 
+    /// Decode a binary container, validating magic, version, and length.
     pub fn from_bytes(data: &[u8]) -> Result<Self, ManifestError> {
         if data.len() < HEADER_SIZE {
             return Err(ManifestError::DataTooSmall);
@@ -148,6 +168,7 @@ impl WidFile {
         Ok(Self { manifest, payload })
     }
 
+    /// Write to disk: embedded container if `embed`, else sidecar JSON.
     pub fn save(&mut self, path: &Path, embed: bool) -> Result<(), ManifestError> {
         if embed {
             fs::write(path, self.to_bytes()?)?;
@@ -160,6 +181,7 @@ impl WidFile {
         Ok(())
     }
 
+    /// Read from disk, auto-detecting embedded container vs sidecar JSON.
     pub fn load(path: &Path) -> Result<Self, ManifestError> {
         let data = fs::read(path)?;
         if data.len() >= 4 && &data[0..4] == MANIFEST_MAGIC {
@@ -190,6 +212,7 @@ impl WidFile {
         })
     }
 
+    /// Check the payload against the manifest's recorded SHA-256.
     pub fn verify(&self) -> bool {
         let hash = hex::encode(Sha256::digest(&self.payload));
         hash == self.manifest.data_hash

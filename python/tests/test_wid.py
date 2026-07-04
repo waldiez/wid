@@ -5,7 +5,6 @@
 # pylint: disable=unexpected-keyword-arg
 
 # pyright: reportPrivateUsage=false
-# flake8: noqa: D102,D103
 
 import re
 from pathlib import Path
@@ -216,7 +215,7 @@ class TestWidGen:
         gen = WidGen(W=4, Z=6)
         wids = gen.next_n(10)
         paddings = [
-            parse_wid(w, W=4, Z=6).padding   # type: ignore[unused-ignore,union-attr] # pyright: ignore[reportOptionalMemberAccess] # pylint: disable=line-too-long
+            parse_wid(w, W=4, Z=6).padding  # type: ignore[unused-ignore,union-attr] # pyright: ignore[reportOptionalMemberAccess] # pylint: disable=line-too-long
             for w in wids
             if w
         ]

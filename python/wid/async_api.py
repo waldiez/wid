@@ -1,8 +1,5 @@
 """Async convenience API built on top of sync generators."""
 
-# flake8: noqa: C901, E501, N803, N806
-# pylint: disable=invalid-name
-
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +16,7 @@ if TYPE_CHECKING:
 
 
 def _parse_time_unit(value: str) -> Literal["sec", "ms"]:
+    """Normalize a time-unit argument to 'sec' or 'ms'."""
     if value not in {"sec", "ms"}:
         raise ValueError("time_unit must be 'sec' or 'ms'")
     return cast(Literal["sec", "ms"], value)
@@ -27,9 +25,7 @@ def _parse_time_unit(value: str) -> Literal["sec", "ms"]:
 def _reject_unknown_kwargs(kwargs: dict[str, Any]) -> None:
     """Raise on leftovers so a typo (e.g. tine_unit=) cannot pass silently."""
     if kwargs:
-        raise TypeError(
-            f"unexpected keyword argument(s): {', '.join(sorted(kwargs))}"
-        )
+        raise TypeError(f"unexpected keyword argument(s): {', '.join(sorted(kwargs))}")
 
 
 class AsyncSqliteWidStateStore:
@@ -42,14 +38,17 @@ class AsyncSqliteWidStateStore:
         self._prefix = prefix
 
     def _full_key(self, key: str) -> str:
+        """Build the language-agnostic state key ``wid:W:Z:T``."""
         return f"{self._prefix}:{key}"
 
     async def _connect(self) -> Any:
+        """Open (and lazily initialize) the aiosqlite state database."""
         try:
             import aiosqlite  # pylint: disable=import-outside-toplevel
         except ModuleNotFoundError as exc:  # pragma: no cover
             raise RuntimeError(
-                "aiosqlite is required for async SQLite state. Install with: pip install aiosqlite"
+                "aiosqlite is required for async SQLite state."
+                + " Install with: pip install aiosqlite"
             ) from exc
         conn = await aiosqlite.connect(str(self._database_path))
         q = (
@@ -81,7 +80,7 @@ class AsyncSqliteWidStateStore:
         """Save state for key."""
         conn = await self._connect()
         try:
-            q_s =(
+            q_s = (
                 "INSERT INTO wid_state(k, last_tick, last_seq) VALUES(?, ?, ?) "
                 "ON CONFLICT(k) DO UPDATE SET "
                 "last_tick=excluded.last_tick, last_seq=excluded.last_seq"
@@ -149,7 +148,9 @@ async def async_next_wid(W: int = 4, Z: int = 6, **kwargs: Any) -> str:
     return await store.next_wid(key=state_key, w=W, z=Z, time_unit=time_unit)
 
 
-async def async_next_hlc_wid(node: str = "py", w: int = 4, z: int = 0, **kwargs: Any) -> str:
+async def async_next_hlc_wid(
+    node: str = "py", w: int = 4, z: int = 0, **kwargs: Any
+) -> str:
     """Get one HLC-WID in async contexts."""
     if "W" in kwargs:
         w = int(kwargs.pop("W"))
@@ -226,9 +227,9 @@ async def async_hlc_wid_stream(
         raise ValueError("interval_ms must be >= 0")
 
     if "w" in kwargs:
-        W = int(kwargs.pop("w")) # pyright: ignore[reportConstantRedefinition]
+        W = int(kwargs.pop("w"))  # pyright: ignore[reportConstantRedefinition]
     if "z" in kwargs:
-        Z = int(kwargs.pop("z")) # pyright: ignore[reportConstantRedefinition]
+        Z = int(kwargs.pop("z"))  # pyright: ignore[reportConstantRedefinition]
     time_unit = _parse_time_unit(str(kwargs.pop("time_unit", "sec")))
     _reject_unknown_kwargs(kwargs)
     gen = HLCWidGen(node, W=W, Z=Z, time_unit=time_unit)

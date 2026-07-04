@@ -1,3 +1,6 @@
+//! `wid` CLI binary: canonical KEY=VALUE and flag-mode front end over the
+//! library, plus the Rust-only service layer (see `spec/SERVICES.md`).
+
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};

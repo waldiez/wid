@@ -137,14 +137,14 @@ python-test:
 	$(PYTHON) -m pytest python/tests -v
 
 python-lint:
-	$(PYTHON) -m ruff check python/
+	$(PYTHON) -m ruff check python/ tools/
 
 python-fmt:
 	$(PYTHON) -m black python/
-	$(PYTHON) -m ruff format python/
+	$(PYTHON) -m ruff format python/ tools/
 
 python-typecheck:
-	$(PYTHON) -m mypy python/wid/
+	$(PYTHON) -m mypy python/wid/ tools/
 
 python-check: python-lint python-typecheck python-test
 

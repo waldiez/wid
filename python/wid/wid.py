@@ -3,7 +3,6 @@
 # pylint: disable=invalid-name,too-many-instance-attributes,unused-argument
 # pyright: reportExplicitAny=false,reportAny=false,reportUnusedParameter=false
 # pyright: reportConstantRedefinition=false
-# flake8: noqa: C901,N803,N806
 
 from __future__ import annotations
 
@@ -79,6 +78,7 @@ class SqliteWidStateStore(WidStateStore):
         self._conn.commit()
 
     def _full_key(self, key: str) -> str:
+        """Build the language-agnostic state key ``wid:W:Z:T``."""
         return f"{self._prefix}:{key}"
 
     def load(self, key: str) -> WidGenState | None:
@@ -184,6 +184,7 @@ class WidGen:
                 self.last_seq = loaded.last_seq
 
     def _persist_state(self) -> None:
+        """Write (last_tick, last_seq) through the configured store."""
         if not self._auto_persist or self._state_store is None:
             return
         try:
@@ -195,6 +196,7 @@ class WidGen:
     def _ts_for_sec(self, sec: int) -> str:
         # Saturate instead of raising from datetime.fromtimestamp: a
         # corrupted resume state degrades to a pinned timestamp.
+        """Format a (clamped) seconds tick as the WID timestamp field."""
         sec = clamp_tick(sec, self.time_unit)
         if sec != self._cached_sec:
             self._cached_sec = sec
@@ -214,6 +216,7 @@ class WidGen:
     @staticmethod
     def _pad_hex(z: int) -> str:
         # Z hex chars => ceil(Z/2) bytes
+        """Return Z random lowercase hex characters (empty for Z=0)."""
         return os.urandom((z + 1) // 2).hex()[:z]
 
     def next(self) -> str:

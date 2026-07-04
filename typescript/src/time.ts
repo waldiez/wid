@@ -1,6 +1,7 @@
 /** Supported time-precision units for WID/HLC generators. */
 export type TimeUnit = "sec" | "ms";
 
+/** Parse a user-supplied time unit, rejecting anything but "sec"/"ms". */
 export function parseTimeUnit(input: string): TimeUnit {
   if (input === "sec" || input === "ms") {
     return input;
@@ -8,6 +9,7 @@ export function parseTimeUnit(input: string): TimeUnit {
   throw new Error("time-unit must be sec or ms");
 }
 
+/** Number of digits in the timestamp's time field (HHMMSS or HHMMSSmmm). */
 export function timeDigits(unit: TimeUnit): number {
   return unit === "ms" ? 9 : 6;
 }

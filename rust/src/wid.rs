@@ -24,16 +24,22 @@ pub const MAX_Z: usize = 64;
 /// Errors that can occur during WID operations.
 #[derive(Error, Debug)]
 pub enum WidError {
+    /// W outside the spec range 1..=18.
     #[error("Invalid W parameter: must be between 1 and 18")]
     InvalidW,
+    /// Z outside the spec range 0..=64.
     #[error("Invalid Z parameter: must be between 0 and 64")]
     InvalidZ,
+    /// Node tag contains characters outside `[A-Za-z0-9_]`.
     #[error("Invalid node format")]
     InvalidNode,
+    /// Remote HLC state carries negative clock values.
     #[error("Invalid remote clock values")]
     InvalidRemoteClock,
+    /// The string does not match the WID grammar.
     #[error("Invalid WID format: {0}")]
     InvalidFormat(String),
+    /// The timestamp field encodes an impossible calendar moment.
     #[error("Invalid timestamp in WID")]
     InvalidTimestamp,
 }
@@ -41,11 +47,14 @@ pub enum WidError {
 /// Timestamp precision mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimeUnit {
+    /// Second precision (`YYYYMMDDTHHMMSS`).
     Sec,
+    /// Millisecond precision (`YYYYMMDDTHHMMSSmmm`).
     Ms,
 }
 
 impl TimeUnit {
+    /// Spec name of the unit: `"sec"` or `"ms"`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Sec => "sec",
@@ -53,6 +62,7 @@ impl TimeUnit {
         }
     }
 
+    /// Parse `"sec"`/`"ms"`; `None` for anything else.
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "sec" => Some(Self::Sec),
@@ -99,11 +109,14 @@ pub(crate) fn format_tick(tick: i64, unit: TimeUnit) -> String {
 /// Parsed WID components.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedWid {
+    /// The original WID string.
     pub raw: String,
+    /// The embedded UTC timestamp.
     pub timestamp: DateTime<Utc>,
     /// i64, not u32: the spec allows W up to 18, and an all-nines W=10
     /// sequence (9999999999) already exceeds u32::MAX.
     pub sequence: i64,
+    /// Random hex pad (`None` when Z=0).
     pub padding: Option<String>,
 }
 

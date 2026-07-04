@@ -20,6 +20,7 @@ FMT_CACHE_TS=""
 WALL_EPOCH_BASE=""
 WALL_SECONDS_BASE=0
 
+# Wall-clock epoch seconds.
 wall_sec() {
     if [[ -z "$WALL_EPOCH_BASE" ]]; then
         WALL_EPOCH_BASE="$(date +%s)"
@@ -28,6 +29,7 @@ wall_sec() {
     printf '%s\n' "$((WALL_EPOCH_BASE + (SECONDS - WALL_SECONDS_BASE)))"
 }
 
+# Print CLI usage (flag mode and canonical KEY=VALUE mode).
 usage() {
     cat <<'USAGE'
 wid - WID/HLC-WID generator CLI
@@ -67,6 +69,7 @@ Optional:
 USAGE
 }
 
+# Print the canonical action matrix (A=...).
 print_actions() {
     cat <<'ACTIONS'
 wid action matrix
@@ -84,15 +87,18 @@ Help:
 ACTIONS
 }
 
+# Print an error to stderr and exit 1.
 die() {
     printf 'error: %s\n' "$1" >&2
     exit 1
 }
 
+# Non-negative integer test.
 is_int() {
     [[ "${1:-}" =~ ^-?[0-9]+$ ]]
 }
 
+# Current wall-clock tick in $T units (sec or ms).
 now_tick() {
     local time_unit=$1
     if [[ "$time_unit" == "ms" ]]; then
@@ -184,6 +190,7 @@ fmt_ts() {
     printf '%s\n' "$FMT_CACHE_TS"
 }
 
+# Gregorian leap-year test.
 is_leap_year() {
     local y=$1
     ((y % 400 == 0)) && return 0
@@ -192,6 +199,7 @@ is_leap_year() {
     return 1
 }
 
+# Validate calendar fields (real month/day, 24h time).
 valid_ymdhms() {
     local year=$1 month=$2 day=$3 hour=$4 minute=$5 second=$6
     local y m d hh mm ss dim
@@ -235,6 +243,7 @@ valid_node() {
     [[ -n "$node" && "$node" =~ $re ]]
 }
 
+# Print Z random lowercase hex chars (not crypto-grade).
 rand_hex() {
     local z=$1
     if ((z <= 0)); then
@@ -252,6 +261,7 @@ rand_hex() {
     printf '%s' "${raw:0:z}"
 }
 
+# Validate a plain WID against W/Z/T; exit code only.
 validate_wid() {
     local id=$1 W=$2 Z=$3 time_unit=${4:-sec}
     [[ $W =~ ^[1-9][0-9]*$ ]] || return 1
@@ -291,6 +301,7 @@ validate_wid() {
     return 0
 }
 
+# Validate an HLC-WID against W/Z/T; exit code only.
 validate_hlc_wid() {
     local id=$1 W=$2 Z=$3 time_unit=${4:-sec}
     [[ $W =~ ^[1-9][0-9]*$ ]] || return 1
@@ -331,6 +342,7 @@ validate_hlc_wid() {
     return 0
 }
 
+# Parse a plain WID and print its fields (or JSON).
 parse_wid_fn() {
     local id=$1 W=$2 Z=$3 time_unit=$4 json=$5
     local re ts seq suffix time_digits=6
@@ -366,6 +378,7 @@ parse_wid_fn() {
     fi
 }
 
+# Parse an HLC-WID and print its fields (or JSON).
 parse_hlc_wid_fn() {
     local id=$1 W=$2 Z=$3 time_unit=$4 json=$5
     local re ts lc node suffix time_digits=6
@@ -405,6 +418,7 @@ parse_hlc_wid_fn() {
     fi
 }
 
+# Extract a WID's timestamp as epoch milliseconds (for w-otp age checks).
 wotp_wid_tick_ms() {
     local id=$1
     local re ts millis year month day hour minute second sec
@@ -432,6 +446,7 @@ wotp_wid_tick_ms() {
     printf '%s\n' "$((sec * 1000 + 10#$millis))"
 }
 
+# Mint the next monotonic WID into the named variable (state in globals).
 wid_next_into() {
     # Usage: wid_next_into <varname> <W> <Z> <time_unit>
     local __out=$1 W=$2 Z=$3 time_unit=$4
@@ -468,12 +483,14 @@ wid_next_into() {
 
     printf -v "$__out" '%s' "$id"
 }
+# Mint and print one WID.
 wid_next() {
     local W=$1 Z=$2 time_unit=$3 out
     wid_next_into out "$W" "$Z" "$time_unit"
     printf '%s\n' "$out"
 }
 
+# Mint and print one HLC-WID.
 hlc_next() {
     local node=$1 W=$2 Z=$3 time_unit=$4
     local max_lc=$((10 ** W - 1))
@@ -511,6 +528,7 @@ json_escape() {
     printf '%s' "$s"
 }
 
+# Canonical boolean test (true/1/yes/on).
 is_true() {
     local raw="${1:-}"
     local norm
@@ -530,14 +548,17 @@ is_transport() {
     esac
 }
 
+# Non-negative integer interval test (L= seconds).
 is_interval() {
     [[ "${1:-}" =~ ^[0-9]+$ ]]
 }
 
+# Repository root (directory containing this script's parent).
 repo_root() {
     cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
 }
 
+# Parse and dispatch canonical KEY=VALUE mode.
 run_canonical() {
     local ROOT_DIR
     ROOT_DIR="$(repo_root)"
@@ -954,6 +975,7 @@ run_canonical() {
 
     die "unknown A=$A"
 }
+# Built-in sanity checks; silent, exit 0/1.
 run_selftest() {
     local n=$1 procs=$2 per=$3 kind=$4 W=$5 Z=$6 time_unit=$7
 
@@ -1033,6 +1055,7 @@ run_selftest() {
     return 0
 }
 
+# Print the bash/zsh/fish completion script.
 _wid_completion_script() {
     local shell="${1:-}"
     case "$shell" in
@@ -1040,7 +1063,8 @@ _wid_completion_script() {
         cat <<'BASH_COMPLETION'
 _wid_complete() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
-  local cmds="next stream healthcheck validate parse help-actions bench selftest completion"
+  local cmds="next stream healthcheck validate parse help-actions bench \
+selftest completion"
   if [[ "$cur" == *=* ]]; then
     local key="${cur%%=*}" val="${cur#*=}" vals=""
     case "$key" in
@@ -1048,11 +1072,13 @@ _wid_complete() {
       T) vals="sec ms" ;;
       I) vals="auto sh bash" ;;
       E) vals="state stateless sql" ;;
-      R) vals="auto mqtt ws redis null stdout" ;;
+      R) vals="auto null stdout" ;;
       M) vals="true false" ;;
     esac
     local IFS=$'\n'
-    COMPREPLY=($(for v in $vals; do [[ "$v" == "$val"* ]] && printf '%s\n' "${key}=${v}"; done))
+    COMPREPLY=($(for v in $vals; do
+      [[ "$v" == "$val"* ]] && printf '%s\n' "${key}=${v}"
+    done))
   else
     local kv="A= W= Z= T= N= L= D= I= E= R= M="
     COMPREPLY=($(compgen -W "$cmds $kv" -- "$cur"))
@@ -1066,7 +1092,10 @@ BASH_COMPLETION
 #compdef wid
 _wid_complete() {
   local cur="${words[-1]}"
-  local -a cmds=(next stream healthcheck validate parse help-actions bench selftest completion)
+  local -a cmds=(
+    next stream healthcheck validate parse
+    help-actions bench selftest completion
+  )
   if [[ "$cur" == *=* ]]; then
     local key="${cur%%=*}"
     local -a vals=()
@@ -1075,7 +1104,7 @@ _wid_complete() {
       T) vals=(sec ms) ;;
       I) vals=(auto sh bash) ;;
       E) vals=(state stateless sql) ;;
-      R) vals=(auto mqtt ws redis null stdout) ;;
+      R) vals=(auto null stdout) ;;
       M) vals=(true false) ;;
     esac
     compadd -P "${key}=" -- "${vals[@]}"
@@ -1096,11 +1125,11 @@ complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck v
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a parse -d 'Parse a WID string'
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a help-actions -d 'Show canonical action matrix'
 complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a completion -d 'Print shell completion script'
-complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=start A=stop A=status A=logs A=help-actions' -d 'Action'
+complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=help-actions' -d 'Action'
 complete -c wid -f -a 'T=sec T=ms' -d 'Time unit'
 complete -c wid -f -a 'I=auto I=sh I=bash' -d 'Input source'
 complete -c wid -f -a 'E=state E=stateless E=sql' -d 'State mode'
-complete -c wid -f -a 'R=auto R=mqtt R=ws R=redis R=null R=stdout' -d 'Transport'
+complete -c wid -f -a 'R=auto R=null R=stdout' -d 'Transport'
 complete -c wid -f -a 'M=true M=false' -d 'Milliseconds mode'
 complete -c wid -f -a 'W=' -d 'Sequence width'
 complete -c wid -f -a 'Z=' -d 'Padding length'
@@ -1115,6 +1144,7 @@ FISH_COMPLETION
     esac
 }
 
+# Entry point: flag mode, canonical mode, or usage on no args.
 main() {
     # Canonical mode: KEY=VALUE args
     if [[ $# -gt 0 ]]; then

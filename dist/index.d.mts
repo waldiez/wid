@@ -1,5 +1,6 @@
 /** Supported time-precision units for WID/HLC generators. */
 type TimeUnit = "sec" | "ms";
+/** Parse a user-supplied time unit, rejecting anything but "sec"/"ms". */
 declare function parseTimeUnit(input: string): TimeUnit;
 
 /**
@@ -78,9 +79,13 @@ interface AsyncWidStreamOptions extends WidGenOptions {
     /** Delay between emits in milliseconds. */
     intervalMs?: number;
 }
+/** Validate a plain WID string against the given W/Z/time-unit shape. */
 declare function validateWid(wid: string, W?: number, Z?: number, timeUnit?: TimeUnit): boolean;
+/** Parse a plain WID into its fields; null if it does not conform. */
 declare function parseWid(wid: string, W?: number, Z?: number, timeUnit?: TimeUnit): ParsedWid | null;
+/** Mint one WID from a throwaway generator (async convenience). */
 declare function asyncNextWid(options?: WidGenOptions): Promise<string>;
+/** Stream WIDs asynchronously; count 0 means unbounded. */
 declare function asyncWidStream(options?: AsyncWidStreamOptions): AsyncGenerator<string>;
 /** Stateful generator for WID IDs that keeps monotonicity guarantees. */
 declare class WidGen {
@@ -142,7 +147,9 @@ interface HLCWidGenOptions {
     /** Time precision (defaults to `sec`). */
     timeUnit?: TimeUnit;
 }
+/** Validate an HLC-WID string against the given W/Z/time-unit shape. */
 declare function validateHlcWid(wid: string, W?: number, Z?: number, timeUnit?: TimeUnit): boolean;
+/** Parse an HLC-WID into its fields; null if it does not conform. */
 declare function parseHlcWid(wid: string, W?: number, Z?: number, timeUnit?: TimeUnit): ParsedHlcWid | null;
 /** Generator for HLC-WIDs that keeps the logical counter monotonic. */
 declare class HLCWidGen {
@@ -165,7 +172,9 @@ declare class HLCWidGen {
     get state(): HLCState;
     restoreState(pt: number, lc: number): void;
 }
+/** Mint one HLC-WID from a throwaway generator (async convenience). */
 declare function asyncNextHlcWid(options: HLCWidGenOptions): Promise<string>;
+/** Stream HLC-WIDs asynchronously; count 0 means unbounded. */
 declare function asyncHlcWidStream(options: HLCWidGenOptions & {
     count?: number;
     intervalMs?: number;

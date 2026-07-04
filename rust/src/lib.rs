@@ -20,6 +20,8 @@
 //! println!("{}", wid);  // e.g., "20260212T091530.0000Z-a3f91c"   // use {:?} if used .next()
 //! ```
 
+#![warn(missing_docs)]
+
 mod async_api;
 mod hlc;
 mod manifest;

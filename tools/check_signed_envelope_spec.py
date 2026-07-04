@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
+"""Validate the signed-envelope conformance fixtures against the spec shape.
+
+Every case in ``spec/conformance/signed_envelope.json`` must carry the
+required fields with spec-conformant values (Ed25519, 1.x version, RFC3339
+UTC timestamps, ``sha256:<hex64>`` data hash), and its expiry must agree
+with the case's declared ``expect`` outcome.
+"""
+
 from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 
 def parse_rfc3339_utc(value: str) -> datetime | None:
+    """Parse an RFC3339 timestamp into aware UTC; None if malformed/naive."""
     try:
         if value.endswith("Z"):
             value = value[:-1] + "+00:00"
@@ -19,11 +29,19 @@ def parse_rfc3339_utc(value: str) -> datetime | None:
 
 
 def is_hex64(s: str) -> bool:
+    """Return True if ``s`` is exactly 64 lowercase hex characters."""
     return len(s) == 64 and all(c in "0123456789abcdef" for c in s)
 
 
-def validate_shape(env: dict[str, object]) -> tuple[bool, str]:
-    required = ["version", "wid", "sig", "key_id", "alg", "issued_at", "expires_at", "data_hash"]
+# One early return per spec rule keeps the validator table-shaped.
+def validate_shape(  # pylint: disable=too-many-return-statements
+    env: dict[str, object],
+) -> tuple[bool, str]:
+    """Check one envelope object against the spec shape; (ok, reason)."""
+    required = [
+        "version", "wid", "sig", "key_id", "alg",
+        "issued_at", "expires_at", "data_hash",
+    ]
     for k in required:
         if k not in env:
             return False, f"missing field: {k}"
@@ -49,17 +67,20 @@ def validate_shape(env: dict[str, object]) -> tuple[bool, str]:
 
 
 def main() -> None:
+    """Validate every fixture case's shape and expiry classification."""
     path = Path("spec/conformance/signed_envelope.json")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    assert isinstance(data, list) and data, "signed_envelope.json must be a non-empty array"
+    data: list[dict[str, object]] = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(data, list), "signed_envelope.json must be an array"
+    assert data, "signed_envelope.json must be non-empty"
 
     now = datetime.now(UTC)
     for case in data:
         assert isinstance(case, dict), "case must be object"
         expect = case.get("expect")
-        env = case.get("envelope")
+        env_obj = case.get("envelope")
         assert isinstance(expect, str), "case expect must be string"
-        assert isinstance(env, dict), "case envelope must be object"
+        assert isinstance(env_obj, dict), "case envelope must be object"
+        env = cast("dict[str, object]", env_obj)
 
         ok, msg = validate_shape(env)
         assert ok, f"{case.get('name')}: invalid shape: {msg}"

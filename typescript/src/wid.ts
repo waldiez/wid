@@ -315,18 +315,22 @@ function parseCore(wid: string, W: number, Z: number, timeUnit: TimeUnit): Parse
   };
 }
 
+/** Validate a plain WID string against the given W/Z/time-unit shape. */
 export function validateWid(wid: string, W = 4, Z = 6, timeUnit: TimeUnit = "sec"): boolean {
   return parseCore(wid, W, Z, timeUnit) !== null;
 }
 
+/** Parse a plain WID into its fields; null if it does not conform. */
 export function parseWid(wid: string, W = 4, Z = 6, timeUnit: TimeUnit = "sec"): ParsedWid | null {
   return parseCore(wid, W, Z, timeUnit);
 }
 
+/** Mint one WID from a throwaway generator (async convenience). */
 export async function asyncNextWid(options: WidGenOptions = {}): Promise<string> {
   return new WidGen(options).next();
 }
 
+/** Stream WIDs asynchronously; count 0 means unbounded. */
 export async function* asyncWidStream(
   options: AsyncWidStreamOptions = {}
 ): AsyncGenerator<string> {

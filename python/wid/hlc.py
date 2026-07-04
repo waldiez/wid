@@ -1,7 +1,6 @@
 """HLC-WID generator."""
 
 # pylint: disable=too-many-instance-attributes,invalid-name
-# flake8: noqa: C901, E501, N803, N806
 
 from __future__ import annotations
 
@@ -92,6 +91,7 @@ class HLCWidGen:
     def _ts_for_sec(self, sec: int) -> str:
         # Saturate instead of raising from datetime.fromtimestamp: a
         # corrupted resume state degrades to a pinned timestamp.
+        """Format a (clamped) seconds tick as the WID timestamp field."""
         sec = clamp_tick(sec, self.time_unit)
         if sec != self._cached_sec:
             self._cached_sec = sec
@@ -110,15 +110,17 @@ class HLCWidGen:
 
     @staticmethod
     def _pad_hex(z: int) -> str:
+        """Return Z random lowercase hex characters (empty for Z=0)."""
         return os.urandom((z + 1) // 2).hex()[:z]
 
     def _rollover_if_needed(self) -> None:
+        """Advance the physical tick when the logical counter saturates."""
         if self.lc > self.max_lc:
             self.pt += 1
             self.lc = 0
 
     def observe(self, remote_pt: int, remote_lc: int) -> None:
-        """Merge remote HLC state (remote_pt is seconds, remote_lc is logical counter)."""
+        """Merge remote HLC state (remote_pt seconds, remote_lc counter)."""
         if remote_pt < 0 or remote_lc < 0:
             raise ValueError("remote values must be non-negative")
 

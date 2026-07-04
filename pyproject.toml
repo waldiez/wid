@@ -50,9 +50,16 @@ target-version = "py310"
 [tool.ruff.lint]
 select = ["F", "Q", "D", "I", "G", "C4", "C90", "E", "W", "B", "N", "B", "A"]
 # Allow fix for all enabled rules (when `--fix`) is provided.
-ignore = ["D102", "D203", "D211", "D212", "D213"]
+ignore = ["D203", "D211", "D212", "D213"]
 fixable = ["ALL"]
 unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+# W and Z (and their capitalized locals) are spec vocabulary — sequence
+# width and pad length — shared verbatim across all six implementations.
+"python/wid/*" = ["N803", "N806"]
+# Test names are the documentation; no docstring requirement in tests.
+"python/tests/*" = ["D101", "D102", "D103"]
 
 [tool.black]
 line-length = 88

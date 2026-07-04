@@ -44,5 +44,5 @@ __all__ = [
     "parse_wid",
     "validate_hlc_wid",
     "validate_wid",
-    "parse"
+    "parse",
 ]

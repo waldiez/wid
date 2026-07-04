@@ -99,6 +99,7 @@ function parseTimestamp(dateStr: string, timeStr: string, timeUnit: TimeUnit): D
   return timestamp;
 }
 
+/** Validate an HLC-WID string against the given W/Z/time-unit shape. */
 export function validateHlcWid(
   wid: string,
   W = 4,
@@ -108,6 +109,7 @@ export function validateHlcWid(
   return parseHlcWid(wid, W, Z, timeUnit) !== null;
 }
 
+/** Parse an HLC-WID into its fields; null if it does not conform. */
 export function parseHlcWid(
   wid: string,
   W = 4,
@@ -262,10 +264,12 @@ export class HLCWidGen {
   }
 }
 
+/** Mint one HLC-WID from a throwaway generator (async convenience). */
 export async function asyncNextHlcWid(options: HLCWidGenOptions): Promise<string> {
   return new HLCWidGen(options).next();
 }
 
+/** Stream HLC-WIDs asynchronously; count 0 means unbounded. */
 export async function* asyncHlcWidStream(
   options: HLCWidGenOptions & { count?: number; intervalMs?: number }
 ): AsyncGenerator<string> {
