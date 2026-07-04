@@ -40,7 +40,7 @@ HLC-WID ::= TIMESTAMP "." LC "Z" "-" NODE [ "-" PAD ]
 
 | Component | Format | Required | Description |
 | :--------- | :------ | :-------- | :----------- |
-| TIMESTAMP | `YYYYMMDDTHHMMSS` or `YYYYMMDDTHHMMSSmmm` | Yes | UTC timestamp (ISO 8601 basic format, second or millisecond precision) |
+| TIMESTAMP | `YYYYMMDDTHHMMSS` or `YYYYMMDDTHHMMSSmmm` | Yes | UTC timestamp (ISO 8601 basic format, second or millisecond precision). Valid years are 0001–9999: year `0000` MUST be rejected — Python's `datetime` cannot represent it, so the range is capped uniformly rather than diverging by language |
 | SEQ / LC | `[0-9]{W}` | Yes | Zero-padded sequence/logical counter (width W) |
 | NODE | `[A-Za-z0-9_]+` | HLC only | Node identifier (no hyphens, no spaces) |
 | PAD | `[0-9a-f]{Z}` | No | Random lowercase hex padding for collision defense |
@@ -99,7 +99,7 @@ HLC_WID    ::= TIMESTAMP "." LC "Z" "-" NODE [ "-" PAD ]
 TIMESTAMP  ::= TIMESTAMP_SEC | TIMESTAMP_MS
 TIMESTAMP_SEC ::= YYYY MM DD "T" HH MI SS
 TIMESTAMP_MS  ::= YYYY MM DD "T" HH MI SS mmm
-YYYY       ::= DIGIT DIGIT DIGIT DIGIT
+YYYY       ::= DIGIT DIGIT DIGIT DIGIT     (* 0001–9999; 0000 rejected *)
 MM         ::= DIGIT DIGIT                  (* 01–12 *)
 DD         ::= DIGIT DIGIT                  (* 01–31 *)
 HH         ::= DIGIT DIGIT                  (* 00–23 *)

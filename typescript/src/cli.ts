@@ -318,8 +318,10 @@ function parseCanonical(args: string[]): Canon {
     const eq = arg.indexOf("=");
     if (eq < 0) throw new Error(`expected KEY=VALUE, got '${arg}'`);
     const k = arg.slice(0, eq);
+    // An empty value (e.g. `D=`) is accepted, matching the other five
+    // implementations: string keys take "" verbatim and numeric keys fail
+    // parseIntStrict with their own diagnostic.
     const vRaw = arg.slice(eq + 1);
-    if (!vRaw) throw new Error(`expected KEY=VALUE, got '${arg}'`);
     const v = vRaw === "#" ? defaultValueFor(k) : vRaw;
 
     switch (k) {

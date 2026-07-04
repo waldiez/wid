@@ -91,7 +91,13 @@ func clampTick(tick int64, unit TimeUnit) int64 {
 func formatTS(tick int64, unit TimeUnit) string {
 	tick = clampTick(tick, unit)
 	if unit == TimeUnitMs {
-		return time.UnixMilli(tick).UTC().Format("20060102T150405000")
+		// The millisecond field is appended manually: in a Go time layout a
+		// bare "000" (no leading '.') is a literal string, not fractional
+		// seconds, so Format("…150405000") silently printed "000" for every
+		// tick — collapsing all ms-mode timestamps within a second and
+		// minting duplicate WIDs.
+		t := time.UnixMilli(tick).UTC()
+		return t.Format("20060102T150405") + fmt.Sprintf("%03d", t.Nanosecond()/1_000_000)
 	}
 	return time.Unix(tick, 0).UTC().Format("20060102T150405")
 }
@@ -157,7 +163,9 @@ func parseCalendar(dateStr, timeStr string, unit TimeUnit) (time.Time, error) {
 	if unit == TimeUnitMs {
 		ms, _ = strconv.Atoi(timeStr[6:9])
 	}
-	if month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59 || ms < 0 || ms > 999 {
+	// year < 1: SPEC.md restricts years to 0001-9999 (Python's datetime
+	// cannot represent year 0, so all implementations reject it uniformly).
+	if year < 1 || month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59 || ms < 0 || ms > 999 {
 		return time.Time{}, ErrInvalidTimestamp
 	}
 	t := time.Date(year, time.Month(month), day, hour, minute, second, ms*1_000_000, time.UTC)

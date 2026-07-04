@@ -141,7 +141,18 @@ def _run_emit_mode(mode: str, argv: list[str]) -> None:
     ap.add_argument(
         "--count", type=int, default=0, help="0 means infinite (stream mode)"
     )
+    # The sh implementation delegates its canonical A=stream (L= cadence)
+    # here; this is the flag-mode spelling of that interval.
+    ap.add_argument(
+        "--interval-ms",
+        type=int,
+        default=0,
+        dest="interval_ms",
+        help="sleep between stream emissions in milliseconds (stream mode)",
+    )
     args = ap.parse_args(argv)
+    if args.interval_ms < 0:
+        raise ValueError("--interval-ms must be >= 0")
 
     gen: Callable[[], str]
     g: WidGen | HLCWidGen
@@ -162,6 +173,9 @@ def _run_emit_mode(mode: str, argv: list[str]) -> None:
         while args.count == 0 or emitted < args.count:
             print(gen(), flush=True)
             emitted += 1
+            more = args.count == 0 or emitted < args.count
+            if more and args.interval_ms > 0:
+                time.sleep(args.interval_ms / 1000)
     except KeyboardInterrupt:
         sys.exit(130)
 
@@ -487,15 +501,24 @@ def _wotp_code(secret: str, wid: str, digits: int) -> str:
 
 
 def _wotp_wid_tick_ms(wid_str: str) -> int:
-    """Extract the WID's timestamp in epoch milliseconds for age checks."""
+    """Extract the WID's timestamp in epoch milliseconds for age checks.
+
+    Raises ``RuntimeError`` (not ``ValueError``) on a malformed timestamp:
+    verification *outcomes* exit 1 in every implementation, while this CLI
+    reserves exit 2 for usage errors (``ValueError``).
+    """
+    invalid = "WID timestamp is invalid for time-window verification"
     ts = wid_str.split(".", 1)[0]
     if "T" not in ts:
-        raise ValueError("WID timestamp is invalid for time-window verification")
+        raise RuntimeError(invalid)
     date_part, time_part = ts.split("T", 1)
     if len(date_part) != 8 or len(time_part) not in {6, 9}:
-        raise ValueError("WID timestamp is invalid for time-window verification")
+        raise RuntimeError(invalid)
     fmt = "%Y%m%dT%H%M%S%f" if len(time_part) == 9 else "%Y%m%dT%H%M%S"
-    dt = datetime.strptime(ts, fmt).replace(tzinfo=timezone.utc)
+    try:
+        dt = datetime.strptime(ts, fmt).replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise RuntimeError(invalid) from exc
     return int(dt.timestamp() * 1000)
 
 
@@ -545,14 +568,17 @@ def _run_wotp_mode(  # noqa: C901
     code = canon.get("CODE", "").strip()
     if not code:
         raise ValueError("CODE=<otp_code> required for A=w-otp MODE=verify")
+    # Freshness failures are verification *outcomes*, not usage errors:
+    # RuntimeError exits 1, matching the other five implementations
+    # (ValueError would exit 2 here).
     if max_age_sec > 0 or max_future_sec > 0:
         wid_ms = _wotp_wid_tick_ms(wid_str)
         now_ms = int(time.time() * 1000)
         delta_ms = now_ms - wid_ms
         if delta_ms < 0 and -delta_ms > max_future_sec * 1000:
-            raise ValueError("OTP invalid: WID timestamp is too far in the future")
+            raise RuntimeError("OTP invalid: WID timestamp is too far in the future")
         if delta_ms >= 0 and max_age_sec > 0 and delta_ms > max_age_sec * 1000:
-            raise ValueError("OTP invalid: WID timestamp is too old")
+            raise RuntimeError("OTP invalid: WID timestamp is too old")
     if hmac.compare_digest(otp, code):
         print("OTP valid.", flush=True)
         return

@@ -148,6 +148,11 @@ fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
 
 fn parse_timestamp(time_unit: TimeUnit, date_str: &str, time_str: &str) -> Option<DateTime<Utc>> {
     let year: i32 = date_str[0..4].parse().ok()?;
+    // SPEC.md: valid years are 0001-9999. chrono would accept year 0, but
+    // Python's datetime cannot represent it, so it is rejected uniformly.
+    if year < 1 {
+        return None;
+    }
     let month: u32 = date_str[4..6].parse().ok()?;
     let day: u32 = date_str[6..8].parse().ok()?;
 
@@ -397,6 +402,10 @@ mod tests {
         assert!(!validate_wid("waldiez", 4, 6));
         assert!(!validate_wid("20260212T091530.0000", 4, 0));
         assert!(!validate_wid("20261312T091530.0000Z", 4, 0));
+        // Year 0000 is outside the spec range 0001-9999 (chrono would accept
+        // it, but Python's datetime cannot represent it).
+        assert!(!validate_wid("00000101T000000.0000Z", 4, 0));
+        assert!(validate_wid("00010101T000000.0000Z", 4, 0));
         assert!(!validate_wid("20260212T091530.0000Z", 0, 0));
         assert!(!validate_wid("20260212T091530.0000Z-ABCDEF", 4, 6));
         assert!(!validate_wid("20260212T091530.0000Z-node01", 4, 0));

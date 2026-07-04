@@ -69,6 +69,7 @@ function parseWidTimestamp(dateStr, timeStr, timeUnit) {
   const minute = parseInt(timeStr.slice(2, 4), 10);
   const second = parseInt(timeStr.slice(4, 6), 10);
   const millis = timeUnit === "ms" ? parseInt(timeStr.slice(6, 9), 10) : 0;
+  if (year < 1) return null;
   if (month < 1 || month > 12) return null;
   if (day < 1 || day > 31) return null;
   if (hour > 23 || minute > 59 || second > 59) return null;

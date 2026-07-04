@@ -164,8 +164,8 @@ python-next:
 python-uninstall:
 	@echo "Before uninstall:"
 	@command -v wid || true
-	-$(PYTHON) -m pip uninstall -y wid wid-py 2>/dev/null || true
-	-$(PIP) uninstall -y wid wid-py 2>/dev/null || true
+	-$(PYTHON) -m pip uninstall -y waldiez-wid 2>/dev/null || true
+	-$(PIP) uninstall -y waldiez-wid 2>/dev/null || true
 	@hash -r 2>/dev/null || true
 	@echo "After uninstall:"
 	@command -v wid || true

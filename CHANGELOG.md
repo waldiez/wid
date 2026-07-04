@@ -43,6 +43,19 @@ called out at the bottom.
   and `make fmt` formats Python, Rust, Go, and C.
 
 ### Fixed
+- Go ms mode minted duplicate WIDs (the time layout's bare `000` is a
+  literal, so real milliseconds were dropped); ms-mode uniqueness is now a
+  conformance case (`stream_ms_bounded_unique`) for all six implementations.
+- `sh/wid A=stream` (and `make stream`) failed when a Python runtime was
+  present: the default `I=auto` delegation passed `--interval-ms`, which the
+  Python CLI didn't define. The flag now exists, and a CLI-surface case
+  exercises the delegation path in CI (it was previously pinned to `I=sh`).
+- Cross-implementation surface drift, now pinned by fixtures: TypeScript
+  rejected empty canonical values (`D=`); year `0000` was accepted by five
+  implementations but is unrepresentable in Python (SPEC.md now caps years
+  at 0001–9999, rejected uniformly, plus new leap-day fixtures); Python
+  `A=w-otp` verification failures exited 2 instead of the common 1
+  (`exit_code` is now assertable in `cli_surface.json`).
 - TypeScript parse: years 0000–0099 were shifted to 1900–1999 by
   `Date.UTC`'s two-digit-year mapping (`00500212T…` parsed as 1950 while
   Rust/Python/Go return year 50), and leap days in that range were judged

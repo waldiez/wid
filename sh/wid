@@ -228,6 +228,9 @@ valid_ymdhms() {
     mm=$((10#$minute))
     ss=$((10#$second))
 
+    # SPEC.md: valid years are 0001-9999 (Python's datetime cannot represent
+    # year 0, so all implementations reject it uniformly).
+    ((y < 1)) && return 1
     ((m < 1 || m > 12)) && return 1
     ((hh < 0 || hh > 23)) && return 1
     ((mm < 0 || mm > 59)) && return 1

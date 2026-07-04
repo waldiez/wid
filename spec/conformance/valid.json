@@ -172,6 +172,42 @@
         "node": "node01",
         "padding": null
       }
+    },
+    {
+      "id": "wid_min_year_w4_z0",
+      "wid": "00010101T000000.0000Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "timestamp": "0001-01-01T00:00:00Z",
+        "sequence": 0,
+        "padding": null
+      }
+    },
+    {
+      "id": "wid_leap_day_w4_z0",
+      "wid": "20240229T120000.0000Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "timestamp": "2024-02-29T12:00:00Z",
+        "sequence": 0,
+        "padding": null
+      }
+    },
+    {
+      "id": "wid_century_leap_day_w4_z0",
+      "wid": "20000229T120000.0000Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "timestamp": "2000-02-29T12:00:00Z",
+        "sequence": 0,
+        "padding": null
+      }
     }
   ]
 }

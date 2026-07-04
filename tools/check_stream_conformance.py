@@ -155,14 +155,17 @@ def run_stream_case(  # pylint: disable=too-many-return-statements
             )
         return None
     if expect["mode"] == "bounded":
-        rc, out, timed_out = run(base + canon, timeout_sec=10, env=extra_env)
-        lines = len([ln for ln in out.splitlines() if ln.strip()])
+        rc, out, timed_out = run(base + canon, timeout_sec=30, env=extra_env)
+        emitted = [ln for ln in out.splitlines() if ln.strip()]
         if timed_out:
             return f"{impl}:{cid}: unexpected timeout"
         if rc != 0:
             return f"{impl}:{cid}: non-zero exit rc={rc}"
-        if lines != int(expect["lines"]):
-            return f"{impl}:{cid}: expected {expect['lines']} lines, got {lines}"
+        if len(emitted) != int(expect["lines"]):
+            return f"{impl}:{cid}: expected {expect['lines']} lines, got {len(emitted)}"
+        if expect.get("unique") and len(set(emitted)) != len(emitted):
+            dupes = sorted({ln for ln in emitted if emitted.count(ln) > 1})
+            return f"{impl}:{cid}: duplicate IDs emitted (e.g. {dupes[0]!r})"
         return None
     return f"{impl}:{cid}: unknown mode {expect['mode']}"
 

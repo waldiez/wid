@@ -22,6 +22,12 @@
       "params": { "W": 4, "Z": 6, "time_unit": "sec", "kind": "wid" } },
     { "name": "canonical-stream-explicit-L", "args": ["A=stream", "N=2", "L=1"], "lines": 2,
       "min_seconds": 1,
+      "params": { "W": 4, "Z": 6, "time_unit": "sec", "kind": "wid" } },
+    { "name": "canonical-empty-string-value", "args": ["A=next", "D="], "lines": 1,
+      "comment": "Empty values for string keys are accepted everywhere (D= means 'use the default dir'); one parser rejecting KEY= while five accept it is surface drift.",
+      "params": { "W": 4, "Z": 6, "time_unit": "sec", "kind": "wid" } },
+    { "name": "canonical-stream-I-auto", "args": ["A=stream", "N=2", "I=auto"], "lines": 2,
+      "comment": "Explicit I=auto disables the harness's I=sh pin, so the sh implementation's default delegation path (sh -> python when a python runtime exists) is exercised instead of only its native parser.",
       "params": { "W": 4, "Z": 6, "time_unit": "sec", "kind": "wid" } }
   ],
   "reject": [
@@ -50,7 +56,16 @@
     { "name": "canonical-W-too-large", "args": ["A=next", "W=19"] },
     { "name": "canonical-unknown-action", "args": ["A=nonexistent"] },
     { "name": "canonical-unknown-key", "args": ["A=next", "X=1"] },
-    { "name": "validate-missing-id", "args": ["validate"] }
+    { "name": "validate-missing-id", "args": ["validate"] },
+    { "name": "wotp-verify-wrong-code-exit-1", "exit_code": 1,
+      "comment": "Verification *outcomes* must exit 1 in every implementation (the real OTP for this secret/WID is 463179). exit_code pins the exact code: scripts distinguish 'verification failed' (1) from 'usage error' (2).",
+      "args": ["A=w-otp", "MODE=verify", "KEY=cli-surface-secret", "WID=20200101T000000.0000Z-a3f91c", "CODE=000000", "MAX_AGE_SEC=0", "MAX_FUTURE_SEC=0"] },
+    { "name": "wotp-verify-stale-exit-1", "exit_code": 1,
+      "comment": "A WID older than MAX_AGE_SEC is a verification outcome, not a usage error: exact exit 1 everywhere.",
+      "args": ["A=w-otp", "MODE=verify", "KEY=cli-surface-secret", "WID=20200101T000000.0000Z-a3f91c", "CODE=000000", "MAX_AGE_SEC=60"] },
+    { "name": "wotp-verify-malformed-wid-exit-1", "exit_code": 1,
+      "comment": "A WID whose timestamp cannot be extracted for the freshness window is also a verification outcome: exact exit 1 everywhere.",
+      "args": ["A=w-otp", "MODE=verify", "KEY=cli-surface-secret", "WID=not-a-wid", "CODE=000000", "MAX_AGE_SEC=60"] }
   ],
   "parity": [
     { "name": "wotp-deterministic",

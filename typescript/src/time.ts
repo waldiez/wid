@@ -47,6 +47,9 @@ export function parseWidTimestamp(
   const second = parseInt(timeStr.slice(4, 6), 10);
   const millis = timeUnit === "ms" ? parseInt(timeStr.slice(6, 9), 10) : 0;
 
+  // SPEC.md: valid years are 0001-9999 (Python's datetime cannot represent
+  // year 0, so all implementations reject it uniformly).
+  if (year < 1) return null;
   if (month < 1 || month > 12) return null;
   if (day < 1 || day > 31) return null;
   if (hour > 23 || minute > 59 || second > 59) return null;

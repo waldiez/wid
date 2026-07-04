@@ -183,6 +183,34 @@
       "type": "wid",
       "params": {"W": 4, "Z": 65},
       "reason": "Z > 64 is out of range (exceeds WID_MAX_Z)"
+    },
+    {
+      "id": "wid_year_zero",
+      "wid": "00000101T000000.0000Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "reason": "Year 0000 is outside the spec range 0001-9999 (Python's datetime cannot represent year 0)"
+    },
+    {
+      "id": "hlc_year_zero",
+      "wid": "00000101T000000.0000Z-node01",
+      "type": "hlc",
+      "params": {"W": 4, "Z": 0},
+      "reason": "Year 0000 is outside the spec range 0001-9999 (Python's datetime cannot represent year 0)"
+    },
+    {
+      "id": "wid_nonleap_feb29",
+      "wid": "20230229T120000.0000Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "reason": "2023 is not a leap year, so February 29 does not exist"
+    },
+    {
+      "id": "wid_century_nonleap_feb29",
+      "wid": "19000229T120000.0000Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "reason": "1900 is divisible by 100 but not 400, so it is not a leap year"
     }
   ]
 }

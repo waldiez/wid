@@ -206,3 +206,54 @@ def test_crypto_conformance(  # noqa: C901
 
         # Expect verification to fail (exit code 1)
         run_wid_cli(verify_args, expected_exit_code=1)
+
+
+# Verification *outcomes* must exit 1 (matching all other implementations);
+# this CLI reserves exit 2 for usage errors. Regression: these paths raised
+# ValueError and exited 2 while rust/ts/go/c/sh exited 1.
+def test_wotp_stale_wid_exits_1() -> None:
+    run_wid_cli(
+        [
+            "A=w-otp",
+            "MODE=verify",
+            "KEY=test-secret",
+            "WID=20200101T000000.0000Z-a3f91c",
+            "CODE=000000",
+            "MAX_AGE_SEC=60",
+        ],
+        expected_exit_code=1,
+    )
+
+
+def test_wotp_malformed_wid_with_window_exits_1() -> None:
+    run_wid_cli(
+        [
+            "A=w-otp",
+            "MODE=verify",
+            "KEY=test-secret",
+            "WID=not-a-wid",
+            "CODE=000000",
+            "MAX_AGE_SEC=60",
+        ],
+        expected_exit_code=1,
+    )
+
+
+def test_wotp_wrong_code_exits_1() -> None:
+    gen_out = run_wid_cli(
+        ["A=w-otp", "MODE=gen", "KEY=test-secret", "WID=20200101T000000.0000Z-a3f91c"]
+    )
+    otp = json.loads(gen_out)["otp"]
+    wrong = "000000" if otp != "000000" else "000001"
+    run_wid_cli(
+        [
+            "A=w-otp",
+            "MODE=verify",
+            "KEY=test-secret",
+            "WID=20200101T000000.0000Z-a3f91c",
+            f"CODE={wrong}",
+            "MAX_AGE_SEC=0",
+            "MAX_FUTURE_SEC=0",
+        ],
+        expected_exit_code=1,
+    )

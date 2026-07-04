@@ -12,6 +12,12 @@
       "id": "stream_n3_bounded",
       "canonical": {"A": "stream", "N": "3", "L": "0", "W": "4", "Z": "0", "T": "sec"},
       "expect": {"mode": "bounded", "lines": 3}
+    },
+    {
+      "id": "stream_ms_bounded_unique",
+      "comment": "W=1 rolls the sequence over every 10 IDs, forcing the ms tick to advance; every emitted WID must be unique. Guards against timestamp formatting that drops the millisecond field (which collapses ms-mode WIDs into duplicates).",
+      "canonical": {"A": "stream", "N": "300", "L": "0", "W": "1", "Z": "0", "T": "ms"},
+      "expect": {"mode": "bounded", "lines": 300, "unique": true}
     }
   ]
 }

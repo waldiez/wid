@@ -47,6 +47,11 @@ fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
 
 fn parse_ts(time_unit: TimeUnit, date_str: &str, time_str: &str) -> Option<DateTime<Utc>> {
     let year: i32 = date_str[0..4].parse().ok()?;
+    // SPEC.md: valid years are 0001-9999. chrono would accept year 0, but
+    // Python's datetime cannot represent it, so it is rejected uniformly.
+    if year < 1 {
+        return None;
+    }
     let month: u32 = date_str[4..6].parse().ok()?;
     let day: u32 = date_str[6..8].parse().ok()?;
 
@@ -344,6 +349,8 @@ mod tests {
     fn test_validate_hlc_invalid() {
         assert!(!validate_hlc_wid("20260212T091530.0000Z", 4, 0));
         assert!(!validate_hlc_wid("20260212T091530.0000Z-node-01", 4, 0));
+        // Year 0000 is outside the spec range 0001-9999.
+        assert!(!validate_hlc_wid("00000101T000000.0000Z-node01", 4, 0));
         assert!(!validate_hlc_wid(
             "20260212T091530.0000Z-node01-ABCDEF",
             4,

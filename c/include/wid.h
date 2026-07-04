@@ -152,7 +152,9 @@ static inline bool wid_valid_ymdhms(
 ) {
     static const int days_in_month[] = {31,28,31,30,31,30,31,31,30,31,30,31};
 
-    (void)year;
+    /* SPEC.md: valid years are 0001-9999 (Python's datetime cannot represent
+     * year 0, so all implementations reject it uniformly). */
+    if (year < 1) return false;
     if (month < 1 || month > 12) return false;
     if (hour < 0 || hour > 23) return false;
     if (minute < 0 || minute > 59) return false;

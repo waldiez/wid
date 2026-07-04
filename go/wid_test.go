@@ -37,7 +37,10 @@ func TestWidValidateConformance(t *testing.T) {
 		{"20260212T091530.9999Z", 4, 0, true},
 		{"20260101T000000.0000Z", 4, 0, true},
 		{"20261231T235959.0000Z", 4, 0, true},
+		{"00010101T000000.0000Z", 4, 0, true},
 		{"waldiez", 4, 6, false},
+		// Year 0000 is outside the spec range 0001-9999.
+		{"00000101T000000.0000Z", 4, 0, false},
 		{"20260212T091530.0000", 4, 0, false},
 		{"20260212T091530.0000Z-A3F91C", 4, 6, false},
 		{"20261312T091530.0000Z", 4, 0, false},
@@ -160,6 +163,38 @@ func TestInvalidParams(t *testing.T) {
 	_, err = NewHLCWidGen("bad-node", 4, 0)
 	if err != ErrInvalidNode {
 		t.Errorf("expected ErrInvalidNode, got %v", err)
+	}
+}
+
+// TestFormatTSMsKeepsMilliseconds pins the exact ms-mode timestamp string:
+// the layout bug that rendered a literal "000" for every millisecond made
+// this 123 print as 000 (and ms-mode WIDs collide; see TestWidGenMsUnique).
+func TestFormatTSMsKeepsMilliseconds(t *testing.T) {
+	if got := formatTS(1770000000123, TimeUnitMs); got != "20260202T024000123" {
+		t.Fatalf("formatTS(1770000000123, ms) = %q, want 20260202T024000123", got)
+	}
+}
+
+// TestWidGenMsUnique forces the ms tick to advance (W=1 rolls the sequence
+// over every 10 IDs) and asserts every generated WID is unique and strictly
+// increasing — the invariant the literal-"000" layout bug violated.
+func TestWidGenMsUnique(t *testing.T) {
+	g, err := NewWidGenWithUnit(1, 0, TimeUnitMs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := make(map[string]bool, 500)
+	prev := ""
+	for i := 0; i < 500; i++ {
+		id := g.Next()
+		if seen[id] {
+			t.Fatalf("duplicate ms-mode WID after %d IDs: %s", i, id)
+		}
+		seen[id] = true
+		if prev != "" && id <= prev {
+			t.Fatalf("non-monotonic ms-mode WIDs: %s then %s", prev, id)
+		}
+		prev = id
 	}
 }
 

@@ -23,8 +23,11 @@ repository. This harness drives every real CLI through the shared fixture
   unbounded stream everywhere, never "some default count") and must have
   produced at least ``min_lines`` shape-conformant lines by then.
 
-Exit codes are asserted nonzero, not exact: implementations currently use a
-mix of 1 and 2 and that mix is not (yet) a conformance target.
+Exit codes are asserted nonzero, not exact, by default: implementations use a
+mix of 1 (operation failed) and 2 (usage error) and that mix is not a blanket
+conformance target. A reject case MAY pin an exact code with ``exit_code`` —
+used for verification *outcomes* (w-otp invalid/stale), where scripts
+legitimately branch on 1-vs-2.
 
 The sh implementation is pinned to ``I=sh`` in canonical mode so its native
 parser is exercised rather than its Python delegation.
@@ -211,6 +214,12 @@ def check_reject(
     for marker in CRASH_MARKERS:
         if marker in combined:
             return f"{tag}: crashed instead of clean error ({marker!r})"
+    want_rc = case.get("exit_code")
+    if want_rc is not None and proc.returncode != int(want_rc):
+        return (
+            f"{tag}: rc={proc.returncode}, case pins exact rc={want_rc}"
+            + " (verification outcomes must use the same exit code everywhere)"
+        )
     return None
 
 
