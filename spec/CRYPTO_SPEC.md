@@ -148,7 +148,7 @@ wid A=w-otp MODE=verify KEY=<secret_or_path> WID=<wid_string> CODE=<otp_code> [D
 *   `WID` (Required in verify): WID used as OTP input. In `gen`, if omitted, implementation may auto-generate a WID from canonical `W/Z/T`.
 *   `CODE` (Required in verify): OTP code to verify.
 *   `DIGITS` (Optional): OTP length, default `6`, allowed range `4..10`.
-*   `MAX_AGE_SEC` (Optional, verify mode): maximum accepted age for the WID timestamp; default `0` (disabled). Verifiers SHOULD set this explicitly — with the default, only the future-skew bound applies and codes for old WIDs verify indefinitely. (The repository's `make wotp-verify` convenience wrapper defaults to `300`.)
+*   `MAX_AGE_SEC` (Optional, verify mode): maximum accepted age for the WID timestamp; default `0` (disabled). Verifiers SHOULD set this explicitly — with the default, only the future-skew bound applies and codes for old WIDs verify indefinitely. (The repository's `make otp-verify` convenience wrapper defaults to `300`.)
 *   `MAX_FUTURE_SEC` (Optional, verify mode): maximum accepted future clock skew; default `5`.
 
 **Computation**:

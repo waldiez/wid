@@ -3,7 +3,7 @@
  * Format: YYYYMMDDTHHMMSS[mmm].<lcW>Z-<node>[-<padZ>]
  */
 
-import { type TimeUnit, clampTick, timeDigits } from "./time";
+import { type TimeUnit, clampTick, parseWidTimestamp, timeDigits } from "./time";
 import { MAX_W, MAX_Z } from "./wid";
 
 /** Parsed components of an HLC-WID after a successful parse. */
@@ -79,26 +79,6 @@ function isValidNode(node: string): boolean {
   return NODE_RE.test(node);
 }
 
-function parseTimestamp(dateStr: string, timeStr: string, timeUnit: TimeUnit): Date | null {
-  const year = parseInt(dateStr.slice(0, 4), 10);
-  const month = parseInt(dateStr.slice(4, 6), 10);
-  const day = parseInt(dateStr.slice(6, 8), 10);
-  const hour = parseInt(timeStr.slice(0, 2), 10);
-  const minute = parseInt(timeStr.slice(2, 4), 10);
-  const second = parseInt(timeStr.slice(4, 6), 10);
-  const millis = timeUnit === "ms" ? parseInt(timeStr.slice(6, 9), 10) : 0;
-
-  if (month < 1 || month > 12) return null;
-  if (day < 1 || day > 31) return null;
-  if (hour > 23 || minute > 59 || second > 59) return null;
-  if (millis < 0 || millis > 999) return null;
-
-  const timestamp = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millis));
-  if (isNaN(timestamp.getTime())) return null;
-  if (timestamp.getUTCDate() !== day || timestamp.getUTCMonth() + 1 !== month) return null;
-  return timestamp;
-}
-
 /** Validate an HLC-WID string against the given W/Z/time-unit shape. */
 export function validateHlcWid(
   wid: string,
@@ -126,7 +106,7 @@ export function parseHlcWid(
 
   if (!isValidNode(node)) return null;
 
-  const timestamp = parseTimestamp(dateStr, timeStr, timeUnit);
+  const timestamp = parseWidTimestamp(dateStr, timeStr, timeUnit);
   if (!timestamp) return null;
 
   const logicalCounter = parseInt(lcStr, 10);

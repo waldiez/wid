@@ -28,6 +28,18 @@
       }
     },
     {
+      "id": "wid_low_year_w4_z0",
+      "wid": "00500212T091530.0000Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "timestamp": "0050-02-12T09:15:30Z",
+        "sequence": 0,
+        "padding": null
+      }
+    },
+    {
       "id": "wid_with_padding_w4_z6",
       "wid": "20260212T091530.0042Z-a3f91c",
       "type": "wid",

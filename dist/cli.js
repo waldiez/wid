@@ -23,6 +23,26 @@ function clampTick(tick, unit) {
   if (tick > max) return max;
   return tick;
 }
+function parseWidTimestamp(dateStr, timeStr, timeUnit) {
+  const year = parseInt(dateStr.slice(0, 4), 10);
+  const month = parseInt(dateStr.slice(4, 6), 10);
+  const day = parseInt(dateStr.slice(6, 8), 10);
+  const hour = parseInt(timeStr.slice(0, 2), 10);
+  const minute = parseInt(timeStr.slice(2, 4), 10);
+  const second = parseInt(timeStr.slice(4, 6), 10);
+  const millis = timeUnit === "ms" ? parseInt(timeStr.slice(6, 9), 10) : 0;
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > 31) return null;
+  if (hour > 23 || minute > 59 || second > 59) return null;
+  if (millis < 0 || millis > 999) return null;
+  const timestamp = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millis));
+  timestamp.setUTCFullYear(year, month - 1, day);
+  if (isNaN(timestamp.getTime())) return null;
+  if (timestamp.getUTCFullYear() !== year || timestamp.getUTCMonth() + 1 !== month || timestamp.getUTCDate() !== day) {
+    return null;
+  }
+  return timestamp;
+}
 
 // typescript/src/wid.ts
 var MAX_W = 18;
@@ -71,30 +91,13 @@ function parsePadding(suffix, Z) {
   }
   return { padding: body };
 }
-function parseTimestamp(dateStr, timeStr, timeUnit) {
-  const year = parseInt(dateStr.slice(0, 4), 10);
-  const month = parseInt(dateStr.slice(4, 6), 10);
-  const day = parseInt(dateStr.slice(6, 8), 10);
-  const hour = parseInt(timeStr.slice(0, 2), 10);
-  const minute = parseInt(timeStr.slice(2, 4), 10);
-  const second = parseInt(timeStr.slice(4, 6), 10);
-  const millis = timeUnit === "ms" ? parseInt(timeStr.slice(6, 9), 10) : 0;
-  if (month < 1 || month > 12) return null;
-  if (day < 1 || day > 31) return null;
-  if (hour > 23 || minute > 59 || second > 59) return null;
-  if (millis < 0 || millis > 999) return null;
-  const timestamp = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millis));
-  if (isNaN(timestamp.getTime())) return null;
-  if (timestamp.getUTCDate() !== day || timestamp.getUTCMonth() + 1 !== month) return null;
-  return timestamp;
-}
 function parseCore(wid, W, Z, timeUnit) {
   if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) return null;
   const match = widBaseRe(W, timeUnit).exec(wid);
   if (!match) return null;
   const [, dateStr, timeStr, seqStr, suffixRaw] = match;
   const suffix = suffixRaw ?? "";
-  const timestamp = parseTimestamp(dateStr, timeStr, timeUnit);
+  const timestamp = parseWidTimestamp(dateStr, timeStr, timeUnit);
   if (!timestamp) return null;
   const parsedSuffix = parsePadding(suffix, Z);
   if (!parsedSuffix) return null;
@@ -236,23 +239,6 @@ function randomHexChars2(Z) {
 function isValidNode(node) {
   return NODE_RE.test(node);
 }
-function parseTimestamp2(dateStr, timeStr, timeUnit) {
-  const year = parseInt(dateStr.slice(0, 4), 10);
-  const month = parseInt(dateStr.slice(4, 6), 10);
-  const day = parseInt(dateStr.slice(6, 8), 10);
-  const hour = parseInt(timeStr.slice(0, 2), 10);
-  const minute = parseInt(timeStr.slice(2, 4), 10);
-  const second = parseInt(timeStr.slice(4, 6), 10);
-  const millis = timeUnit === "ms" ? parseInt(timeStr.slice(6, 9), 10) : 0;
-  if (month < 1 || month > 12) return null;
-  if (day < 1 || day > 31) return null;
-  if (hour > 23 || minute > 59 || second > 59) return null;
-  if (millis < 0 || millis > 999) return null;
-  const timestamp = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millis));
-  if (isNaN(timestamp.getTime())) return null;
-  if (timestamp.getUTCDate() !== day || timestamp.getUTCMonth() + 1 !== month) return null;
-  return timestamp;
-}
 function validateHlcWid(wid, W = 4, Z = 0, timeUnit = "sec") {
   return parseHlcWid(wid, W, Z, timeUnit) !== null;
 }
@@ -263,7 +249,7 @@ function parseHlcWid(wid, W = 4, Z = 0, timeUnit = "sec") {
   const [, dateStr, timeStr, lcStr, node, suffixRaw] = match;
   const suffix = suffixRaw ?? "";
   if (!isValidNode(node)) return null;
-  const timestamp = parseTimestamp2(dateStr, timeStr, timeUnit);
+  const timestamp = parseWidTimestamp(dateStr, timeStr, timeUnit);
   if (!timestamp) return null;
   const logicalCounter = parseInt(lcStr, 10);
   let padding = null;

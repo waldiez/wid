@@ -105,6 +105,18 @@ describe('parseWid', () => {
     expect(parsed!.timestamp.getUTCMilliseconds()).toBe(123);
   });
 
+  it('parses years below 100 literally (no Date.UTC 1900-mapping)', () => {
+    // Date.UTC maps years 0-99 to 1900-1999; the parser must pin the literal
+    // 4-digit year so 0050 means year 50 (as in Rust/Python/Go), not 1950.
+    const parsed = parseWid('00500212T091530.0000Z', 4, 0);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.timestamp.getUTCFullYear()).toBe(50);
+    // Leap-day validity must be judged against the literal year, not the
+    // remapped one: year 4 is a leap year.
+    expect(parseWid('00040229T091530.0000Z', 4, 0)).not.toBeNull();
+    expect(parseWid('00050229T091530.0000Z', 4, 0)).toBeNull();
+  });
+
   it('returns null for invalid WID', () => {
     expect(parseWid('waldiez', 4, 6)).toBeNull();
     expect(parseWid('20260212T091530.0000', 4, 0)).toBeNull();

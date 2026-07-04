@@ -35,6 +35,12 @@ describe('parseHlcWid', () => {
     expect(parsed).not.toBeNull();
     expect(parsed!.timestamp.getUTCMilliseconds()).toBe(123);
   });
+
+  it('parses years below 100 literally (no Date.UTC 1900-mapping)', () => {
+    const parsed = parseHlcWid('00500212T091530.0042Z-node01', 4, 0);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.timestamp.getUTCFullYear()).toBe(50);
+  });
 });
 
 describe('HLCWidGen', () => {

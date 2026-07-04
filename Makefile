@@ -1,10 +1,10 @@
-.PHONY: all setup test check clean lint fmt \
+.PHONY: all help install uninstall setup test check quick-check doctor clean lint fmt \
        rust-setup rust-test rust-check rust-clean rust-lint rust-fmt rust-bench rust-next \
        python-setup python-test python-check python-clean python-lint python-fmt python-typecheck python-next python-uninstall \
        c-setup c-test c-check c-clean c-lint c-fmt c-bench c-next c-sanitize c-fuzz \
        ts-setup ts-test ts-check ts-clean ts-lint ts-build ts-bench ts-next \
        go-setup go-test go-check go-clean go-lint go-fmt go-bench go-next \
-       sh-test sh-next \
+       sh-setup sh-test sh-check sh-clean sh-next \
        next id stream do healthcheck start stop status sign verify otp otp-gen otp-verify crypto-demo \
        conformance bench-matrix docker capabilities-check stream-conformance id-conformance cli-surface-check crypto-smoke signed-envelope-check security-matrix-check key-rotation-drill-check soak-check envelope-compat-check release-check \
        wotp-parity-check \

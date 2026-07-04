@@ -3,7 +3,7 @@
  * Format: YYYYMMDDTHHMMSS[mmm].<seqW>Z[-<padZ>]
  */
 
-import { type TimeUnit, clampTick, timeDigits } from "./time";
+import { type TimeUnit, clampTick, parseWidTimestamp, timeDigits } from "./time";
 
 /**
  * Maximum sequence/logical-counter width. 10^18 - 1 is the largest all-nines
@@ -285,26 +285,6 @@ function parsePadding(suffix: string, Z: number): { padding: string | null } | n
   return { padding: body };
 }
 
-function parseTimestamp(dateStr: string, timeStr: string, timeUnit: TimeUnit): Date | null {
-  const year = parseInt(dateStr.slice(0, 4), 10);
-  const month = parseInt(dateStr.slice(4, 6), 10);
-  const day = parseInt(dateStr.slice(6, 8), 10);
-  const hour = parseInt(timeStr.slice(0, 2), 10);
-  const minute = parseInt(timeStr.slice(2, 4), 10);
-  const second = parseInt(timeStr.slice(4, 6), 10);
-  const millis = timeUnit === "ms" ? parseInt(timeStr.slice(6, 9), 10) : 0;
-
-  if (month < 1 || month > 12) return null;
-  if (day < 1 || day > 31) return null;
-  if (hour > 23 || minute > 59 || second > 59) return null;
-  if (millis < 0 || millis > 999) return null;
-
-  const timestamp = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millis));
-  if (isNaN(timestamp.getTime())) return null;
-  if (timestamp.getUTCDate() !== day || timestamp.getUTCMonth() + 1 !== month) return null;
-  return timestamp;
-}
-
 function parseCore(wid: string, W: number, Z: number, timeUnit: TimeUnit): ParsedWid | null {
   if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) return null;
 
@@ -314,7 +294,7 @@ function parseCore(wid: string, W: number, Z: number, timeUnit: TimeUnit): Parse
   const [, dateStr, timeStr, seqStr, suffixRaw] = match;
   const suffix = suffixRaw ?? "";
 
-  const timestamp = parseTimestamp(dateStr, timeStr, timeUnit);
+  const timestamp = parseWidTimestamp(dateStr, timeStr, timeUnit);
   if (!timestamp) return null;
 
   const parsedSuffix = parsePadding(suffix, Z);
