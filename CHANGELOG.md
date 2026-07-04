@@ -32,6 +32,31 @@ called out at the bottom.
   spec").
 
 ### Fixed
+- Go and Rust `A=w-otp`: the OTP modulus (`10^DIGITS`, CRYPTO_SPEC) was
+  computed in 32 bits, which cannot hold `10^10`. At `DIGITS=10` Go's
+  `uint32` wrapped the modulus to `1410065408` (a *different* code than the
+  other implementations for roughly two-thirds of HMAC values) and Rust's
+  `saturating_mul` clamped it to `2^32-1` (divergent only for an HMAC word of
+  exactly `0xffffffff`). Both now use 64-bit arithmetic.
+- `tools/check_wotp_parity.sh` only exercised `DIGITS=6`, so the above
+  divergence sat behind a green gate. It now round-trips gen/verify at
+  `DIGITS` 4, 6, and 10 against a probe WID chosen so its 32-bit HMAC word
+  (`0xf960d3a5`) makes wrap/saturation bugs deterministically visible rather
+  than dependent on the sample's hash value.
+- sh: when no `python3 >= 3.10` was on PATH and the `uv` fallback *failed*,
+  canonical delegation (`I=auto`/`py`) exited 0 with no output (a failed
+  `if` condition returns success from a function under `set -e`); it now
+  fails with a clean `error: …`.
+- C: removed the `has_unsafe_shell_char` filter from the canonical parser.
+  The C CLI never shells out (sqlite3/libcrypto are linked directly), and
+  the filter made C the only implementation to reject KEY/DATA/OUT values
+  containing quotes, `;`, `&`, `|`, or backticks that the other five accept.
+- Scoped the shared-SQLite "no duplicate WIDs" guarantee to the CLI `E=sql`
+  path (which allocates via compare-and-swap): the library-level stores
+  (Python `SqliteWidStateStore`, TypeScript `createNodeSqliteWidStateStore`)
+  are last-writer-wins and now document that they are single-process only.
+  README no longer implies otherwise, and it now discloses that `make next`
+  (`I=auto`) delegates to the Python implementation when one is present.
 - TypeScript canonical parser: values containing `=` (e.g.
   `KEY=abc=def`, base64 secrets) were silently truncated at the second `=`
   by `split("=", 2)`, so the same w-otp secret produced a *different* code
