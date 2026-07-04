@@ -38,6 +38,9 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable snapshot 2026-07
+        with:
+          toolchain: "1.88"
+          components: clippy, rustfmt
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
@@ -86,9 +89,15 @@ jobs:
   publish-npm:
     needs: [check-versions, test]
     runs-on: ubuntu-latest
-    # id-token lets npm attach a build provenance attestation linking the
-    # published tarball to this repo+workflow run (PyPI gets the equivalent
-    # via OIDC trusted publishing).
+    # Bootstrap-then-trusted: npm trusted publishing (OIDC) can only be
+    # configured on a package that already exists, so the FIRST release
+    # authenticates with NPM_TOKEN (granular, publish-only, short-expiry,
+    # scoped to @waldiez/wid); --provenance gives even that release an
+    # attestation. After v1.0.0 is live: configure the trusted publisher on
+    # npmjs.com (package → Settings → Trusted publisher: repo waldiez/wid,
+    # workflow publish.yml), then delete the NPM_TOKEN secret and the
+    # NODE_AUTH_TOKEN env line below — OIDC (id-token: write) takes over and
+    # provenance becomes automatic.
     permissions:
       contents: read
       id-token: write
@@ -98,6 +107,9 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+      # OIDC trusted publishing requires npm >= 11.5.1; Node 22 bundles npm 10.
+      # Harmless in token mode, required once the trusted publisher is set.
+      - run: npm install -g npm@latest
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - run: bun install --frozen-lockfile
       - run: npm run build
