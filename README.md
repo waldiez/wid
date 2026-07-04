@@ -54,6 +54,21 @@ wid parse    20260217T143052.0000Z-a3f91c --json
 
 All implementations accept the same flag matrix (`--kind`, `--node`, `--W`, `--Z`, `--time-unit`, etc.) defined in [`spec/quick-usage.md`](https://github.com/waldiez/wid/blob/main/spec/quick-usage.md).
 
+The canonical `KEY=VALUE` grammar is the name — its keys spell **WALDIEZ**:
+
+```text
+wid W=4 A=next L=0 D=# I=auto E=state Z=6
+    │   │      │   │   │      │       └─── Z  pad length
+    │   │      │   │   │      └─────────── E  state mode
+    │   │      │   │   └────────────────── I  implementation
+    │   │      │   └────────────────────── D  data dir (# = default)
+    │   │      └────────────────────────── L  loop interval
+    │   └───────────────────────────────── A  action
+    └───────────────────────────────────── W  sequence width
+```
+
+(That command runs as-is in all six implementations.)
+
 ## Implementations
 
 <!-- markdownlint-disable MD060 -->
@@ -153,7 +168,7 @@ WIDs to parties who should not learn timing information.
 > `waldiez-wid` to crates.io/PyPI, `@waldiez/wid` to npm, and images to
 > ghcr.io), install straight from this repository — all of the following
 > work today:
-
+<!-- -->
 > **Binary name collision:** the Rust, Python, and Go installs each put a
 > binary named `wid` on your PATH (npm's is `wid-ts`). If you install more
 > than one, whichever comes first in PATH order silently wins — pick one
