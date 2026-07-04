@@ -29,6 +29,51 @@ export function clampTick(tick: number, unit: TimeUnit): number {
   return tick;
 }
 
+/** Cache for padding-hex validation patterns keyed by width. Shared by the
+ * WID and HLC-WID parsers (each used to carry an identical private copy). */
+const HEX_RE_CACHE = new Map<number, RegExp>();
+
+/** Compiled `^[0-9a-f]{Z}$` pattern for the random-pad suffix. */
+export function hexRe(Z: number): RegExp {
+  const cached = HEX_RE_CACHE.get(Z);
+  if (cached) return cached;
+  const re = new RegExp(`^[0-9a-f]{${Z}}$`);
+  HEX_RE_CACHE.set(Z, re);
+  return re;
+}
+
+/** Z random lowercase hex chars from the runtime CSPRNG. Shared by the WID
+ * and HLC-WID generators (each used to carry an identical private copy). */
+export function randomHexChars(Z: number): string {
+  if (!globalThis.crypto?.getRandomValues) {
+    throw new Error("Secure random generator unavailable in this runtime");
+  }
+  const bytes = new Uint8Array(Math.ceil(Z / 2));
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, Z);
+}
+
+/**
+ * Format an (already clamped) tick as the WID timestamp field
+ * (`YYYYMMDDTHHMMSS` or `YYYYMMDDTHHMMSSmmm`). Pure; the per-generator
+ * last-tick cache stays in the generators, which used to duplicate this body.
+ */
+export function formatTickTimestamp(tick: number, unit: TimeUnit): string {
+  const sec = unit === "ms" ? Math.floor(tick / 1000) : tick;
+  const ms = unit === "ms" ? tick % 1000 : 0;
+  const d = new Date(sec * 1000);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const hour = String(d.getUTCHours()).padStart(2, "0");
+  const minute = String(d.getUTCMinutes()).padStart(2, "0");
+  const second = String(d.getUTCSeconds()).padStart(2, "0");
+  const base = `${year}${month}${day}T${hour}${minute}${second}`;
+  return unit === "ms" ? `${base}${String(ms).padStart(3, "0")}` : base;
+}
+
 /**
  * Parse the WID timestamp fields (YYYYMMDD + HHMMSS[mmm]) into a UTC Date;
  * null if the fields do not name a real calendar moment. Shared by the WID

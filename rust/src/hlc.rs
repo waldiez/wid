@@ -2,13 +2,15 @@
 //!
 //! Format: `YYYYMMDDTHHMMSS[mmm].<lcW>Z-<node>[-<padZ>]`
 
-use chrono::{DateTime, TimeZone, Timelike, Utc};
+use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use rand::random_range;
 use regex::Regex;
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::wid::{TimeUnit, WidError};
+use crate::wid::{TimeUnit, WidError, parse_timestamp};
 
 /// Parsed HLC-WID components.
 #[derive(Debug, Clone, PartialEq)]
@@ -26,11 +28,14 @@ pub struct ParsedHlcWid {
     pub padding: Option<String>,
 }
 
+// [0-9], never \d: \d is Unicode-aware in this regex engine and the captured
+// fields are byte-sliced in parse_ts — multi-byte digits would panic there.
+// See the matching comment in wid.rs.
 static HLC_PATTERN_W4_Z0_SEC: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^(\d{8})T(\d{6})\.(\d{4})Z-([A-Za-z0-9_]+)$").unwrap());
+    Lazy::new(|| Regex::new(r"^([0-9]{8})T([0-9]{6})\.([0-9]{4})Z-([A-Za-z0-9_]+)$").unwrap());
 
 fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
-    let lc_part = format!(r"(\d{{{w}}})");
+    let lc_part = format!(r"([0-9]{{{w}}})");
     let time_digits = match time_unit {
         TimeUnit::Sec => 6,
         TimeUnit::Ms => 9,
@@ -41,38 +46,25 @@ fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
         r"$".to_string()
     };
     let pattern =
-        format!(r"^(\d{{8}})T(\d{{{time_digits}}})\.{lc_part}Z-([A-Za-z0-9_]+){pad_part}");
+        format!(r"^([0-9]{{8}})T([0-9]{{{time_digits}}})\.{lc_part}Z-([A-Za-z0-9_]+){pad_part}");
     Regex::new(&pattern).unwrap()
 }
 
-fn parse_ts(time_unit: TimeUnit, date_str: &str, time_str: &str) -> Option<DateTime<Utc>> {
-    let year: i32 = date_str[0..4].parse().ok()?;
-    // SPEC.md: valid years are 0001-9999. chrono would accept year 0, but
-    // Python's datetime cannot represent it, so it is rejected uniformly.
-    if year < 1 {
-        return None;
-    }
-    let month: u32 = date_str[4..6].parse().ok()?;
-    let day: u32 = date_str[6..8].parse().ok()?;
+// Timestamp parsing is shared with the plain-WID parser (crate::wid::
+// parse_timestamp); this module used to carry an identical private copy.
 
-    match time_unit {
-        TimeUnit::Sec => {
-            let hour: u32 = time_str[0..2].parse().ok()?;
-            let minute: u32 = time_str[2..4].parse().ok()?;
-            let second: u32 = time_str[4..6].parse().ok()?;
-            Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
-                .single()
-        }
-        TimeUnit::Ms => {
-            let hour: u32 = time_str[0..2].parse().ok()?;
-            let minute: u32 = time_str[2..4].parse().ok()?;
-            let second: u32 = time_str[4..6].parse().ok()?;
-            let millis: u32 = time_str[6..9].parse().ok()?;
-            Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
-                .single()?
-                .with_nanosecond(millis * 1_000_000)
-        }
-    }
+/// Compiled-pattern cache for non-default shapes; see the matching cache in
+/// wid.rs for the rationale (Regex clones share the compiled program).
+static HLC_PATTERN_CACHE: crate::wid::PatternCache = Lazy::new(|| Mutex::new(HashMap::new()));
+
+fn cached_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
+    let mut cache = HLC_PATTERN_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    cache
+        .entry((w, z, time_unit))
+        .or_insert_with(|| build_pattern(w, z, time_unit))
+        .clone()
 }
 
 fn is_valid_node(node: &str) -> bool {
@@ -104,9 +96,9 @@ pub fn parse_hlc_wid_with_unit(
     }
 
     let pattern = if w == 4 && z == 0 && time_unit == TimeUnit::Sec {
-        &*HLC_PATTERN_W4_Z0_SEC
+        HLC_PATTERN_W4_Z0_SEC.clone()
     } else {
-        &build_pattern(w, z, time_unit)
+        cached_pattern(w, z, time_unit)
     };
 
     let caps = pattern
@@ -127,7 +119,8 @@ pub fn parse_hlc_wid_with_unit(
         return Err(WidError::InvalidNode);
     }
 
-    let timestamp = parse_ts(time_unit, date_str, time_str).ok_or(WidError::InvalidTimestamp)?;
+    let timestamp =
+        parse_timestamp(time_unit, date_str, time_str).ok_or(WidError::InvalidTimestamp)?;
     let logical_counter: i64 = lc_str
         .parse()
         .map_err(|_| WidError::InvalidFormat(wid.to_string()))?;
@@ -275,11 +268,9 @@ impl HLCWidGen {
         let mut wid = format!("{}.{}Z-{}", ts, lc_str, self.node);
 
         if self.z > 0 {
+            const HEX: &[u8; 16] = b"0123456789abcdef";
             let pad: String = (0..self.z)
-                .map(|_| {
-                    let idx = random_range(0..16);
-                    "0123456789abcdef".chars().nth(idx).unwrap()
-                })
+                .map(|_| HEX[random_range(0..16)] as char)
                 .collect();
             wid.push('-');
             wid.push_str(&pad);
@@ -355,6 +346,17 @@ mod tests {
             "20260212T091530.0000Z-node01-ABCDEF",
             4,
             6
+        ));
+    }
+
+    #[test]
+    fn test_unicode_digits_rejected_without_panic() {
+        // Same regression as wid.rs: Unicode digits must be a clean reject,
+        // not a byte-boundary panic in parse_ts.
+        assert!(!validate_hlc_wid("२०२६०२१२T०९१५३०.००००Z-node01", 4, 0));
+        assert!(matches!(
+            parse_hlc_wid("٢٠٢٦٠٢١٢T٠٩١٥٣٠.٠٠٠٠Z-node01", 4, 0),
+            Err(WidError::InvalidFormat(_))
         ));
     }
 

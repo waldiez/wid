@@ -211,6 +211,27 @@
       "type": "wid",
       "params": {"W": 4, "Z": 0},
       "reason": "1900 is divisible by 100 but not 400, so it is not a leap year"
+    },
+    {
+      "id": "wid_unicode_digits_timestamp",
+      "wid": "२०२६०२१२T०९१५३०.००००Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "reason": "Digits must be ASCII 0-9; Unicode decimal digits (here Devanagari) must be cleanly rejected, never crash (a Unicode-aware \\d plus byte-slicing panicked in Rust)"
+    },
+    {
+      "id": "wid_unicode_digits_sequence_only",
+      "wid": "20260212T091530.००००Z",
+      "type": "wid",
+      "params": {"W": 4, "Z": 0},
+      "reason": "ASCII timestamp with Unicode sequence digits must also be rejected"
+    },
+    {
+      "id": "hlc_unicode_digits_timestamp",
+      "wid": "٢٠٢٦٠٢١٢T٠٩١٥٣٠.٠٠٠٠Z-node01",
+      "type": "hlc",
+      "params": {"W": 4, "Z": 0},
+      "reason": "HLC path of the same rule: Unicode decimal digits (here Arabic-Indic) must be cleanly rejected, never crash"
     }
   ]
 }

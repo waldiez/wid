@@ -249,6 +249,14 @@ valid_ymdhms() {
     ((d >= 1 && d <= dim))
 }
 
+# Locale-independent character classes for the WID grammar regexes. Bash
+# [[ =~ ]] ranges follow the active locale's collation: in common UTF-8
+# locales `[0-9]` also matches non-ASCII digits (e.g. Devanagari ०), which
+# let this implementation accept IDs the other five reject — the same trap
+# valid_node already documents for letters. Spelled out, no ranges.
+WID_D='[0123456789]'
+WID_HEX='[0123456789abcdef]'
+
 # Node rules:
 # - non-empty
 # - no whitespace
@@ -263,7 +271,7 @@ valid_node() {
     [[ -n "$node" && "$node" =~ $re ]]
 }
 
-# Print Z random lowercase hex chars (not crypto-grade).
+# Print Z random lowercase hex chars (openssl rand / /dev/urandom — CSPRNG).
 rand_hex() {
     local z=$1
     if ((z <= 0)); then
@@ -295,7 +303,7 @@ validate_wid() {
     local re ts seq suffix
     local time_digits=6
     [[ "$time_unit" == "ms" ]] && time_digits=9
-    re="^([0-9]{8}T[0-9]{$time_digits})\\.([0-9]{$W})Z(.*)$"
+    re="^(${WID_D}{8}T${WID_D}{$time_digits})\\.(${WID_D}{$W})Z(.*)$"
     [[ "$id" =~ $re ]] || return 1
     ts=${BASH_REMATCH[1]}
     seq=${BASH_REMATCH[2]}
@@ -317,7 +325,7 @@ validate_wid() {
 
     # Padding is OPTIONAL when Z>0 (matches SPEC.md and the other five impls):
     # accept a missing pad or a correctly-sized lowercase-hex pad; reject else.
-    [[ -z "$suffix" || "$suffix" =~ ^-[0-9a-f]{$Z}$ ]] || return 1
+    [[ -z "$suffix" || "$suffix" =~ ^-${WID_HEX}{$Z}$ ]] || return 1
     return 0
 }
 
@@ -335,7 +343,7 @@ validate_hlc_wid() {
     local re ts node suffix
     local time_digits=6
     [[ "$time_unit" == "ms" ]] && time_digits=9
-    re="^([0-9]{8}T[0-9]{$time_digits})\\.([0-9]{$W})Z-([^-[:space:]]+)(.*)$"
+    re="^(${WID_D}{8}T${WID_D}{$time_digits})\\.(${WID_D}{$W})Z-([^-[:space:]]+)(.*)$"
     [[ "$id" =~ $re ]] || return 1
     ts=${BASH_REMATCH[1]}
     node=${BASH_REMATCH[3]}
@@ -358,7 +366,7 @@ validate_hlc_wid() {
 
     # Padding is OPTIONAL when Z>0 (matches SPEC.md and the other five impls):
     # accept a missing pad or a correctly-sized lowercase-hex pad; reject else.
-    [[ -z "$suffix" || "$suffix" =~ ^-[0-9a-f]{$Z}$ ]] || return 1
+    [[ -z "$suffix" || "$suffix" =~ ^-${WID_HEX}{$Z}$ ]] || return 1
     return 0
 }
 
@@ -367,7 +375,7 @@ parse_wid_fn() {
     local id=$1 W=$2 Z=$3 time_unit=$4 json=$5
     local re ts seq suffix time_digits=6
     [[ "$time_unit" == "ms" ]] && time_digits=9
-    re="^([0-9]{8}T[0-9]{${time_digits}})\\.([0-9]{${W}})Z(.*)$"
+    re="^(${WID_D}{8}T${WID_D}{${time_digits}})\\.(${WID_D}{${W}})Z(.*)$"
     [[ "$id" =~ $re ]] || { printf 'null\n'; return 1; }
     ts=${BASH_REMATCH[1]}
     seq=${BASH_REMATCH[2]}
@@ -377,7 +385,7 @@ parse_wid_fn() {
         # When present, padding must be a correctly-sized lowercase-hex pad and
         # is only valid when Z>0. But padding is OPTIONAL: a missing pad is
         # allowed even when Z>0, matching SPEC.md and the other implementations.
-        { ((Z > 0)) && [[ "$suffix" =~ ^-[0-9a-f]{${Z}}$ ]]; } || { printf 'null\n'; return 1; }
+        { ((Z > 0)) && [[ "$suffix" =~ ^-${WID_HEX}{${Z}}$ ]]; } || { printf 'null\n'; return 1; }
         pad="${suffix:1}"
     fi
     local year=${ts:0:4} month=${ts:4:2} day=${ts:6:2}
@@ -403,7 +411,7 @@ parse_hlc_wid_fn() {
     local id=$1 W=$2 Z=$3 time_unit=$4 json=$5
     local re ts lc node suffix time_digits=6
     [[ "$time_unit" == "ms" ]] && time_digits=9
-    re="^([0-9]{8}T[0-9]{${time_digits}})\\.([0-9]{${W}})Z-([^-[:space:]]+)(.*)$"
+    re="^(${WID_D}{8}T${WID_D}{${time_digits}})\\.(${WID_D}{${W}})Z-([^-[:space:]]+)(.*)$"
     [[ "$id" =~ $re ]] || { printf 'null\n'; return 1; }
     ts=${BASH_REMATCH[1]}
     lc=${BASH_REMATCH[2]}
@@ -417,7 +425,7 @@ parse_hlc_wid_fn() {
         # When present, padding must be a correctly-sized lowercase-hex pad and
         # is only valid when Z>0. But padding is OPTIONAL: a missing pad is
         # allowed even when Z>0, matching SPEC.md and the other implementations.
-        { ((Z > 0)) && [[ "$suffix" =~ ^-[0-9a-f]{${Z}}$ ]]; } || { printf 'null\n'; return 1; }
+        { ((Z > 0)) && [[ "$suffix" =~ ^-${WID_HEX}{${Z}}$ ]]; } || { printf 'null\n'; return 1; }
         pad="${suffix:1}"
     fi
     local year=${ts:0:4} month=${ts:4:2} day=${ts:6:2}
@@ -442,7 +450,7 @@ parse_hlc_wid_fn() {
 wotp_wid_tick_ms() {
     local id=$1
     local re ts millis year month day hour minute second sec
-    re='^([0-9]{8}T[0-9]{6}([0-9]{3})?)\.[0-9]+Z.*$'
+    re="^(${WID_D}{8}T${WID_D}{6}(${WID_D}{3})?)\\.${WID_D}+Z.*$"
     [[ "$id" =~ $re ]] || return 1
     ts=${BASH_REMATCH[1]}
     millis=${BASH_REMATCH[2]:-000}

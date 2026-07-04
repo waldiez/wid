@@ -518,6 +518,18 @@ function resolveWOtpSecret(raw: string): string {
   return raw.trim();
 }
 
+/**
+ * Truncated HMAC-SHA256 OTP per CRYPTO_SPEC: the first 4 digest bytes as a
+ * big-endian unsigned 32-bit integer, reduced modulo 10^DIGITS.
+ *
+ * Deliberately NOT BigInt/64-bit: the spec fixes the input at exactly 4
+ * bytes (u32), so for DIGITS=10 the modulus exceeds the input range and
+ * every implementation — Rust, C, Go, Python, sh included — returns the u32
+ * value unchanged, zero-padded to 10 digits. Both operands here stay well
+ * under Number.MAX_SAFE_INTEGER, so `%` is exact. Reading 8 digest bytes
+ * "to fix DIGITS=10" would make this the one divergent implementation
+ * (see tools/check_wotp_parity.sh).
+ */
 function computeWOtp(secret: string, wid: string, digits: number): string {
   const digest = createHmac("sha256", Buffer.from(secret, "utf8")).update(Buffer.from(wid, "utf8")).digest();
   const binary = digest.readUInt32BE(0);
@@ -538,7 +550,13 @@ function wotpWidTickMs(wid: string): number {
   const mm = Number(hms.slice(2, 4));
   const ss = Number(hms.slice(4, 6));
   const msec = Number(ms);
-  const tick = Date.UTC(y, mo - 1, d, hh, mm, ss, msec);
+  // Pin the literal 4-digit year (Date.UTC maps years 0-99 to 1900-1999),
+  // matching parseWidTimestamp in time.ts and the exact-year arithmetic in
+  // the Rust/C extractors.
+  const dt = new Date(0);
+  dt.setUTCFullYear(y, mo - 1, d);
+  dt.setUTCHours(hh, mm, ss, msec);
+  const tick = dt.getTime();
   if (!Number.isFinite(tick)) throw new Error("WID timestamp is invalid for time-window verification");
   return tick;
 }
@@ -663,8 +681,11 @@ function sqlAllocateNextWid(c: Canon): string {
         const updated = casStmt.run(nextState.lastSec, nextState.lastSeq, key, row.last_tick, row.last_seq);
         if ((updated.changes ?? 0) === 1) return id;
       } catch (e) {
+        // Prefer the stable SQLITE_BUSY errcode (5); the message substring is
+        // a fallback for node:sqlite builds that do not attach errcode.
+        const errcode = (e as { errcode?: number }).errcode;
         const msg = (e as Error).message ?? "";
-        if (msg.includes("database is locked")) continue;
+        if (errcode === 5 || msg.includes("database is locked")) continue;
         throw e;
       }
     }

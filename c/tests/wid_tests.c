@@ -74,6 +74,26 @@ static void test_parse_hlc(void) {
     CHECK(p.millisecond == 123, "hlc parse ms should carry millisecond");
 
     CHECK(!hlc_wid_parse("20260212T091530.0000Z-node-01", 4, 0, &p), "hlc parse invalid should fail");
+
+    /* validate and parse must accept exactly the same nodes: a 64+-char node
+     * used to validate but fail parse (fixed 64-byte node buffer). */
+    {
+        char long_node[WID_MAX_LEN + 1];
+        char long_id[WID_MAX_LEN + 64];
+        memset(long_node, 'n', 70);
+        long_node[70] = '\0';
+        snprintf(long_id, sizeof(long_id), "20260212T091530.0000Z-%s", long_node);
+        CHECK(hlc_wid_validate(long_id, 4, 0), "70-char node should validate");
+        CHECK(hlc_wid_parse(long_id, 4, 0, &p), "70-char node should parse");
+        CHECK(strcmp(p.node, long_node) == 0, "70-char node should round-trip");
+
+        /* Past the parsed buffer, validate and parse must agree on reject. */
+        memset(long_node, 'n', WID_MAX_LEN);
+        long_node[WID_MAX_LEN] = '\0';
+        snprintf(long_id, sizeof(long_id), "20260212T091530.0000Z-%s", long_node);
+        CHECK(!hlc_wid_validate(long_id, 4, 0), "256-char node should not validate");
+        CHECK(!hlc_wid_parse(long_id, 4, 0, &p), "256-char node should not parse");
+    }
 }
 
 static void test_wid_gen(void) {
@@ -106,6 +126,19 @@ static void test_hlc_gen(void) {
 
     CHECK(!hlc_wid_gen_init(&gen, "bad-node", 4, 0), "invalid node should fail init");
     CHECK(hlc_wid_gen_init(&gen, "node01", 4, 0), "valid node should init");
+
+    /* Over-long nodes must be rejected, not silently strncpy-truncated
+     * (a truncated node mints IDs carrying the wrong node). */
+    {
+        char long_node[WID_MAX_NODE_LEN + 2];
+        memset(long_node, 'n', WID_MAX_NODE_LEN + 1);
+        long_node[WID_MAX_NODE_LEN + 1] = '\0';
+        CHECK(!hlc_wid_gen_init(&gen, long_node, 4, 0), "over-long node should fail init");
+        long_node[WID_MAX_NODE_LEN] = '\0';
+        CHECK(hlc_wid_gen_init(&gen, long_node, 4, 0), "max-length node should init");
+        /* Restore the node01 generator the rest of this test exercises. */
+        CHECK(hlc_wid_gen_init(&gen, "node01", 4, 0), "re-init after node-length checks");
+    }
 
     hlc_wid_gen_next(&gen, id1, sizeof(id1));
     hlc_wid_gen_next(&gen, id2, sizeof(id2));

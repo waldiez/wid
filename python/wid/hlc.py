@@ -76,8 +76,10 @@ class HLCWidGen:
         if time_unit not in {"sec", "ms"}:
             raise ValueError("time_unit must be 'sec' or 'ms'")
 
-        self.w: int = W
-        self.z: int = Z
+        # Spec vocabulary casing, matching WidGen.W/WidGen.Z (this class used
+        # to expose lowercase `w`/`z`; properties below keep those readable).
+        self.W: int = W
+        self.Z: int = Z
         self.time_unit: Literal["sec", "ms"] = time_unit
         self.node = node
         self.max_lc = 10**W - 1
@@ -152,12 +154,22 @@ class HLCWidGen:
         self._rollover_if_needed()
 
         ts = self._ts_for_sec(self.pt)
-        lc_str = str(self.lc).zfill(self.w)
+        lc_str = str(self.lc).zfill(self.W)
 
-        if self.z > 0:
-            pad = self._pad_hex(self.z)
+        if self.Z > 0:
+            pad = self._pad_hex(self.Z)
             return f"{ts}.{lc_str}Z-{self.node}-{pad}"
         return f"{ts}.{lc_str}Z-{self.node}"
+
+    @property
+    def w(self) -> int:
+        """Backwards-compatible lowercase alias for :attr:`W`."""
+        return self.W
+
+    @property
+    def z(self) -> int:
+        """Backwards-compatible lowercase alias for :attr:`Z`."""
+        return self.Z
 
     def next_n(self, n: int) -> list[str]:
         """Get next n ids."""

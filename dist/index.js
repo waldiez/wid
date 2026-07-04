@@ -61,6 +61,35 @@ function clampTick(tick, unit) {
   if (tick > max) return max;
   return tick;
 }
+var HEX_RE_CACHE = /* @__PURE__ */ new Map();
+function hexRe(Z) {
+  const cached = HEX_RE_CACHE.get(Z);
+  if (cached) return cached;
+  const re = new RegExp(`^[0-9a-f]{${Z}}$`);
+  HEX_RE_CACHE.set(Z, re);
+  return re;
+}
+function randomHexChars(Z) {
+  if (!globalThis.crypto?.getRandomValues) {
+    throw new Error("Secure random generator unavailable in this runtime");
+  }
+  const bytes = new Uint8Array(Math.ceil(Z / 2));
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("").slice(0, Z);
+}
+function formatTickTimestamp(tick, unit) {
+  const sec = unit === "ms" ? Math.floor(tick / 1e3) : tick;
+  const ms = unit === "ms" ? tick % 1e3 : 0;
+  const d = new Date(sec * 1e3);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const hour = String(d.getUTCHours()).padStart(2, "0");
+  const minute = String(d.getUTCMinutes()).padStart(2, "0");
+  const second = String(d.getUTCSeconds()).padStart(2, "0");
+  const base = `${year}${month}${day}T${hour}${minute}${second}`;
+  return unit === "ms" ? `${base}${String(ms).padStart(3, "0")}` : base;
+}
 function parseWidTimestamp(dateStr, timeStr, timeUnit) {
   const year = parseInt(dateStr.slice(0, 4), 10);
   const month = parseInt(dateStr.slice(4, 6), 10);
@@ -176,7 +205,6 @@ function createNodeSqliteWidStateStore(databasePath, prefix = "wid") {
   return new NodeSqliteWidStateStore(databasePath, prefix);
 }
 var WID_BASE_RE_CACHE = /* @__PURE__ */ new Map();
-var HEX_RE_CACHE = /* @__PURE__ */ new Map();
 function widBaseRe(W, unit) {
   const key = `${W}:${unit}`;
   const cached = WID_BASE_RE_CACHE.get(key);
@@ -184,24 +212,6 @@ function widBaseRe(W, unit) {
   const re = new RegExp(`^(\\d{8})T(\\d{${timeDigits(unit)}})\\.(\\d{${W}})Z(.*)?$`);
   WID_BASE_RE_CACHE.set(key, re);
   return re;
-}
-function hexRe(Z) {
-  const cached = HEX_RE_CACHE.get(Z);
-  if (cached) return cached;
-  const re = new RegExp(`^[0-9a-f]{${Z}}$`);
-  HEX_RE_CACHE.set(Z, re);
-  return re;
-}
-function bytesToHex(bytes) {
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-function randomHexChars(Z) {
-  if (!globalThis.crypto?.getRandomValues) {
-    throw new Error("Secure random generator unavailable in this runtime");
-  }
-  const bytes = new Uint8Array(Math.ceil(Z / 2));
-  globalThis.crypto.getRandomValues(bytes);
-  return bytesToHex(bytes).slice(0, Z);
 }
 function parsePadding(suffix, Z) {
   if (!suffix) {
@@ -302,17 +312,7 @@ var WidGen = class {
     const tick = clampTick(rawTick, this.timeUnit);
     if (tick !== this.cachedSec) {
       this.cachedSec = tick;
-      const sec = this.timeUnit === "ms" ? Math.floor(tick / 1e3) : tick;
-      const ms = this.timeUnit === "ms" ? tick % 1e3 : 0;
-      const d = new Date(sec * 1e3);
-      const year = d.getUTCFullYear();
-      const month = String(d.getUTCMonth() + 1).padStart(2, "0");
-      const day = String(d.getUTCDate()).padStart(2, "0");
-      const hour = String(d.getUTCHours()).padStart(2, "0");
-      const minute = String(d.getUTCMinutes()).padStart(2, "0");
-      const second = String(d.getUTCSeconds()).padStart(2, "0");
-      const milli = String(ms).padStart(3, "0");
-      this.cachedTs = this.timeUnit === "ms" ? `${year}${month}${day}T${hour}${minute}${second}${milli}` : `${year}${month}${day}T${hour}${minute}${second}`;
+      this.cachedTs = formatTickTimestamp(tick, this.timeUnit);
     }
     return this.cachedTs;
   }
@@ -356,7 +356,6 @@ var WidGen = class {
 
 // typescript/src/hlc.ts
 var HLC_BASE_RE_CACHE = /* @__PURE__ */ new Map();
-var HEX_RE_CACHE2 = /* @__PURE__ */ new Map();
 var NODE_RE = /^[A-Za-z0-9_]+$/;
 function hlcBaseRe(W, unit) {
   const key = `${W}:${unit}`;
@@ -365,21 +364,6 @@ function hlcBaseRe(W, unit) {
   const re = new RegExp(`^(\\d{8})T(\\d{${timeDigits(unit)}})\\.(\\d{${W}})Z-([A-Za-z0-9_]+)(.*)$`);
   HLC_BASE_RE_CACHE.set(key, re);
   return re;
-}
-function hexRe2(Z) {
-  const cached = HEX_RE_CACHE2.get(Z);
-  if (cached) return cached;
-  const re = new RegExp(`^[0-9a-f]{${Z}}$`);
-  HEX_RE_CACHE2.set(Z, re);
-  return re;
-}
-function randomHexChars2(Z) {
-  if (!globalThis.crypto?.getRandomValues) {
-    throw new Error("Secure random generator unavailable in this runtime");
-  }
-  const bytes = new Uint8Array(Math.ceil(Z / 2));
-  globalThis.crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("").slice(0, Z);
 }
 function isValidNode(node) {
   return NODE_RE.test(node);
@@ -402,7 +386,7 @@ function parseHlcWid(wid, W = 4, Z = 0, timeUnit = "sec") {
     if (!suffix.startsWith("-")) return null;
     const seg = suffix.slice(1);
     if (Z === 0) return null;
-    if (!hexRe2(Z).test(seg)) return null;
+    if (!hexRe(Z).test(seg)) return null;
     padding = seg;
   }
   return { raw: wid, timestamp, logicalCounter, node, padding };
@@ -435,17 +419,7 @@ var HLCWidGen = class {
     const tick = clampTick(rawTick, this.timeUnit);
     if (tick !== this.cachedTick) {
       this.cachedTick = tick;
-      const sec = this.timeUnit === "ms" ? Math.floor(tick / 1e3) : tick;
-      const ms = this.timeUnit === "ms" ? tick % 1e3 : 0;
-      const d = new Date(sec * 1e3);
-      const year = d.getUTCFullYear();
-      const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
-      const dy = String(d.getUTCDate()).padStart(2, "0");
-      const hr = String(d.getUTCHours()).padStart(2, "0");
-      const mi = String(d.getUTCMinutes()).padStart(2, "0");
-      const sc = String(d.getUTCSeconds()).padStart(2, "0");
-      const milli = String(ms).padStart(3, "0");
-      this.cachedTs = this.timeUnit === "ms" ? `${year}${mo}${dy}T${hr}${mi}${sc}${milli}` : `${year}${mo}${dy}T${hr}${mi}${sc}`;
+      this.cachedTs = formatTickTimestamp(tick, this.timeUnit);
     }
     return this.cachedTs;
   }
@@ -486,7 +460,7 @@ var HLCWidGen = class {
     const lcStr = String(this.lc).padStart(this.W, "0");
     let wid = `${ts}.${lcStr}Z-${this.node}`;
     if (this.Z > 0) {
-      wid += `-${randomHexChars2(this.Z)}`;
+      wid += `-${randomHexChars(this.Z)}`;
     }
     return wid;
   }

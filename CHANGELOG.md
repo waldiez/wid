@@ -43,6 +43,20 @@ called out at the bottom.
   and `make fmt` formats Python, Rust, Go, and C.
 
 ### Fixed
+- Rust panicked (instead of rejecting) on WIDs containing non-ASCII Unicode
+  digits; `\d` → `[0-9]` in all parser regexes. The sh implementation
+  *accepted* such digits in some locales (bash `[0-9]` follows locale
+  collation) and now uses spelled-out classes. New Unicode-digit fixtures in
+  `invalid.json` pin all six.
+- C: validate/parse disagreed on HLC nodes ≥ 64 chars, and the HLC generator
+  silently truncated long nodes (now rejects; `WID_MAX_NODE_LEN`). New
+  long-node fixture in `valid.json`.
+- C: canonical `KEY=VALUE` values were silently snprintf-truncated, so e.g.
+  an over-long `WID=` signed a different message than the other five; values
+  are now argv pointers (no limits), and over-long w-otp secrets error.
+- C ignored `M=true` (ms shorthand); it now forces `T=ms` like the other five.
+- TypeScript `w-otp` time-window extraction mapped years 0001–0099 to
+  1901–1999 (`Date.UTC` legacy mapping); the literal year is now pinned.
 - Go ms mode minted duplicate WIDs (the time layout's bare `000` is a
   literal, so real milliseconds were dropped); ms-mode uniqueness is now a
   conformance case (`stream_ms_bounded_unique`) for all six implementations.

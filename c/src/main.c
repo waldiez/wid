@@ -94,6 +94,12 @@ static bool is_kv_arg(const char *s) {
     return s && strchr(s, '=') != NULL;
 }
 
+/* String values are const char* views into argv (or literal defaults), never
+ * copies: fixed buffers silently snprintf-truncated long values, so e.g.
+ * `A=sign WID=<600 bytes>` signed a *different* message than the other five
+ * implementations, and SIG/KEY/DATA suffered the same fate. argv outlives the
+ * whole run, so no copy is needed. Only A and MODE stay as small mutable
+ * buffers (they are lowercased in place); their parser rejects truncation. */
 typedef struct {
     char A[32];
     int W;
@@ -104,19 +110,19 @@ typedef struct {
      * to the Rust-only service loops, not streaming. */
     bool L_explicit;
     int N;
-    char T[8];
-    char D[256];
-    char I[32];
-    char E[64];
-    char R[32];
-    char M[16];
-    char WID[512];
-    char KEY[PATH_MAX];
-    char SIG[1024];
-    char DATA[PATH_MAX];
-    char OUT[PATH_MAX];
+    const char *T;
+    const char *D;
+    const char *I;
+    const char *E;
+    const char *R;
+    const char *M;
+    const char *WID;
+    const char *KEY;
+    const char *SIG;
+    const char *DATA;
+    const char *OUT;
     char MODE[16];
-    char CODE[64];
+    const char *CODE;
     int DIGITS;
     int MAX_AGE_SEC;
     int MAX_FUTURE_SEC;
@@ -140,6 +146,19 @@ static bool is_transport(const char *s) {
     return strcmp(s, "null") == 0 || strcmp(s, "stdout") == 0 || strcmp(s, "auto") == 0;
 }
 
+/* Canonical boolean test (1/true/yes/y/on, case-insensitive), matching
+ * is_true in sh/wid and the Rust/Python/TS/Go parsers. */
+static bool is_true_flag(const char *v) {
+    static const char *tokens[] = {"1", "true", "yes", "y", "on"};
+    for (size_t i = 0; i < sizeof(tokens) / sizeof(tokens[0]); i++) {
+        const char *t = tokens[i];
+        size_t j = 0;
+        while (v[j] && t[j] && tolower((unsigned char)v[j]) == (unsigned char)t[j]) j++;
+        if (v[j] == '\0' && t[j] == '\0') return true;
+    }
+    return false;
+}
+
 static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
     strcpy(o->A, "next");
     o->W = 4;
@@ -147,19 +166,19 @@ static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
     o->L = 3600;
     o->L_explicit = false;
     o->N = 0;
-    strcpy(o->T, "sec");
-    strcpy(o->D, "");
-    strcpy(o->I, "auto");
-    strcpy(o->E, "state");
-    strcpy(o->R, "auto");
-    strcpy(o->M, "false");
-    o->WID[0] = '\0';
-    o->KEY[0] = '\0';
-    o->SIG[0] = '\0';
-    o->DATA[0] = '\0';
-    o->OUT[0] = '\0';
+    o->T = "sec";
+    o->D = "";
+    o->I = "auto";
+    o->E = "state";
+    o->R = "auto";
+    o->M = "false";
+    o->WID = "";
+    o->KEY = "";
+    o->SIG = "";
+    o->DATA = "";
+    o->OUT = "";
     o->MODE[0] = '\0';
-    o->CODE[0] = '\0';
+    o->CODE = "";
     o->DIGITS = 6;
     o->MAX_AGE_SEC = 0;
     o->MAX_FUTURE_SEC = 5;
@@ -172,7 +191,9 @@ static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
 
         if (klen == 1 && argv[i][0] == 'A') {
             if (strcmp(v, "#") == 0) v = "next";
-            snprintf(o->A, sizeof(o->A), "%s", v);
+            /* A is lowercased in place below, so it stays a copy; reject
+             * truncation (every real action name fits comfortably). */
+            if (snprintf(o->A, sizeof(o->A), "%s", v) >= (int)sizeof(o->A)) return false;
         } else if (klen == 1 && argv[i][0] == 'W') {
             if (strcmp(v, "#") == 0) v = "4";
             if (!parse_int(v, &o->W)) return false;
@@ -188,36 +209,38 @@ static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
             if (!parse_int(v, &o->N)) return false;
         } else if (klen == 1 && argv[i][0] == 'T') {
             if (strcmp(v, "#") == 0) v = "sec";
-            snprintf(o->T, sizeof(o->T), "%s", v);
+            o->T = v;
         } else if (klen == 1 && argv[i][0] == 'D') {
             if (strcmp(v, "#") == 0) v = "";
-            snprintf(o->D, sizeof(o->D), "%s", v);
+            o->D = v;
         } else if (klen == 1 && argv[i][0] == 'I') {
             if (strcmp(v, "#") == 0) v = "auto";
-            snprintf(o->I, sizeof(o->I), "%s", v);
+            o->I = v;
         } else if (klen == 1 && argv[i][0] == 'E') {
             if (strcmp(v, "#") == 0) v = "state";
-            snprintf(o->E, sizeof(o->E), "%s", v);
+            o->E = v;
         } else if (klen == 1 && argv[i][0] == 'R') {
             if (strcmp(v, "#") == 0) v = "auto";
-            snprintf(o->R, sizeof(o->R), "%s", v);
+            o->R = v;
         } else if (klen == 1 && argv[i][0] == 'M') {
             if (strcmp(v, "#") == 0) v = "false";
-            snprintf(o->M, sizeof(o->M), "%s", v);
+            o->M = v;
         } else if (klen == 3 && strncmp(argv[i], "WID", 3) == 0) {
-            snprintf(o->WID, sizeof(o->WID), "%s", v);
+            o->WID = v;
         } else if (klen == 3 && strncmp(argv[i], "KEY", 3) == 0) {
-            snprintf(o->KEY, sizeof(o->KEY), "%s", v);
+            o->KEY = v;
         } else if (klen == 3 && strncmp(argv[i], "SIG", 3) == 0) {
-            snprintf(o->SIG, sizeof(o->SIG), "%s", v);
+            o->SIG = v;
         } else if (klen == 4 && strncmp(argv[i], "DATA", 4) == 0) {
-            snprintf(o->DATA, sizeof(o->DATA), "%s", v);
+            o->DATA = v;
         } else if (klen == 3 && strncmp(argv[i], "OUT", 3) == 0) {
-            snprintf(o->OUT, sizeof(o->OUT), "%s", v);
+            o->OUT = v;
         } else if (klen == 4 && strncmp(argv[i], "MODE", 4) == 0) {
-            snprintf(o->MODE, sizeof(o->MODE), "%s", v);
+            /* MODE is lowercased into a copy in run_wotp; reject truncation
+             * so an over-long value errors instead of aliasing gen/verify. */
+            if (snprintf(o->MODE, sizeof(o->MODE), "%s", v) >= (int)sizeof(o->MODE)) return false;
         } else if (klen == 4 && strncmp(argv[i], "CODE", 4) == 0) {
-            snprintf(o->CODE, sizeof(o->CODE), "%s", v);
+            o->CODE = v;
         } else if (klen == 6 && strncmp(argv[i], "DIGITS", 6) == 0) {
             if (strcmp(v, "#") == 0) v = "6";
             if (!parse_int(v, &o->DIGITS)) return false;
@@ -239,6 +262,11 @@ static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
     } else if (strcmp(o->A, "hc") == 0) {
         strcpy(o->A, "healthcheck");
     }
+
+    /* M is the ms-mode shorthand: it forces T=ms, matching the other five
+     * implementations (this flag used to be parsed here but never applied,
+     * so `M=true` silently emitted second-precision IDs). */
+    if (is_true_flag(o->M)) o->T = "ms";
 
     if (is_core_action(o->A) && strcmp(o->T, "sec") != 0 && strcmp(o->T, "ms") != 0) {
         fprintf(stderr, "error: T=%s not supported in C implementation (use sec|ms)\n", o->T);
@@ -621,15 +649,20 @@ static int run_verify(const canon_opts_t *c) {
     return 1;
 }
 
+/* 0 = ok, 1 = empty secret, 2 = secret too long for the buffer. A too-long
+ * secret must be an error, not a silent truncation: a truncated secret would
+ * HMAC to a different OTP than the other five implementations. */
 static int resolve_wotp_secret(const char *raw, char *out, size_t out_sz) {
     if (!raw || !*raw) return 1;
     FILE *f = fopen(raw, "rb");
     if (!f) {
-        snprintf(out, out_sz, "%s", raw);
+        if (snprintf(out, out_sz, "%s", raw) >= (int)out_sz) return 2;
         return 0;
     }
     size_t n = fread(out, 1, out_sz - 1, f);
+    int overflow = fgetc(f);
     fclose(f);
+    if (overflow != EOF) return 2;
     out[n] = '\0';
     while (n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r' || out[n - 1] == ' ' || out[n - 1] == '\t')) {
         out[--n] = '\0';
@@ -710,23 +743,28 @@ static int run_wotp(const canon_opts_t *c, wid_time_unit_t unit) {
         return 1;
     }
     char secret[PATH_MAX];
-    if (resolve_wotp_secret(c->KEY, secret, sizeof(secret)) != 0) {
+    switch (resolve_wotp_secret(c->KEY, secret, sizeof(secret))) {
+    case 0:
+        break;
+    case 2:
+        fprintf(stderr, "error: w-otp secret exceeds %d bytes\n", PATH_MAX - 1);
+        return 1;
+    default:
         fprintf(stderr, "error: w-otp secret cannot be empty\n");
         return 1;
     }
-    char widv[WID_MAX_LEN];
+    /* Use the caller's WID as-is (no length limit — the other five
+     * implementations accept any WID string here); the fixed buffer is only
+     * needed for the auto-generated MODE=gen case. */
+    char genbuf[WID_MAX_LEN];
+    const char *widv;
     if (c->WID[0]) {
-        /* Reject an over-long WID rather than silently truncating it (a valid
-         * WID is far shorter than WID_MAX_LEN). Checking the return also keeps
-         * -Wformat-truncation satisfied across compilers. */
-        if (snprintf(widv, sizeof(widv), "%s", c->WID) >= (int)sizeof(widv)) {
-            fprintf(stderr, "error: WID exceeds %d bytes\n", WID_MAX_LEN - 1);
-            return 1;
-        }
+        widv = c->WID;
     } else if (strcmp(mode, "gen") == 0) {
         wid_gen_t g;
         wid_gen_init_ex(&g, c->W, c->Z, unit);
-        wid_gen_next(&g, widv, sizeof(widv));
+        wid_gen_next(&g, genbuf, sizeof(genbuf));
+        widv = genbuf;
     } else {
         fprintf(stderr, "error: WID=<wid_string> required for A=w-otp MODE=verify\n");
         return 1;
@@ -885,7 +923,12 @@ static bool parse_opts(int argc, char **argv, int start, bool allow_count, cli_o
     if (o->W <= 0 || o->Z < 0) return false;
     if (o->W > WID_MAX_W || o->Z > WID_MAX_Z) return false;
     if (o->count < 0) return false;
-    if (strcmp(o->kind, "hlc") == 0 && !wid_valid_node(o->node)) return false;
+    /* Generator nodes are bounded by the fixed hlc_wid_gen_t buffer; reject
+     * here so the user gets a clean error instead of a silent init failure. */
+    if (strcmp(o->kind, "hlc") == 0 &&
+        (!wid_valid_node(o->node) || strlen(o->node) > WID_MAX_NODE_LEN)) {
+        return false;
+    }
     return true;
 }
 

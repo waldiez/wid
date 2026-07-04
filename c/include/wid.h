@@ -44,6 +44,12 @@
 #define HLC_DEFAULT_NODE "c"
 #define WID_MAX_W 18
 #define WID_MAX_Z 64
+/* Generator-side node limit (C only; the spec has no upper bound). Chosen so
+ * a worst-case HLC-WID (ms timestamp 18 + '.' + W=18 counter + 'Z' + '-' +
+ * node + '-' + Z=64 pad + NUL = 167 bytes) always fits a WID_MAX_LEN output
+ * buffer. Parsing accepts nodes up to WID_MAX_LEN-1 (see parsed_hlc_wid_t);
+ * generation rejects (never truncates) nodes longer than this. */
+#define WID_MAX_NODE_LEN 63
 
 typedef enum {
     WID_TIME_SEC = 0,
@@ -63,7 +69,7 @@ typedef struct {
     int W;
     int Z;
     wid_time_unit_t time_unit;
-    char node[64];
+    char node[WID_MAX_NODE_LEN + 1];
     int64_t pt;
     int64_t lc;
     int64_t max_lc;
@@ -93,7 +99,11 @@ typedef struct {
     int second;
     int millisecond;
     int64_t logical_counter;
-    char node[64];
+    /* Sized to WID_MAX_LEN so any node that fits in a WID_MAX_LEN identifier
+     * also fits here: validate and parse must accept exactly the same nodes
+     * (a smaller buffer made parse reject 64+-char nodes that validate — and
+     * every other language implementation — accepted). */
+    char node[WID_MAX_LEN];
     bool has_padding;
     char padding[WID_MAX_Z + 1];
 } parsed_hlc_wid_t;
@@ -324,6 +334,10 @@ static inline bool hlc_wid_validate_ex(const char *wid, int W, int Z, wid_time_u
 
     int node_len = suffix_dash ? (int)(suffix_dash - node_start) : (int)strlen(node_start);
     if (node_len <= 0) return false;
+    /* C-only bound (fixed buffers, no allocation): the node must fit
+     * parsed_hlc_wid_t.node (WID_MAX_LEN) so validate and parse always agree.
+     * The spec itself puts no upper bound on node length. */
+    if (node_len >= WID_MAX_LEN) return false;
 
     if (!suffix_dash) return true;
     return wid_valid_suffix(suffix_dash, Z);
@@ -461,7 +475,9 @@ static inline bool hlc_wid_parse(const char *wid, int W, int Z, parsed_hlc_wid_t
 void arc4random_buf(void *buf, size_t nbytes);
 #endif
 
-/* Fill buf with len random lowercase hex chars (not crypto-grade). */
+/* Fill buf with len random lowercase hex chars. Entropy comes from a real
+ * CSPRNG (arc4random_buf / /dev/urandom) wherever one is reachable; only the
+ * documented last-resort fallback below degrades to seeded rand(). */
 static inline void wid_random_hex(char *buf, int len) {
     static const char hex[] = "0123456789abcdef";
     /* One random byte is consumed per hex char, so the buffer must hold up to
@@ -664,6 +680,11 @@ static inline bool hlc_wid_gen_init_ex(
     wid_time_unit_t unit
 ) {
     if (!wid_valid_node(node)) return false;
+    /* Reject a node that does not fit the fixed buffer instead of silently
+     * strncpy-truncating it: a truncated node would mint IDs carrying a
+     * different node than the caller asked for. This bool-returning init can
+     * report the error, so it must (unlike wid_gen_init_ex's void clamp). */
+    if (strlen(node) > WID_MAX_NODE_LEN) return false;
 
     gen->W = W > 0 ? W : WID_DEFAULT_W;
     gen->Z = Z >= 0 ? Z : 0;

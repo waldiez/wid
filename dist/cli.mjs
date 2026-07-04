@@ -7,7 +7,7 @@ import {
   parseWid,
   validateHlcWid,
   validateWid
-} from "./chunk-KFWQIICI.mjs";
+} from "./chunk-HT4K3XCF.mjs";
 
 // typescript/src/cli.ts
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -436,7 +436,10 @@ function wotpWidTickMs(wid) {
   const mm = Number(hms.slice(2, 4));
   const ss = Number(hms.slice(4, 6));
   const msec = Number(ms);
-  const tick = Date.UTC(y, mo - 1, d, hh, mm, ss, msec);
+  const dt = /* @__PURE__ */ new Date(0);
+  dt.setUTCFullYear(y, mo - 1, d);
+  dt.setUTCHours(hh, mm, ss, msec);
+  const tick = dt.getTime();
   if (!Number.isFinite(tick)) throw new Error("WID timestamp is invalid for time-window verification");
   return tick;
 }
@@ -527,8 +530,9 @@ function sqlAllocateNextWid(c) {
         const updated = casStmt.run(nextState.lastSec, nextState.lastSeq, key, row.last_tick, row.last_seq);
         if ((updated.changes ?? 0) === 1) return id;
       } catch (e) {
+        const errcode = e.errcode;
         const msg = e.message ?? "";
-        if (msg.includes("database is locked")) continue;
+        if (errcode === 5 || msg.includes("database is locked")) continue;
         throw e;
       }
     }

@@ -9,6 +9,8 @@ use chrono::{DateTime, TimeZone, Timelike, Utc};
 use once_cell::sync::Lazy;
 use rand::random_range;
 use regex::Regex;
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
@@ -45,7 +47,7 @@ pub enum WidError {
 }
 
 /// Timestamp precision mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TimeUnit {
     /// Second precision (`YYYYMMDDTHHMMSS`).
     Sec,
@@ -127,11 +129,15 @@ impl ParsedWid {
     }
 }
 
+// [0-9], never \d: in this crate's regex engine \d matches Unicode decimal
+// digits (\p{Nd}), and the captured date/time fields are byte-sliced below —
+// a multi-byte digit (e.g. Devanagari ०) then panics on a char boundary.
+// Go/JS \d is ASCII-only and Python already uses [0-9] for the same reason.
 static WID_PATTERN_W4_Z6_SEC: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^(\d{8})T(\d{6})\.(\d{4})Z(?:-([0-9a-f]{6}))?$").unwrap());
+    Lazy::new(|| Regex::new(r"^([0-9]{8})T([0-9]{6})\.([0-9]{4})Z(?:-([0-9a-f]{6}))?$").unwrap());
 
 fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
-    let seq_part = format!(r"(\d{{{w}}})");
+    let seq_part = format!(r"([0-9]{{{w}}})");
     let time_digits = match time_unit {
         TimeUnit::Sec => 6,
         TimeUnit::Ms => 9,
@@ -142,11 +148,34 @@ fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
         r"$".to_string()
     };
 
-    let pattern = format!(r"^(\d{{8}})T(\d{{{time_digits}}})\.{seq_part}Z{pad_part}");
+    let pattern = format!(r"^([0-9]{{8}})T([0-9]{{{time_digits}}})\.{seq_part}Z{pad_part}");
     Regex::new(&pattern).unwrap()
 }
 
-fn parse_timestamp(time_unit: TimeUnit, date_str: &str, time_str: &str) -> Option<DateTime<Utc>> {
+/// Compiled-pattern cache for non-default (W, Z, unit) shapes: recompiling
+/// on every parse/validate call made those shapes pay a full regex build
+/// each time while W=4/Z=6/sec had a cached fast path (the other language
+/// implementations cache every shape). `Regex` clones share the compiled
+/// program, so handing out clones is cheap.
+pub(crate) type PatternCache = Lazy<Mutex<HashMap<(usize, usize, TimeUnit), Regex>>>;
+
+static WID_PATTERN_CACHE: PatternCache = Lazy::new(|| Mutex::new(HashMap::new()));
+
+fn cached_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
+    let mut cache = WID_PATTERN_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    cache
+        .entry((w, z, time_unit))
+        .or_insert_with(|| build_pattern(w, z, time_unit))
+        .clone()
+}
+
+pub(crate) fn parse_timestamp(
+    time_unit: TimeUnit,
+    date_str: &str,
+    time_str: &str,
+) -> Option<DateTime<Utc>> {
     let year: i32 = date_str[0..4].parse().ok()?;
     // SPEC.md: valid years are 0001-9999. chrono would accept year 0, but
     // Python's datetime cannot represent it, so it is rejected uniformly.
@@ -201,9 +230,9 @@ pub fn parse_wid_with_unit(
     }
 
     let pattern = if w == 4 && z == 6 && time_unit == TimeUnit::Sec {
-        &*WID_PATTERN_W4_Z6_SEC
+        WID_PATTERN_W4_Z6_SEC.clone()
     } else {
-        &build_pattern(w, z, time_unit)
+        cached_pattern(w, z, time_unit)
     };
 
     let caps = pattern
@@ -415,6 +444,20 @@ mod tests {
             0,
             TimeUnit::Ms
         ));
+    }
+
+    #[test]
+    fn test_unicode_digits_rejected_without_panic() {
+        // \d in the old patterns matched Unicode digits; the byte-slicing
+        // timestamp parser then panicked mid-char. Must be a clean false.
+        assert!(!validate_wid("२०२६०२१२T०९१५३०.००००Z", 4, 0)); // Devanagari (3-byte)
+        assert!(!validate_wid("٢٠٢٦٠٢١٢T٠٩١٥٣٠.٠٠٠٠Z", 4, 0)); // Arabic-Indic (2-byte)
+        assert!(matches!(
+            parse_wid("२०२६०२१२T०९१५३०.००००Z", 4, 0),
+            Err(WidError::InvalidFormat(_))
+        ));
+        // Mixed: ASCII date, Unicode sequence digits.
+        assert!(!validate_wid("20260212T091530.००००Z", 4, 0));
     }
 
     #[test]

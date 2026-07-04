@@ -3,7 +3,15 @@
  * Format: YYYYMMDDTHHMMSS[mmm].<seqW>Z[-<padZ>]
  */
 
-import { type TimeUnit, clampTick, parseWidTimestamp, timeDigits } from "./time";
+import {
+  type TimeUnit,
+  clampTick,
+  formatTickTimestamp,
+  hexRe,
+  parseWidTimestamp,
+  randomHexChars,
+  timeDigits,
+} from "./time";
 
 /**
  * Maximum sequence/logical-counter width. 10^18 - 1 is the largest all-nines
@@ -226,8 +234,6 @@ export interface AsyncWidStreamOptions extends WidGenOptions {
 
 /** Cache of regex instances for base WID formats per width/unit. */
 const WID_BASE_RE_CACHE = new Map<string, RegExp>();
-/** Cache for padding-hex validation patterns keyed by width. */
-const HEX_RE_CACHE = new Map<number, RegExp>();
 
 function widBaseRe(W: number, unit: TimeUnit): RegExp {
   const key = `${W}:${unit}`;
@@ -236,27 +242,6 @@ function widBaseRe(W: number, unit: TimeUnit): RegExp {
   const re = new RegExp(`^(\\d{8})T(\\d{${timeDigits(unit)}})\\.(\\d{${W}})Z(.*)?$`);
   WID_BASE_RE_CACHE.set(key, re);
   return re;
-}
-
-function hexRe(Z: number): RegExp {
-  const cached = HEX_RE_CACHE.get(Z);
-  if (cached) return cached;
-  const re = new RegExp(`^[0-9a-f]{${Z}}$`);
-  HEX_RE_CACHE.set(Z, re);
-  return re;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function randomHexChars(Z: number): string {
-  if (!globalThis.crypto?.getRandomValues) {
-    throw new Error("Secure random generator unavailable in this runtime");
-  }
-  const bytes = new Uint8Array(Math.ceil(Z / 2));
-  globalThis.crypto.getRandomValues(bytes);
-  return bytesToHex(bytes).slice(0, Z);
 }
 
 /**
@@ -414,20 +399,7 @@ export class WidGen {
     const tick = clampTick(rawTick, this.timeUnit);
     if (tick !== this.cachedSec) {
       this.cachedSec = tick;
-      const sec = this.timeUnit === "ms" ? Math.floor(tick / 1000) : tick;
-      const ms = this.timeUnit === "ms" ? tick % 1000 : 0;
-      const d = new Date(sec * 1000);
-      const year = d.getUTCFullYear();
-      const month = String(d.getUTCMonth() + 1).padStart(2, "0");
-      const day = String(d.getUTCDate()).padStart(2, "0");
-      const hour = String(d.getUTCHours()).padStart(2, "0");
-      const minute = String(d.getUTCMinutes()).padStart(2, "0");
-      const second = String(d.getUTCSeconds()).padStart(2, "0");
-      const milli = String(ms).padStart(3, "0");
-      this.cachedTs =
-        this.timeUnit === "ms"
-          ? `${year}${month}${day}T${hour}${minute}${second}${milli}`
-          : `${year}${month}${day}T${hour}${minute}${second}`;
+      this.cachedTs = formatTickTimestamp(tick, this.timeUnit);
     }
     return this.cachedTs;
   }

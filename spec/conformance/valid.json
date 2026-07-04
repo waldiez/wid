@@ -208,6 +208,18 @@
         "sequence": 0,
         "padding": null
       }
+    },
+    {
+      "id": "hlc_long_node_70_chars",
+      "wid": "20260212T091530.0000Z-nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+      "type": "hlc",
+      "params": {"W": 4, "Z": 0},
+      "expected": {
+        "valid": true,
+        "sequence": 0,
+        "node": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "padding": null
+      }
     }
   ]
 }

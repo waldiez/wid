@@ -57,7 +57,8 @@ async function sha256Hex(data: Uint8Array): Promise<string> {
   if (!globalThis.crypto?.subtle) {
     throw new Error('Web Crypto API (crypto.subtle) is unavailable in this runtime');
   }
-  // @ts-expect-error sth with Uint8Array
+  // @ts-expect-error TS 5.9 types digest() as BufferSource<ArrayBuffer>, which
+  // rejects Uint8Array<ArrayBufferLike>; the runtime accepts any typed array.
   const digest = await globalThis.crypto.subtle.digest('SHA-256', data);
   return toHex(new Uint8Array(digest));
 }

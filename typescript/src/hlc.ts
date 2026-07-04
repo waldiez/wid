@@ -3,7 +3,15 @@
  * Format: YYYYMMDDTHHMMSS[mmm].<lcW>Z-<node>[-<padZ>]
  */
 
-import { type TimeUnit, clampTick, parseWidTimestamp, timeDigits } from "./time";
+import {
+  type TimeUnit,
+  clampTick,
+  formatTickTimestamp,
+  hexRe,
+  parseWidTimestamp,
+  randomHexChars,
+  timeDigits,
+} from "./time";
 import { MAX_W, MAX_Z } from "./wid";
 
 /** Parsed components of an HLC-WID after a successful parse. */
@@ -42,8 +50,6 @@ export interface HLCWidGenOptions {
 
 /** Cache for HLC-WID regex instances per width/time unit pair. */
 const HLC_BASE_RE_CACHE = new Map<string, RegExp>();
-/** Cache for hex validation patterns keyed by padding length. */
-const HEX_RE_CACHE = new Map<number, RegExp>();
 /** Node identifier pattern reused by HLC generators. */
 const NODE_RE = /^[A-Za-z0-9_]+$/;
 
@@ -54,25 +60,6 @@ function hlcBaseRe(W: number, unit: TimeUnit): RegExp {
   const re = new RegExp(`^(\\d{8})T(\\d{${timeDigits(unit)}})\\.(\\d{${W}})Z-([A-Za-z0-9_]+)(.*)$`);
   HLC_BASE_RE_CACHE.set(key, re);
   return re;
-}
-
-function hexRe(Z: number): RegExp {
-  const cached = HEX_RE_CACHE.get(Z);
-  if (cached) return cached;
-  const re = new RegExp(`^[0-9a-f]{${Z}}$`);
-  HEX_RE_CACHE.set(Z, re);
-  return re;
-}
-
-function randomHexChars(Z: number): string {
-  if (!globalThis.crypto?.getRandomValues) {
-    throw new Error("Secure random generator unavailable in this runtime");
-  }
-  const bytes = new Uint8Array(Math.ceil(Z / 2));
-  globalThis.crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, Z);
 }
 
 function isValidNode(node: string): boolean {
@@ -165,20 +152,7 @@ export class HLCWidGen {
     const tick = clampTick(rawTick, this.timeUnit);
     if (tick !== this.cachedTick) {
       this.cachedTick = tick;
-      const sec = this.timeUnit === "ms" ? Math.floor(tick / 1000) : tick;
-      const ms = this.timeUnit === "ms" ? tick % 1000 : 0;
-      const d = new Date(sec * 1000);
-      const year = d.getUTCFullYear();
-      const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
-      const dy = String(d.getUTCDate()).padStart(2, "0");
-      const hr = String(d.getUTCHours()).padStart(2, "0");
-      const mi = String(d.getUTCMinutes()).padStart(2, "0");
-      const sc = String(d.getUTCSeconds()).padStart(2, "0");
-      const milli = String(ms).padStart(3, "0");
-      this.cachedTs =
-        this.timeUnit === "ms"
-          ? `${year}${mo}${dy}T${hr}${mi}${sc}${milli}`
-          : `${year}${mo}${dy}T${hr}${mi}${sc}`;
+      this.cachedTs = formatTickTimestamp(tick, this.timeUnit);
     }
     return this.cachedTs;
   }
