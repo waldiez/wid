@@ -1,0 +1,58 @@
+name: Conformance divergence
+description: Two or more implementations disagree on the same input.
+title: "[divergence] "
+labels: ["conformance"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Divergences are the highest-priority defect class in this repository:
+        the six CLIs promise identical behavior for the shared surface, and CI
+        enforces it through `spec/conformance/` fixtures. A confirmed
+        divergence almost always ends with a fix **and** a new fixture pinning
+        it.
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      placeholder: d267bfa
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command (identical for every implementation)
+      render: shell
+      placeholder: |
+        <impl> A=w-otp MODE=gen KEY=c2VjcmV0PT0= WID=20260217T143052.0000Z-a3f91c
+    validations:
+      required: true
+  - type: textarea
+    id: outputs
+    attributes:
+      label: Per-implementation output
+      description: >-
+        Output and exit code for each implementation you ran. A table or one
+        block per implementation both work.
+      render: shell
+      placeholder: |
+        rust:       {"wid":"…","otp":"112374","digits":6}   rc=0
+        typescript: {"wid":"…","otp":"745362","digits":6}   rc=0   <-- diverges
+        python:     {"wid":"…","otp":"112374","digits":6}   rc=0
+    validations:
+      required: true
+  - type: textarea
+    id: expectation
+    attributes:
+      label: Which behavior is correct, and why?
+      description: >-
+        Cite the spec section if it decides the question; if the spec is
+        silent, say so — that usually means the fix includes a spec
+        clarification.
+  - type: checkboxes
+    id: harness
+    attributes:
+      label: Harness coverage
+      options:
+        - label: "I ran `make cli-surface-check` / `make id-conformance` and the divergence is NOT already caught there"
+        - label: I can propose a fixture case (`spec/conformance/*.json`) that would have caught this

@@ -1,0 +1,76 @@
+name: Bug report
+description: One implementation misbehaves (wrong output, crash, bad exit code).
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        If two or more implementations **disagree with each other**, use the
+        *Conformance divergence* template instead — that is tracked as its own
+        class of defect here.
+  - type: dropdown
+    id: implementation
+    attributes:
+      label: Implementation
+      options:
+        - Rust
+        - C
+        - Go
+        - Python
+        - TypeScript
+        - sh
+        - build / Makefile / tooling
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or version
+      description: "`git rev-parse --short HEAD` (no releases are tagged yet)."
+      placeholder: d267bfa
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Exact command
+      description: >-
+        The full invocation, including canonical (`A=… W=… Z=…`) or flag mode
+        and any relevant environment (cwd matters for `E=sql`).
+      render: shell
+      placeholder: |
+        PYTHONPATH=python python3 -m wid A=w-otp MODE=gen KEY=abc=def WID=20260217T143052.0000Z-a3f91c
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: >-
+        What the spec (spec/SPEC.md, spec/CRYPTO_SPEC.md, spec/quick-usage.md)
+        or the other implementations say should happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Output, stderr, and exit code (`echo $?`).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, and the toolchain for the affected implementation.
+      placeholder: |
+        Ubuntu 24.04, rustc 1.88 / go 1.24 / node 22.5 / python 3.12 / bash 5.2
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: Local gates
+      options:
+        - label: "`make quick-check` still passes on my machine"
+        - label: I checked whether a fixture in `spec/conformance/` already covers this case

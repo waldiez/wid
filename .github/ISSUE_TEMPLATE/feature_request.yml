@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose new behavior, CLI surface, or spec extension.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Anything that touches the shared CLI surface or identifier grammar
+        must land in **all six implementations plus conformance fixtures** in
+        the same change — one-language features are only accepted for
+        documented per-language extensions (like the Rust service layer or
+        the Rust/TS manifest module).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today, and in which context?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: >-
+        Sketch the surface: canonical keys (`KEY=VALUE`), flags, defaults,
+        error cases. Concrete invocations with expected output are ideal.
+      render: shell
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Shared surface (all six implementations + fixtures)
+        - Spec change (spec/SPEC.md or spec/CRYPTO_SPEC.md)
+        - Documented single-language extension
+        - Tooling / CI / docs only
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

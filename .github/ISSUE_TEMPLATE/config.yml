@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability (private)
+    url: https://github.com/waldiez/wid/security/advisories/new
+    about: >-
+      Please report security issues privately via GitHub's advisory flow
+      (or email development@waldiez.io) — never in a public issue.
+  - name: Read the specification first
+    url: https://github.com/waldiez/wid/blob/main/spec/SPEC.md
+    about: >-
+      The identifier grammar lives in spec/SPEC.md and the crypto surface in
+      spec/CRYPTO_SPEC.md — most "is this a bug?" questions are answered
+      there. Open a blank issue for spec questions the documents don't
+      settle.
