@@ -117,7 +117,16 @@ export function createBrowserWidStateStore(prefix = "wid"): WidStateStore {
   return new BrowserLocalStorageWidStateStore(prefix);
 }
 
-/** SQLite-backed store for Node environments that support `node:sqlite`. */
+/**
+ * SQLite-backed store for Node environments that support `node:sqlite`.
+ *
+ * Warning: `save()` is a plain last-writer-wins upsert, so this store is safe
+ * for a **single process** persisting/resuming its own generator only. It does
+ * not serialize concurrent writers: two processes generating against the same
+ * database can interleave and mint duplicate WIDs. For multi-process /
+ * multi-language coordination use the CLI's `E=sql` mode, which allocates each
+ * WID through a compare-and-swap on the state row.
+ */
 class NodeSqliteWidStateStore implements WidStateStore {
   private readonly db: {
     exec: (sql: string) => void;
@@ -182,7 +191,11 @@ function resolveNodeSqliteDatabaseSync(): new (path: string) => {
   throw new Error("node:sqlite unavailable in this Node runtime");
 }
 
-/** Node factory that requires the `node:sqlite` module for persistence. */
+/**
+ * Node factory that requires the `node:sqlite` module for persistence.
+ * Single-process only — see {@link NodeSqliteWidStateStore}'s warning about
+ * concurrent writers; multi-process coordination is the CLI `E=sql` path.
+ */
 export function createNodeSqliteWidStateStore(databasePath: string, prefix = "wid"): WidStateStore {
   return new NodeSqliteWidStateStore(databasePath, prefix);
 }

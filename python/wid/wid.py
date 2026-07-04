@@ -60,7 +60,15 @@ class MemoryWidStateStore(WidStateStore):
 
 @final
 class SqliteWidStateStore(WidStateStore):
-    """SQLite-backed Wid state store."""
+    """SQLite-backed Wid state store.
+
+    Warning: ``save()`` is a plain last-writer-wins upsert, so this store is
+    safe for a **single process** persisting/resuming its own generator only.
+    It does not serialize concurrent writers: two processes generating against
+    the same database can interleave and mint duplicate WIDs. For
+    multi-process/multi-language coordination use the CLI's ``E=sql`` mode,
+    which allocates each WID through a compare-and-swap on the state row.
+    """
 
     def __init__(self, database_path: str, prefix: str = "wid") -> None:
         """Initialize SQLite store."""

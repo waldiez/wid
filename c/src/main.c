@@ -140,17 +140,6 @@ static bool is_transport(const char *s) {
     return strcmp(s, "null") == 0 || strcmp(s, "stdout") == 0 || strcmp(s, "auto") == 0;
 }
 
-static bool has_unsafe_shell_char(const char *s) {
-    if (!s) return false;
-    for (const char *p = s; *p; p++) {
-        if (*p == '\'' || *p == '"' || *p == ';' || *p == '&' || *p == '|' || *p == '`' || *p == '\n' ||
-            *p == '\r') {
-            return true;
-        }
-    }
-    return false;
-}
-
 static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
     strcpy(o->A, "next");
     o->W = 4;
@@ -256,14 +245,10 @@ static bool parse_canonical(int argc, char **argv, canon_opts_t *o) {
         return false;
     }
 
-    if (has_unsafe_shell_char(o->D) || has_unsafe_shell_char(o->I) || has_unsafe_shell_char(o->E) ||
-        has_unsafe_shell_char(o->R) || has_unsafe_shell_char(o->M) || has_unsafe_shell_char(o->A) ||
-        has_unsafe_shell_char(o->T) || has_unsafe_shell_char(o->KEY) || has_unsafe_shell_char(o->DATA) ||
-        has_unsafe_shell_char(o->OUT) || has_unsafe_shell_char(o->SIG)) {
-        fprintf(stderr, "error: unsafe characters in canonical values\n");
-        return false;
-    }
-
+    /* No shell-metacharacter filter here: the C CLI never shells out
+     * (sqlite3/libcrypto are linked directly), and rejecting quotes or `&`
+     * in KEY/DATA/OUT values made C the only implementation to refuse
+     * inputs the other five accept. */
     if (o->W <= 0 || o->Z < 0 || o->N < 0 || o->L < 0) return false;
     /* Reject out-of-range W/Z instead of silently clamping: W > 18 overflows
      * an int64 sequence, so all six implementations refuse it uniformly (the

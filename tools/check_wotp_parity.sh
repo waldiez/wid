@@ -137,6 +137,34 @@ for xw in "${XTRA_WIDS[@]}"; do
   say "Baseline OTP for $xw: $xbase"
 done
 
+# DIGITS boundary sweep (4, 6, 10): the OTP modulus is 10^DIGITS, and 10^10
+# does not fit in 32 bits — a uint32 modulus wraps to 1410065408 and a
+# saturating one clamps to 2^32-1, both of which produced codes that diverged
+# from the other implementations at DIGITS=10 while DIGITS=6 stayed green.
+# WID_DIGITS_SAMPLE is chosen so its 32-bit HMAC word under KEY_SAMPLE is
+# 0xf960d3a5 (4183872421 >= 1410065408), making wrap/saturation bugs
+# deterministically visible rather than dependent on the sample's hash value.
+WID_DIGITS_SAMPLE="20260219T000000.0003Z"
+DIGITS_SWEEP=(4 6 10)
+DIGITS_BASELINES=()
+for dd in "${DIGITS_SWEEP[@]}"; do
+  dbase=""
+  if [[ -n "${PYTHON_CMD:-}" ]]; then
+    out="$(env PYTHONPATH=python "$PYTHON_CMD" -m wid A=w-otp MODE=gen KEY="$KEY_SAMPLE" WID="$WID_DIGITS_SAMPLE" DIGITS="$dd" 2>/dev/null || true)"
+    dbase="$(extract_otp "$out")"
+  fi
+  if [[ -z "$dbase" ]]; then
+    out="$(bash sh/wid A=w-otp MODE=gen KEY="$KEY_SAMPLE" WID="$WID_DIGITS_SAMPLE" DIGITS="$dd" 2>/dev/null || true)"
+    dbase="$(extract_otp "$out")"
+  fi
+  if [[ -z "$dbase" ]]; then
+    say "Unable to resolve baseline OTP for DIGITS=$dd"
+    exit 1
+  fi
+  DIGITS_BASELINES+=("$dbase")
+  say "Baseline OTP for DIGITS=$dd ($WID_DIGITS_SAMPLE): $dbase"
+done
+
 run_case() {
   local name="$1"
   shift
@@ -217,6 +245,26 @@ run_case() {
     if [[ "$xotp" == "$xbad" ]]; then xbad="999998"; fi
     if "$@" A=w-otp MODE=verify KEY="$KEY_SAMPLE" WID="$xw" CODE="$xbad" DIGITS="$DIGITS" > /dev/null 2>"$ERR_FILE"; then
       mark_fail "$name" "verify($xw, bad code) unexpectedly succeeded"
+      return 0
+    fi
+  done
+
+  # DIGITS boundary sweep round trips (see DIGITS_SWEEP above).
+  local di dd dbase dotp
+  for di in "${!DIGITS_SWEEP[@]}"; do
+    dd="${DIGITS_SWEEP[$di]}"
+    dbase="${DIGITS_BASELINES[$di]}"
+    if ! out="$("$@" A=w-otp MODE=gen KEY="$KEY_SAMPLE" WID="$WID_DIGITS_SAMPLE" DIGITS="$dd" 2>"$ERR_FILE")"; then
+      mark_fail "$name" "gen(DIGITS=$dd) failed: $(tr '\n' ' ' < "$ERR_FILE")"
+      return 0
+    fi
+    dotp="$(extract_otp "$out")"
+    if [[ "$dotp" != "$dbase" ]]; then
+      mark_fail "$name" "otp mismatch at DIGITS=$dd (expected=$dbase got=$dotp)"
+      return 0
+    fi
+    if ! "$@" A=w-otp MODE=verify KEY="$KEY_SAMPLE" WID="$WID_DIGITS_SAMPLE" CODE="$dotp" DIGITS="$dd" > /dev/null 2>"$ERR_FILE"; then
+      mark_fail "$name" "verify(DIGITS=$dd) failed: $(tr '\n' ' ' < "$ERR_FILE")"
       return 0
     fi
   done

@@ -682,8 +682,10 @@ func computeWOtp(secret, widValue string, digits int) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(widValue))
 	sum := mac.Sum(nil)
-	v := (uint32(sum[0]) << 24) | (uint32(sum[1]) << 16) | (uint32(sum[2]) << 8) | uint32(sum[3])
-	mod := uint32(1)
+	v := (uint64(sum[0]) << 24) | (uint64(sum[1]) << 16) | (uint64(sum[2]) << 8) | uint64(sum[3])
+	// CRYPTO_SPEC: otp = value mod 10^DIGITS. The modulus must be 64-bit:
+	// DIGITS may be 10 and 10^10 wraps a uint32 (10^10 mod 2^32 = 1410065408).
+	mod := uint64(1)
 	for i := 0; i < digits; i++ {
 		mod *= 10
 	}

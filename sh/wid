@@ -834,9 +834,12 @@ run_canonical() {
             if (cd "$impl_dir" && uv run python -m wid "$@"); then
                 return 0
             fi
-        else
-            die "python runtime not found (need uv or python>=3.10)"
+            # A failed `if` condition returns 0 from the function under
+            # `set -e`, which used to make delegation failures look like
+            # success (exit 0, no output). Fail loudly instead.
+            die "python implementation failed under uv"
         fi
+        die "python runtime not found (need uv or python>=3.10)"
     }
 
     local id_impl="$I"

@@ -33,7 +33,8 @@ Millisecond mode   20260217T143052789.0042Z-e7b3a1
 
 ```bash
 git clone https://github.com/waldiez/wid && cd wid
-make next           # generate one WID via the canonical sh CLI
+make next           # one WID via sh/wid (I=auto delegates to the Python
+                    # implementation when present; I=sh forces pure shell)
 make quick-check    # fast gate across all implementations
 ```
 
@@ -222,6 +223,13 @@ When using `E=sql`, generator state (`last_tick`, `last_seq`) is persisted per k
 The state key is language-agnostic (`wid:W:Z:T`), so all six implementations
 coordinate through the same row per generator shape: different languages can
 safely share one `wid_state.sqlite` without minting duplicate WIDs.
+
+This no-duplicates guarantee applies to the **CLI `E=sql` path**, which
+allocates every WID through a compare-and-swap on the state row. The
+library-level SQLite stores (Python `SqliteWidStateStore`, TypeScript
+`createNodeSqliteWidStateStore`) are plain last-writer-wins persistence for a
+single process resuming its own generator — they do not serialize concurrent
+writers.
 
 The default database location is `<working directory>/.local/services/wid_state.sqlite`
 in every implementation, so processes only share state when they run from the

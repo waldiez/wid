@@ -55,7 +55,11 @@ declare class MemoryWidStateStore implements WidStateStore {
  */
 /** Factory that wires the browser storage-backed Wid store for web runtimes. */
 declare function createBrowserWidStateStore(prefix?: string): WidStateStore;
-/** Node factory that requires the `node:sqlite` module for persistence. */
+/**
+ * Node factory that requires the `node:sqlite` module for persistence.
+ * Single-process only — see {@link NodeSqliteWidStateStore}'s warning about
+ * concurrent writers; multi-process coordination is the CLI `E=sql` path.
+ */
 declare function createNodeSqliteWidStateStore(databasePath: string, prefix?: string): WidStateStore;
 /** Configuration options accepted by `WidGen`. */
 interface WidGenOptions {

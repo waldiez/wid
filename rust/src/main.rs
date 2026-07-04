@@ -1164,10 +1164,13 @@ fn compute_wotp(secret: &str, wid: &str, digits: usize) -> Result<String, String
     if digest.len() < 4 {
         return Err("failed to compute w-otp digest".to_string());
     }
-    let v = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]);
-    let mut m = 1u32;
+    let v = u64::from(u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]));
+    // CRYPTO_SPEC: otp = value mod 10^DIGITS. The modulus must be 64-bit:
+    // DIGITS may be 10 and 10^10 exceeds u32::MAX (saturating at u32::MAX
+    // silently produced a different code than the other implementations).
+    let mut m = 1u64;
     for _ in 0..digits {
-        m = m.saturating_mul(10);
+        m *= 10;
     }
     Ok(format!("{:0width$}", v % m, width = digits))
 }
