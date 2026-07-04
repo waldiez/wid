@@ -973,7 +973,9 @@ fn parse_canonical(args: &[String]) -> Result<CanonOpts, String> {
                 o.max_age_sec = v.parse().map_err(|_| "invalid MAX_AGE_SEC".to_string())?
             }
             "MAX_FUTURE_SEC" => {
-                o.max_future_sec = v.parse().map_err(|_| "invalid MAX_FUTURE_SEC".to_string())?
+                o.max_future_sec = v
+                    .parse()
+                    .map_err(|_| "invalid MAX_FUTURE_SEC".to_string())?
             }
             _ => return Err(format!("unknown key: {k}")),
         }
@@ -1090,8 +1092,7 @@ fn load_signing_key(path: &str) -> Result<SigningKey, String> {
 }
 
 fn load_verifying_key(path: &str) -> Result<VerifyingKey, String> {
-    let pem =
-        fs::read_to_string(path).map_err(|_| format!("public key file not found: {path}"))?;
+    let pem = fs::read_to_string(path).map_err(|_| format!("public key file not found: {path}"))?;
     VerifyingKey::from_public_key_pem(&pem)
         .map_err(|_| "invalid public key (ensure Ed25519 public key PEM)".to_string())
 }
@@ -1164,7 +1165,9 @@ fn compute_wotp(secret: &str, wid: &str, digits: usize) -> Result<String, String
     if digest.len() < 4 {
         return Err("failed to compute w-otp digest".to_string());
     }
-    let v = u64::from(u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]));
+    let v = u64::from(u32::from_be_bytes([
+        digest[0], digest[1], digest[2], digest[3],
+    ]));
     // CRYPTO_SPEC: otp = value mod 10^DIGITS. The modulus must be 64-bit:
     // DIGITS may be 10 and 10^10 exceeds u32::MAX (saturating at u32::MAX
     // silently produced a different code than the other implementations).
@@ -1199,7 +1202,11 @@ fn wotp_wid_tick_ms(wid: &str) -> Result<i64, String> {
     let hour = num(&time[0..2])?;
     let minute = num(&time[2..4])?;
     let second = num(&time[4..6])?;
-    let millis: i64 = if time.len() == 9 { time[6..9].parse().map_err(|_| err())? } else { 0 };
+    let millis: i64 = if time.len() == 9 {
+        time[6..9].parse().map_err(|_| err())?
+    } else {
+        0
+    };
     use chrono::TimeZone;
     let dt = chrono::Utc
         .with_ymd_and_hms(year, month, day, hour, minute, second)
@@ -1311,8 +1318,7 @@ fn sql_allocate_next_wid(
         .map_err(|e| format!("sql load failed: {e}"))?
         .unwrap_or((0, -1));
 
-    let mut generator =
-        WidGen::new_with_time_unit(c.w, c.z, c.t).map_err(|e| e.to_string())?;
+    let mut generator = WidGen::new_with_time_unit(c.w, c.z, c.t).map_err(|e| e.to_string())?;
     generator.restore_state(last_tick, last_seq);
     let id = generator.next_wid();
     let (next_tick, next_seq) = generator.state();

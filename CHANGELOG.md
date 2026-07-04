@@ -30,8 +30,35 @@ called out at the bottom.
   broker clients).
 - Rust/TS-only WIDM manifest module (see README "Extensions beyond the
   spec").
+- Memory-safety gates for the C implementation: `make c-sanitize` reruns the
+  unit tests and CLI selftest under ASan+UBSan (recovery disabled), and
+  `make c-fuzz` drives the header's untrusted-input parsers
+  (`wid_validate_ex`/`wid_parse_ex`, plain and HLC, including out-of-range
+  W/Z) with libFuzzer (`c/fuzz/fuzz_parse.c`). Both run in CI (`c-sanitize`
+  job) and in the publish gate. First fuzz run: ~4.3M execs, no findings.
+- Formatting is now enforced, not optional: `make rust-lint` runs
+  `cargo fmt --check`, `make go-lint` fails on unformatted files via `gofmt
+  -l` even when golangci-lint is absent (previously CI silently fell back to
+  `go vet` only), ESLint covers `typescript/test/` in addition to `src/`,
+  and `make fmt` formats Python, Rust, Go, and C.
 
 ### Fixed
+- Publish workflow: the pre-publish test job now mirrors the main CI gates
+  (stream conformance, strict CLI-surface, w-otp parity, strict crypto
+  smoke, C sanitizer) instead of a subset — a tag can no longer publish
+  code that a main-branch CI run would fail. npm publishes with
+  `--provenance`; the unconditional Docker `latest` tag was removed so a
+  prerelease tag (e.g. `v1.1.0-rc.1`) cannot hijack `latest`
+  (metadata-action's `latest=auto` applies it to stable semver tags only).
+- Pages deploy triggered only on `docs/index.html` while deploying the whole
+  `docs/` folder, silently leaving the published site stale after edits to
+  any other docs file; it now triggers on `docs/**`.
+- sh: `A=sign`/`A=verify`/selftest temp files are now removed by an EXIT
+  trap even when the script dies between `mktemp` and the eager cleanup
+  (previously an early `die` — e.g. an invalid signature encoding — leaked
+  the message/signature temp files).
+- CI Go toolchain bumped 1.22 → 1.25: 1.22 is outside Go's two-release
+  security-fix window (`go.mod` keeps `go 1.22` as the library's minimum).
 - Go and Rust `A=w-otp`: the OTP modulus (`10^DIGITS`, CRYPTO_SPEC) was
   computed in 32 bits, which cannot hold `10^10`. At `DIGITS=10` Go's
   `uint32` wrapped the modulus to `1410065408` (a *different* code than the

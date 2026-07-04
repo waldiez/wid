@@ -46,9 +46,9 @@ jobs:
           node-version: "22"
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
-          go-version: "1.22"
+          go-version: "1.25"
           cache: false
-      - run: python3 -m pip install -e ".[dev]"
+      - run: python3 -m pip install -e ".[dev,crypto,sql]"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - run: bun install --frozen-lockfile
       - run: make rust-check
@@ -56,8 +56,15 @@ jobs:
       - run: make ts-check
       - run: make go-check
       - run: make c-check
+      - run: make c-sanitize
       - run: make sh-check
+      # Cross-language gates, mirroring ci.yml: a tag must never publish code
+      # that a main-branch CI run would fail.
       - run: ID_CONFORMANCE_STRICT=1 make id-conformance
+      - run: make stream-conformance
+      - run: CLI_SURFACE_STRICT=1 make cli-surface-check
+      - run: WOTP_PARITY_STRICT=1 WOTP_PYTHON=python3 WOTP_PARITY_LANGS=sh,python,typescript,go,rust,c make wotp-parity-check
+      - run: SMOKE_CRYPTO_STRICT=1 bash tools/smoke_crypto.sh
 
   publish-pypi:
     needs: [check-versions, test]
@@ -79,6 +86,12 @@ jobs:
   publish-npm:
     needs: [check-versions, test]
     runs-on: ubuntu-latest
+    # id-token lets npm attach a build provenance attestation linking the
+    # published tarball to this repo+workflow run (PyPI gets the equivalent
+    # via OIDC trusted publishing).
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
@@ -88,7 +101,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - run: bun install --frozen-lockfile
       - run: npm run build
-      - run: npm publish --access public
+      - run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -132,10 +145,12 @@ jobs:
             ghcr.io/waldiez/wid
             docker.io/waldiez/wid
             quay.io/waldiez/wid
+          # `latest` comes from metadata-action's default `latest=auto`
+          # flavor, which applies it only to non-prerelease semver tags — a
+          # v1.1.0-rc.1 tag must not hijack `latest`.
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .

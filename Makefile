@@ -1,9 +1,9 @@
 .PHONY: all setup test check clean lint fmt \
-       rust-setup rust-test rust-check rust-clean rust-lint rust-bench rust-next \
+       rust-setup rust-test rust-check rust-clean rust-lint rust-fmt rust-bench rust-next \
        python-setup python-test python-check python-clean python-lint python-fmt python-typecheck python-next python-uninstall \
-       c-setup c-test c-check c-clean c-lint c-bench c-next \
+       c-setup c-test c-check c-clean c-lint c-fmt c-bench c-next c-sanitize c-fuzz \
        ts-setup ts-test ts-check ts-clean ts-lint ts-build ts-bench ts-next \
-       go-setup go-test go-check go-clean go-lint go-bench go-next \
+       go-setup go-test go-check go-clean go-lint go-fmt go-bench go-next \
        sh-test sh-next \
        next id stream do healthcheck start stop status sign verify otp otp-gen otp-verify crypto-demo \
        conformance bench-matrix docker capabilities-check stream-conformance id-conformance cli-surface-check crypto-smoke signed-envelope-check security-matrix-check key-rotation-drill-check soak-check envelope-compat-check release-check \
@@ -61,6 +61,8 @@ help:
 	@echo "  make soak-check"
 	@echo "  make crypto-smoke"
 	@echo "  make wotp-parity-check   # cross-language w-otp parity gate"
+	@echo "  make c-sanitize          # C tests + selftest under ASan/UBSan (clang)"
+	@echo "  make c-fuzz              # libFuzzer over the C parsers (FUZZ_SECONDS=30)"
 	@echo ""
 	@echo "Bench:"
 	@echo "  make bench-matrix        # runs benches across implementations"
@@ -83,7 +85,7 @@ clean: $(addsuffix -clean,$(LANGS))
 
 lint: rust-lint python-lint c-lint ts-lint go-lint
 
-fmt: python-fmt
+fmt: python-fmt rust-fmt go-fmt c-fmt
 
 quick-check: rust-test python-test ts-check go-test c-check sh-check next
 
@@ -108,7 +110,11 @@ rust-test:
 	cargo test
 
 rust-lint:
+	cargo fmt --check
 	cargo clippy -- -D warnings
+
+rust-fmt:
+	cargo fmt
 
 rust-check: rust-lint rust-test
 
@@ -186,6 +192,15 @@ c-clean:
 c-bench:
 	$(MAKE) -C c bench BENCH_N=$(or $(BENCH_N),50000)
 
+c-fmt:
+	$(MAKE) -C c fmt
+
+c-sanitize:
+	$(MAKE) -C c sanitize
+
+c-fuzz:
+	$(MAKE) -C c fuzz FUZZ_SECONDS=$(or $(FUZZ_SECONDS),30)
+
 c-next:
 	$(MAKE) -C c next
 
@@ -226,13 +241,24 @@ go-setup:
 go-test:
 	cd go && go test -v ./...
 
+# gofmt runs unconditionally (it ships with the toolchain, so CI always
+# enforces it); golangci-lint adds deeper checks when installed locally.
 go-lint:
+	@unformatted="$$(gofmt -l go)"; \
+	if [ -n "$$unformatted" ]; then \
+		echo "gofmt: files need formatting (run: make go-fmt):" >&2; \
+		echo "$$unformatted" >&2; \
+		exit 1; \
+	fi
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		cd go && golangci-lint run; \
 	else \
 		echo "golangci-lint not found; falling back to go vet"; \
 		cd go && go vet ./...; \
 	fi
+
+go-fmt:
+	gofmt -w go
 
 go-check: go-lint go-test
 

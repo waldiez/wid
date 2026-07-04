@@ -38,7 +38,7 @@ jobs:
           node-version: "22"
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
-          go-version: "1.22"
+          go-version: "1.25"
           cache: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable snapshot 2026-07
         with:
@@ -87,7 +87,7 @@ jobs:
           node-version: "22"
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
-          go-version: "1.22"
+          go-version: "1.25"
           cache: false
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable snapshot 2026-07
         with:
@@ -131,6 +131,19 @@ jobs:
         run: /bin/sh tools/ensure_bash.sh
       - run: make c-check
 
+  # Memory-safety gate for the one implementation where a parser miss is
+  # memory-unsafe: ASan/UBSan over the C unit tests + CLI selftest, then a
+  # bounded libFuzzer run over the header's untrusted-input parsers.
+  c-sanitize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Ensure bash exists
+        shell: /bin/sh {0}
+        run: /bin/sh tools/ensure_bash.sh
+      - run: make c-sanitize
+      - run: FUZZ_SECONDS=60 make c-fuzz
+
   typescript:
     runs-on: ubuntu-latest
     steps:
@@ -161,7 +174,7 @@ jobs:
         run: /bin/sh tools/ensure_bash.sh
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
-          go-version: "1.22"
+          go-version: "1.25"
           cache: false
       - run: make go-check
 

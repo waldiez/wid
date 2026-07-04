@@ -20,6 +20,23 @@ FMT_CACHE_TS=""
 WALL_EPOCH_BASE=""
 WALL_SECONDS_BASE=0
 
+# Temp files registered via tmp_track are removed on any exit — including
+# die/`set -e` aborts between mktemp and the eager rm on the happy path.
+# A plain space-separated string (not an array) so registration works from
+# the main shell without subshell-scope surprises; mktemp paths contain no
+# whitespace.
+WID_TMP_FILES=""
+tmp_cleanup() {
+    if [[ -n "$WID_TMP_FILES" ]]; then
+        # shellcheck disable=SC2086
+        rm -f -- $WID_TMP_FILES
+    fi
+}
+trap tmp_cleanup EXIT
+tmp_track() {
+    WID_TMP_FILES="$WID_TMP_FILES $1"
+}
+
 # Wall-clock epoch seconds.
 wall_sec() {
     if [[ -z "$WALL_EPOCH_BASE" ]]; then
@@ -685,6 +702,8 @@ run_canonical() {
         local msg_file sig_file sig_out
         msg_file="$(mktemp)"
         sig_file="$(mktemp)"
+        tmp_track "$msg_file"
+        tmp_track "$sig_file"
         sign_verify_message_file "$msg_file"
         openssl pkeyutl -sign -inkey "$KEY" -rawin -in "$msg_file" -out "$sig_file" >/dev/null 2>&1 || {
             rm -f "$msg_file" "$sig_file"
@@ -709,6 +728,8 @@ run_canonical() {
         local msg_file sig_file
         msg_file="$(mktemp)"
         sig_file="$(mktemp)"
+        tmp_track "$msg_file"
+        tmp_track "$sig_file"
         sign_verify_message_file "$msg_file"
         b64url_decode_to_file "$SIG" "$sig_file"
         if openssl pkeyutl -verify -pubin -inkey "$KEY" -sigfile "$sig_file" -rawin -in "$msg_file" >/dev/null 2>&1; then
@@ -1026,6 +1047,7 @@ run_selftest() {
 
         local tmp2 dup
         tmp2="$(mktemp)"
+        tmp_track "$tmp2"
 
         if [[ "$kind" == "wid" && "$Z" -eq 0 ]]; then
             printf 'note: skipping concurrency test for kind=wid Z=0 (not unique across processes)\n' >&2

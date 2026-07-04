@@ -334,7 +334,9 @@ impl WidGen {
 
         if self.z > 0 {
             const HEX: &[u8; 16] = b"0123456789abcdef";
-            let pad: String = (0..self.z).map(|_| HEX[random_range(0..16)] as char).collect();
+            let pad: String = (0..self.z)
+                .map(|_| HEX[random_range(0..16)] as char)
+                .collect();
             wid.push('-');
             wid.push_str(&pad);
         }

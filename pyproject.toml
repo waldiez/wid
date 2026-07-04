@@ -48,7 +48,7 @@ line-length = 88
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["F", "Q", "D", "I", "G", "C4", "C90", "E", "W", "B", "N", "B", "A"]
+select = ["F", "Q", "D", "I", "G", "C4", "C90", "E", "W", "B", "N", "A"]
 # Allow fix for all enabled rules (when `--fix`) is provided.
 ignore = ["D203", "D211", "D212", "D213"]
 fixable = ["ALL"]

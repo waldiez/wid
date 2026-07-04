@@ -40,7 +40,8 @@ fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
     } else {
         r"$".to_string()
     };
-    let pattern = format!(r"^(\d{{8}})T(\d{{{time_digits}}})\.{lc_part}Z-([A-Za-z0-9_]+){pad_part}");
+    let pattern =
+        format!(r"^(\d{{8}})T(\d{{{time_digits}}})\.{lc_part}Z-([A-Za-z0-9_]+){pad_part}");
     Regex::new(&pattern).unwrap()
 }
 

@@ -1,11 +1,14 @@
 ---
 name: Deploy Pages
 
+# Trigger on the whole docs/ tree: the deploy publishes the whole folder,
+# so a narrower path filter (formerly just index.html) silently left the
+# published site stale after edits to any other docs/ file.
 on:
   push:
     branches: [main]
     paths:
-      - "docs/index.html"
+      - "docs/**"
   workflow_dispatch:
 
 permissions:
