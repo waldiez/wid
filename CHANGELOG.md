@@ -43,6 +43,18 @@ called out at the bottom.
   and `make fmt` formats Python, Rust, Go, and C.
 
 ### Fixed
+- TypeScript parse: years 0000–0099 were shifted to 1900–1999 by
+  `Date.UTC`'s two-digit-year mapping (`00500212T…` parsed as 1950 while
+  Rust/Python/Go return year 50), and leap days in that range were judged
+  against the remapped year. The literal 4-digit year is now pinned via
+  `setUTCFullYear`, the day/month roundtrip check gained a year check, the
+  duplicated timestamp parser in `wid.ts`/`hlc.ts` was deduplicated into
+  `time.ts`, and a low-year conformance fixture (`wid_low_year_w4_z0`) now
+  pins acceptance across all six implementations.
+- README: relative links (spec documents, implementation directories,
+  LICENSE) are now absolute `github.com/waldiez/wid` URLs. GitHub, npm, and
+  crates.io resolve or rewrite relative README links, but PyPI renders the
+  README verbatim, so every relative link would 404 on the project page.
 - Publish workflow: the pre-publish test job now mirrors the main CI gates
   (stream conformance, strict CLI-surface, w-otp parity, strict crypto
   smoke, C sanitizer) instead of a subset — a tag can no longer publish

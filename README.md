@@ -6,7 +6,7 @@
 </p>
 
 [![CI](https://github.com/waldiez/wid/actions/workflows/ci.yml/badge.svg)](https://github.com/waldiez/wid/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/waldiez/wid/blob/main/LICENSE)
 
 Time-ordered, human-readable, collision-resistant identifiers for distributed systems.
 
@@ -52,7 +52,7 @@ wid validate 20260217T143052.0000Z-a3f91c
 wid parse    20260217T143052.0000Z-a3f91c --json
 ```
 
-All implementations accept the same flag matrix (`--kind`, `--node`, `--W`, `--Z`, `--time-unit`, etc.) defined in [`spec/quick-usage.md`](spec/quick-usage.md).
+All implementations accept the same flag matrix (`--kind`, `--node`, `--W`, `--Z`, `--time-unit`, etc.) defined in [`spec/quick-usage.md`](https://github.com/waldiez/wid/blob/main/spec/quick-usage.md).
 
 ## Implementations
 
@@ -60,16 +60,16 @@ All implementations accept the same flag matrix (`--kind`, `--node`, `--W`, `--Z
 
 | # | Language       | Source                       | Tests        | Crypto | Notes                              |
 |:-:|:--------------:|:----------------------------:|:------------:|:------:|:-----------------------------------|
-| 1 | **Rust**       | [rust/](rust/)               | `cargo test` | Yes    | Reference implementation · Docker  |
-| 2 | **Python**     | [python/](python/)           | `pytest`     | Yes    | Async generators · `aiosqlite` SQL |
-| 3 | **C**          | [c/](c/)                     | custom       | Yes    | Single-header `wid.h`              |
-| 4 | **TypeScript** | [typescript/](typescript/)   | `vitest`     | Yes    | ESM + CJS · browser-ready          |
-| 5 | **Go**         | [go/](go/)                   | `go test`    | Yes    | Thread-safe · stdlib only          |
-| 6 | **sh**         | [sh/](sh/)                   | self-test    | Yes    | Canonical Bash orchestrator       |
+| 1 | **Rust**       | [rust/](https://github.com/waldiez/wid/tree/main/rust)             | `cargo test` | Yes    | Reference implementation · Docker  |
+| 2 | **Python**     | [python/](https://github.com/waldiez/wid/tree/main/python)         | `pytest`     | Yes    | Async generators · `aiosqlite` SQL |
+| 3 | **C**          | [c/](https://github.com/waldiez/wid/tree/main/c)                   | custom       | Yes    | Single-header `wid.h`              |
+| 4 | **TypeScript** | [typescript/](https://github.com/waldiez/wid/tree/main/typescript) | `vitest`     | Yes    | ESM + CJS · browser-ready          |
+| 5 | **Go**         | [go/](https://github.com/waldiez/wid/tree/main/go)                 | `go test`    | Yes    | Thread-safe · stdlib only          |
+| 6 | **sh**         | [sh/](https://github.com/waldiez/wid/tree/main/sh)                 | self-test    | Yes    | Canonical Bash orchestrator       |
 
 <!-- markdownlint-enable MD060 -->
 
-All implementations conform to the same [specification](spec/SPEC.md). Cross-language conformance is enforced in CI by executable harnesses that drive every implementation against the shared fixtures in `spec/conformance/`:
+All implementations conform to the same [specification](https://github.com/waldiez/wid/blob/main/spec/SPEC.md). Cross-language conformance is enforced in CI by executable harnesses that drive every implementation against the shared fixtures in `spec/conformance/`:
 
 - `make id-conformance` — `valid.json` / `invalid.json` (identifier accept/reject) across all six
 - `make cli-surface-check` — `cli_surface.json`: the shared flag matrix, defaults table, stream cadence, error surface (clean rejection, no crash), unbounded-stream semantics (`--count 0` / `N=0`), and cross-language output parity (identical w-otp codes from identical inputs, including values containing `=`) across all six
@@ -78,7 +78,7 @@ All implementations conform to the same [specification](spec/SPEC.md). Cross-lan
 
 The conformance promise covers the core surface. The service layer (daemons,
 periodic emitters, MQTT/WS/Redis transports) lives **only in the Rust
-implementation** — see [spec/SERVICES.md](spec/SERVICES.md).
+implementation** — see [spec/SERVICES.md](https://github.com/waldiez/wid/blob/main/spec/SERVICES.md).
 
 - Core-CLI-only implementations: `C`, `Go`, `Python`, `TypeScript`, `sh` — they implement `next`, `stream`, `validate`, `parse`, `healthcheck`, `bench`, `selftest` (plus `sign`/`verify`/`w-otp` and `E=sql`), and reject service actions.
 
@@ -115,7 +115,7 @@ to the valid range as a last resort. Validate `W`/`Z` before calling it when
 embedding the header (the C CLI does, and rejects).
 `10^18 - 1` is the largest sequence that fits in a signed 64-bit integer.
 
-Full specification with EBNF grammar: [spec/SPEC.md](spec/SPEC.md)
+Full specification with EBNF grammar: [spec/SPEC.md](https://github.com/waldiez/wid/blob/main/spec/SPEC.md)
 
 ## Identity vs. Events — the recommended pattern
 
@@ -142,7 +142,8 @@ globally meaningful (e.g. a public-key fingerprint) rather than a chosen name,
 and raise `Z` (up to 64 hex chars = 256 random bits; `Z=32` gives UUID-class
 collision resistance) when IDs are minted without coordination.
 
-See "Privacy considerations" in [spec/SPEC.md](spec/SPEC.md) before exposing
+See "Privacy considerations" in
+[spec/SPEC.md](https://github.com/waldiez/wid/blob/main/spec/SPEC.md) before exposing
 WIDs to parties who should not learn timing information.
 
 ## Install
@@ -214,7 +215,7 @@ Per-language helpers: `make rust-test`, `make python-check`, `make ts-build`, `m
 - **`wid A=verify`** — Verify signature against a WID and public key.
 - **`wid A=w-otp`** — WID-bound OTP (`MODE=gen|verify`): HMAC-SHA256 keyed on the WID.
 
-Full specification: [spec/CRYPTO_SPEC.md](spec/CRYPTO_SPEC.md)
+Full specification: [spec/CRYPTO_SPEC.md](https://github.com/waldiez/wid/blob/main/spec/CRYPTO_SPEC.md)
 
 ## SQL Persistence
 
@@ -277,4 +278,4 @@ cover it. Treat it as a library convenience, not a cross-language guarantee.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/waldiez/wid/blob/main/LICENSE)
