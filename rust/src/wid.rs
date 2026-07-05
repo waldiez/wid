@@ -38,6 +38,10 @@ pub enum WidError {
     /// Remote HLC state carries negative clock values.
     #[error("Invalid remote clock values")]
     InvalidRemoteClock,
+    /// Generator resume state is out of range (`last_tick < 0` or
+    /// `last_seq < -1`; -1 means "no sequence emitted this tick yet").
+    #[error("Invalid generator state values")]
+    InvalidState,
     /// The string does not match the WID grammar.
     #[error("Invalid WID format: {0}")]
     InvalidFormat(String),
@@ -383,10 +387,16 @@ impl WidGen {
         self.take(n).collect()
     }
 
-    /// Restore generator state.
-    pub fn restore_state(&mut self, last_tick: i64, last_seq: i64) {
+    /// Restore generator state. Rejects `last_tick < 0` and `last_seq < -1`
+    /// (-1 is the valid "nothing emitted this tick yet" resume value),
+    /// mirroring `HLCWidGen::restore_state` and the Python implementation.
+    pub fn restore_state(&mut self, last_tick: i64, last_seq: i64) -> Result<(), WidError> {
+        if last_tick < 0 || last_seq < -1 {
+            return Err(WidError::InvalidState);
+        }
         self.last_tick = last_tick;
         self.last_seq = last_seq;
+        Ok(())
     }
 
     /// Get current state.
@@ -533,13 +543,29 @@ mod tests {
         let (last_tick, last_seq) = g1.state();
 
         let mut g2 = WidGen::new(4, 0).unwrap();
-        g2.restore_state(last_tick, last_seq);
+        g2.restore_state(last_tick, last_seq)
+            .expect("state captured from a live generator is valid");
         let w = g2.next_wid();
         let p = parse_wid(&w, 4, 0).unwrap();
         assert_eq!(p.sequence as i64, last_seq + 1);
 
         let v = g2.next_n(3);
         assert_eq!(v.len(), 3);
+    }
+
+    #[test]
+    fn test_restore_state_rejects_out_of_range() {
+        let mut g = WidGen::new(4, 0).unwrap();
+        assert!(matches!(
+            g.restore_state(-1, 0),
+            Err(WidError::InvalidState)
+        ));
+        assert!(matches!(
+            g.restore_state(0, -2),
+            Err(WidError::InvalidState)
+        ));
+        // -1 is the valid "fresh tick" resume value.
+        assert!(g.restore_state(0, -1).is_ok());
     }
 
     #[test]

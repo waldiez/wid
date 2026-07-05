@@ -3,10 +3,12 @@
 FROM rust:slim@sha256:31ee7fc65186be7e0e0ccb3f2ca305f14e4739e7642a1ae65753aa5d7b874523 AS builder
 
 WORKDIR /build
-COPY Cargo.toml Cargo.lock* ./
+# No glob on Cargo.lock: a missing lockfile must fail the build, not silently
+# resolve fresh dependency versions (defeating the digest-pinned base images).
+COPY Cargo.toml Cargo.lock ./
 COPY rust/ rust/
 
-RUN cargo build --release
+RUN cargo build --release --locked
 
 FROM debian:trixie-slim@sha256:28de0877c2189802884ccd20f15ee41c203573bd87bb6b883f5f46362d24c5c2
 

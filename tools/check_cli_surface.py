@@ -23,11 +23,13 @@ repository. This harness drives every real CLI through the shared fixture
   unbounded stream everywhere, never "some default count") and must have
   produced at least ``min_lines`` shape-conformant lines by then.
 
-Exit codes are asserted nonzero, not exact, by default: implementations use a
-mix of 1 (operation failed) and 2 (usage error) and that mix is not a blanket
-conformance target. A reject case MAY pin an exact code with ``exit_code`` —
-used for verification *outcomes* (w-otp invalid/stale), where scripts
-legitimately branch on 1-vs-2.
+Exit codes follow the shared contract in ``spec/quick-usage.md`` ("Exit
+codes"): usage errors (unknown command/flag/key/action, missing required
+value, out-of-range parameter) exit **2**; operational failures (invalid id,
+verification failure, missing/unreadable files, runtime errors) exit **1**.
+Reject cases pin the exact code with ``exit_code``; a case may also set
+``allow_empty_stderr`` when the stdout verdict (e.g. validate's ``false``)
+is the diagnostic.
 
 The sh implementation is pinned to ``I=sh`` in canonical mode so its native
 parser is exercised rather than its Python delegation.
@@ -209,7 +211,9 @@ def check_reject(
     combined = proc.stdout + proc.stderr
     if proc.returncode == 0:
         return f"{tag}: accepted (rc=0, stdout={proc.stdout.strip()[:120]!r})"
-    if not proc.stderr.strip():
+    # allow_empty_stderr: for validate-style verdicts the stdout "false" is
+    # the diagnostic; every other reject must say something on stderr.
+    if not proc.stderr.strip() and not case.get("allow_empty_stderr"):
         return f"{tag}: rc={proc.returncode} but stderr is empty"
     for marker in CRASH_MARKERS:
         if marker in combined:

@@ -93,53 +93,53 @@ func main() {
 		printCompletion(args[1])
 		return
 	case "next":
-		o, err := parseOpts(args[1:], false)
+		o, err := parseOpts(args[1:], false, false)
 		if err != nil {
 			errln(err.Error())
-			os.Exit(1)
+			os.Exit(2)
 		}
 		exit(cmdNext(o))
 	case "stream":
-		o, err := parseOpts(args[1:], true)
+		o, err := parseOpts(args[1:], true, false)
 		if err != nil {
 			errln(err.Error())
-			os.Exit(1)
+			os.Exit(2)
 		}
 		exit(cmdStream(o))
 	case "validate":
 		if len(args) < 2 {
 			errln("validate requires an id")
-			os.Exit(1)
+			os.Exit(2)
 		}
-		o, err := parseOpts(args[2:], false)
+		o, err := parseOpts(args[2:], false, false)
 		if err != nil {
 			errln(err.Error())
-			os.Exit(1)
+			os.Exit(2)
 		}
 		exit(cmdValidate(args[1], o))
 	case "parse":
 		if len(args) < 2 {
 			errln("parse requires an id")
-			os.Exit(1)
+			os.Exit(2)
 		}
-		o, err := parseOpts(args[2:], false)
+		o, err := parseOpts(args[2:], false, true)
 		if err != nil {
 			errln(err.Error())
-			os.Exit(1)
+			os.Exit(2)
 		}
 		exit(cmdParse(args[1], o))
 	case "healthcheck":
-		o, err := parseOpts(args[1:], false)
+		o, err := parseOpts(args[1:], false, true)
 		if err != nil {
 			errln(err.Error())
-			os.Exit(1)
+			os.Exit(2)
 		}
 		exit(cmdHealthcheck(o))
 	case "bench":
-		o, err := parseOpts(args[1:], true)
+		o, err := parseOpts(args[1:], true, false)
 		if err != nil {
 			errln(err.Error())
-			os.Exit(1)
+			os.Exit(2)
 		}
 		exit(cmdBench(o))
 	default:
@@ -157,7 +157,7 @@ func hasKVArg(args []string) bool {
 	return false
 }
 
-func parseOpts(args []string, allowCount bool) (opts, error) {
+func parseOpts(args []string, allowCount bool, allowJSON bool) (opts, error) {
 	o := opts{
 		kind:     "wid",
 		node:     "go",
@@ -225,6 +225,12 @@ func parseOpts(args []string, allowCount bool) (opts, error) {
 			o.count = n
 			i++
 		case "--json":
+			// --json belongs to parse/healthcheck only; the other five
+			// implementations reject it elsewhere, so accepting (and
+			// silently ignoring) it here was surface drift.
+			if !allowJSON {
+				return o, errors.New("unknown flag: --json")
+			}
 			o.json = true
 		default:
 			return o, fmt.Errorf("unknown flag: %s", args[i])
@@ -233,11 +239,14 @@ func parseOpts(args []string, allowCount bool) (opts, error) {
 	if o.kind != "wid" && o.kind != "hlc" {
 		return o, errors.New("--kind must be one of: wid, hlc")
 	}
-	if o.w <= 0 {
-		return o, errors.New("W must be > 0")
+	if o.w <= 0 || o.w > wid.MaxW {
+		return o, errors.New("W must be between 1 and 18")
 	}
-	if o.z < 0 || o.count < 0 {
-		return o, errors.New("Z/count must be >= 0")
+	if o.z < 0 || o.z > wid.MaxZ {
+		return o, errors.New("Z must be between 0 and 64")
+	}
+	if o.count < 0 {
+		return o, errors.New("count must be >= 0")
 	}
 	if o.kind == "hlc" && !wid.IsValidNode(o.node) {
 		return o, errors.New("invalid node")
@@ -250,7 +259,7 @@ func cmdNext(o opts) int {
 		g, err := wid.NewWidGenWithUnit(o.w, o.z, o.timeUnit)
 		if err != nil {
 			errln(err.Error())
-			return 1
+			return 2
 		}
 		fmt.Println(g.Next())
 		return 0
@@ -258,34 +267,31 @@ func cmdNext(o opts) int {
 	g, err := wid.NewHLCWidGenWithUnit(o.node, o.w, o.z, o.timeUnit)
 	if err != nil {
 		errln(err.Error())
-		return 1
+		return 2
 	}
 	fmt.Println(g.Next())
 	return 0
 }
 
 func cmdStream(o opts) int {
+	var next func() string
 	if o.kind == "wid" {
 		g, err := wid.NewWidGenWithUnit(o.w, o.z, o.timeUnit)
 		if err != nil {
 			errln(err.Error())
-			return 1
+			return 2
 		}
-		for i := 0; o.count == 0 || i < o.count; i++ {
-			fmt.Println(g.Next())
-			if o.intervalSecs > 0 && (o.count == 0 || i+1 < o.count) {
-				time.Sleep(time.Duration(o.intervalSecs) * time.Second)
-			}
+		next = g.Next
+	} else {
+		g, err := wid.NewHLCWidGenWithUnit(o.node, o.w, o.z, o.timeUnit)
+		if err != nil {
+			errln(err.Error())
+			return 2
 		}
-		return 0
-	}
-	g, err := wid.NewHLCWidGenWithUnit(o.node, o.w, o.z, o.timeUnit)
-	if err != nil {
-		errln(err.Error())
-		return 1
+		next = g.Next
 	}
 	for i := 0; o.count == 0 || i < o.count; i++ {
-		fmt.Println(g.Next())
+		fmt.Println(next())
 		if o.intervalSecs > 0 && (o.count == 0 || i+1 < o.count) {
 			time.Sleep(time.Duration(o.intervalSecs) * time.Second)
 		}
@@ -453,7 +459,7 @@ func runCanonical(args []string) int {
 	c, err := parseCanonical(args)
 	if err != nil {
 		errln(err.Error())
-		return 1
+		return 2
 	}
 	if c.a == "help-actions" {
 		printActions()
@@ -490,7 +496,7 @@ func runCanonical(args []string) int {
 		return cmdHealthcheck(opts{kind: "wid", w: c.w, z: c.z, timeUnit: c.t, json: true})
 	default:
 		errln(fmt.Sprintf("unknown A=%s", c.a))
-		return 1
+		return 2
 	}
 }
 
@@ -502,10 +508,10 @@ func b64urlDecode(s string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(s)
 }
 
+// buildSignVerifyMessage assumes the caller has already checked WID= is
+// present (a missing WID is a usage error, exit 2; a missing data file is an
+// operational failure, exit 1).
 func buildSignVerifyMessage(c canon) ([]byte, error) {
-	if strings.TrimSpace(c.wid) == "" {
-		return nil, errors.New("WID=<wid_string> required")
-	}
 	// Canonical message: "wid-sig-v1:" || len(WID) || ":" || WID || DATA.
 	// The domain prefix and explicit WID byte-length frame the WID/DATA
 	// boundary so no bytes can shift between them.
@@ -564,7 +570,11 @@ func loadEd25519PublicKey(path string) (ed25519.PublicKey, error) {
 func runSign(c canon) int {
 	if strings.TrimSpace(c.key) == "" {
 		errln("KEY=<private_key_path> required for A=sign")
-		return 1
+		return 2
+	}
+	if strings.TrimSpace(c.wid) == "" {
+		errln("WID=<wid_string> required")
+		return 2
 	}
 	msg, err := buildSignVerifyMessage(c)
 	if err != nil {
@@ -592,11 +602,15 @@ func runSign(c canon) int {
 func runVerify(c canon) int {
 	if strings.TrimSpace(c.key) == "" {
 		errln("KEY=<public_key_path> required for A=verify")
-		return 1
+		return 2
 	}
 	if strings.TrimSpace(c.sig) == "" {
 		errln("SIG=<signature_string> required for A=verify")
-		return 1
+		return 2
+	}
+	if strings.TrimSpace(c.wid) == "" {
+		errln("WID=<wid_string> required")
+		return 2
 	}
 	msg, err := buildSignVerifyMessage(c)
 	if err != nil {
@@ -700,16 +714,22 @@ func runWOtp(c canon) int {
 	}
 	if mode != "gen" && mode != "verify" {
 		errln("MODE must be gen or verify for A=w-otp")
-		return 1
+		return 2
 	}
 	if strings.TrimSpace(c.key) == "" {
 		errln("KEY=<secret_or_path> required for A=w-otp")
-		return 1
+		return 2
 	}
 	secret, err := resolveWOtpSecret(c.key)
 	if err != nil {
 		errln(err.Error())
 		return 1
+	}
+	// An empty secret *file* must be rejected like an empty inline secret
+	// (the Python/TS/sh/C implementations already do).
+	if secret == "" {
+		errln("w-otp secret cannot be empty")
+		return 2
 	}
 	digits := c.digits
 	if digits == 0 {
@@ -717,28 +737,28 @@ func runWOtp(c canon) int {
 	}
 	if digits < 4 || digits > 10 {
 		errln("DIGITS must be an integer between 4 and 10")
-		return 1
+		return 2
 	}
 	if c.maxAgeSec < 0 {
 		errln("MAX_AGE_SEC must be a non-negative integer")
-		return 1
+		return 2
 	}
 	if c.maxFutureSec < 0 {
 		errln("MAX_FUTURE_SEC must be a non-negative integer")
-		return 1
+		return 2
 	}
 	widValue := strings.TrimSpace(c.wid)
 	if widValue == "" && mode == "gen" {
 		g, err := wid.NewWidGenWithUnit(c.w, c.z, c.t)
 		if err != nil {
 			errln(err.Error())
-			return 1
+			return 2
 		}
 		widValue = g.Next()
 	}
 	if widValue == "" {
 		errln("WID=<wid_string> required for A=w-otp MODE=verify")
-		return 1
+		return 2
 	}
 	otp := computeWOtp(secret, widValue, digits)
 	if mode == "gen" {
@@ -748,7 +768,7 @@ func runWOtp(c canon) int {
 	}
 	if strings.TrimSpace(c.code) == "" {
 		errln("CODE=<otp_code> required for A=w-otp MODE=verify")
-		return 1
+		return 2
 	}
 	if c.maxAgeSec > 0 || c.maxFutureSec > 0 {
 		widMs, err := wotpWidTickMs(widValue)
@@ -864,7 +884,9 @@ func sqlAllocateNextWid(c canon) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		g.RestoreState(lastTick, lastSeq)
+		if err := g.RestoreState(lastTick, lastSeq); err != nil {
+			return "", fmt.Errorf("invalid SQL state values: %w", err)
+		}
 		id := g.Next()
 		nextTick, nextSeq := g.State()
 		ok, err := sqlCompareAndSwapState(dbPath, key, lastTick, lastSeq, nextTick, nextSeq)
@@ -1014,8 +1036,16 @@ func parseCanonical(args []string) (canon, error) {
 	case "hc":
 		c.a = "healthcheck"
 	}
-	if c.w <= 0 || c.z < 0 || c.n < 0 || c.l < 0 {
-		return c, errors.New("W must be >0 and Z/N/L >=0")
+	// Reject out-of-range W/Z here (usage error, exit 2) instead of letting
+	// the generator constructor report it as an operational failure.
+	if c.w <= 0 || c.w > wid.MaxW {
+		return c, errors.New("W must be between 1 and 18")
+	}
+	if c.z < 0 || c.z > wid.MaxZ {
+		return c, errors.New("Z must be between 0 and 64")
+	}
+	if c.n < 0 || c.l < 0 {
+		return c, errors.New("N/L must be >= 0")
 	}
 	if !isTransport(c.r) {
 		return c, fmt.Errorf("transport R=%s is only available in the Rust implementation (services/transports are Rust-only)", c.r)
@@ -1129,7 +1159,7 @@ func printCompletion(shell string) {
       T) vals="sec ms" ;;
       I) vals="auto sh bash" ;;
       E) vals="state stateless sql" ;;
-      R) vals="auto mqtt ws redis null stdout" ;;
+      R) vals="auto null stdout" ;;
       M) vals="true false" ;;
     esac
     local IFS=$'\n'
@@ -1154,7 +1184,7 @@ _wid_complete() {
       T) vals=(sec ms) ;;
       I) vals=(auto sh bash) ;;
       E) vals=(state stateless sql) ;;
-      R) vals=(auto mqtt ws redis null stdout) ;;
+      R) vals=(auto null stdout) ;;
       M) vals=(true false) ;;
     esac
     compadd -P "${key}=" -- "${vals[@]}"
@@ -1177,7 +1207,7 @@ complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=h
 complete -c wid -f -a 'T=sec T=ms' -d 'Time unit'
 complete -c wid -f -a 'I=auto I=sh I=bash' -d 'Input source'
 complete -c wid -f -a 'E=state E=stateless E=sql' -d 'State mode'
-complete -c wid -f -a 'R=auto R=mqtt R=ws R=redis R=null R=stdout' -d 'Transport'
+complete -c wid -f -a 'R=auto R=null R=stdout' -d 'Transport'
 complete -c wid -f -a 'M=true M=false' -d 'Milliseconds mode'
 complete -c wid -f -a 'W=' -d 'Sequence width'
 complete -c wid -f -a 'Z=' -d 'Padding length'

@@ -43,6 +43,25 @@ called out at the bottom.
   and `make fmt` formats Python, Rust, Go, and C.
 
 ### Fixed
+- One exit-code contract across all six CLIs (2 = usage error, 1 = operational
+  failure — see spec/quick-usage.md "Exit codes"), now pinned per-case in
+  `cli_surface.json`. Swept up in the same pass: Go/TS/C accepted `--json`
+  where the others rejected it; Python crashed with a KeyError traceback on
+  `A=sign`/`A=verify` without `KEY=`, and exited 2 for malformed
+  signatures/bad key PEMs (verification failures — now 1 everywhere);
+  Rust/Go accepted an empty w-otp secret *file*; Go/TS/C shell completions
+  advertised Rust-only transports/actions their own parsers reject.
+- Library hardening: `restore_state` rejects out-of-range resume state in
+  Rust/Go/TS as it already did in Python (pre-release breaking: Rust returns
+  `Result`, Go returns `error`); the C header's `wid_parse_timestamp` is now
+  safe on strings shorter than the timestamp field; the Python async SQL CAS
+  loop is bounded like the sync path; the TS CLI drains stdout before exiting
+  (piped output could be truncated); sh `bench` reports millisecond timings
+  instead of whole seconds.
+- Build/docs hygiene: the Go CLI's `E=sql` dependency on the external
+  `sqlite3` binary is documented (README); the Docker build now requires
+  `Cargo.lock` and passes `--locked`; Python wheels/sdists can no longer be
+  committed into the tracked `dist/`.
 - Rust panicked (instead of rejecting) on WIDs containing non-ASCII Unicode
   digits; `\d` → `[0-9]` in all parser regexes. The sh implementation
   *accepted* such digits in some locales (bash `[0-9]` follows locale

@@ -18,7 +18,7 @@ from .parse import MAX_W, MAX_Z
 class HLCState:
     """The HLC state."""
 
-    pt: int  # physical time (sec)
+    pt: int  # physical tick (seconds or milliseconds per the generator's unit)
     lc: int  # logical counter
 
 
@@ -32,7 +32,7 @@ class HLCWidGen:
     Notes:
       - (pt, lc) monotonic within a node instance
       - Lexicographic monotonicity holds only when Z == 0 and node fixed
-      - node is a non-empty token with no whitespace and no hyphen
+      - node is one or more ASCII alphanumerics or underscores
 
     """
 

@@ -104,10 +104,18 @@ Help:
 ACTIONS
 }
 
-# Print an error to stderr and exit 1.
+# Print an error to stderr and exit 1 (operational failure).
 die() {
     printf 'error: %s\n' "$1" >&2
     exit 1
+}
+
+# Print an error to stderr and exit 2 (usage error: malformed invocation,
+# unknown command/flag/key/action, missing required value, out-of-range
+# parameter). See spec/quick-usage.md "Exit codes".
+die_usage() {
+    printf 'error: %s\n' "$1" >&2
+    exit 2
 }
 
 # Non-negative integer test.
@@ -601,7 +609,7 @@ run_canonical() {
             usage
             exit 0
         fi
-        [[ "$arg" == *=* ]] || die "expected KEY=VALUE, got '$arg'"
+        [[ "$arg" == *=* ]] || die_usage "expected KEY=VALUE, got '$arg'"
         key="${arg%%=*}"
         val="${arg#*=}"
         case "$key" in
@@ -629,7 +637,7 @@ run_canonical() {
         DIGITS) DIGITS="$val" ;;
         MAX_AGE_SEC) MAX_AGE_SEC="$val" ;;
         MAX_FUTURE_SEC) MAX_FUTURE_SEC="$val" ;;
-        *) die "unknown key: $key" ;;
+        *) die_usage "unknown key: $key" ;;
         esac
     done
 
@@ -706,8 +714,8 @@ run_canonical() {
     }
 
     if [[ "$A" == "sign" ]]; then
-        [[ -n "$WID" ]] || die "WID=<wid_string> required for A=sign"
-        [[ -n "$KEY" ]] || die "KEY=<private_key_path> required for A=sign"
+        [[ -n "$WID" ]] || die_usage "WID=<wid_string> required for A=sign"
+        [[ -n "$KEY" ]] || die_usage "KEY=<private_key_path> required for A=sign"
         [[ -f "$KEY" ]] || die "private key file not found: $KEY"
         command -v openssl >/dev/null 2>&1 || die "openssl is required for A=sign"
         local msg_file sig_file sig_out
@@ -731,9 +739,9 @@ run_canonical() {
     fi
 
     if [[ "$A" == "verify" ]]; then
-        [[ -n "$WID" ]] || die "WID=<wid_string> required for A=verify"
-        [[ -n "$KEY" ]] || die "KEY=<public_key_path> required for A=verify"
-        [[ -n "$SIG" ]] || die "SIG=<signature_string> required for A=verify"
+        [[ -n "$WID" ]] || die_usage "WID=<wid_string> required for A=verify"
+        [[ -n "$KEY" ]] || die_usage "KEY=<public_key_path> required for A=verify"
+        [[ -n "$SIG" ]] || die_usage "SIG=<signature_string> required for A=verify"
         [[ -f "$KEY" ]] || die "public key file not found: $KEY"
         command -v openssl >/dev/null 2>&1 || die "openssl is required for A=verify"
         local msg_file sig_file
@@ -794,26 +802,26 @@ run_canonical() {
     if [[ "$A" == "w-otp" ]]; then
         local mode secret otp
         mode="$(printf '%s' "${MODE:-gen}" | tr '[:upper:]' '[:lower:]')"
-        [[ "$mode" == "gen" || "$mode" == "verify" ]] || die "MODE must be gen or verify for A=w-otp"
-        [[ "$DIGITS" =~ ^[0-9]+$ ]] || die "DIGITS must be an integer"
-        ((DIGITS >= 4 && DIGITS <= 10)) || die "DIGITS must be between 4 and 10"
-        [[ "$MAX_AGE_SEC" =~ ^[0-9]+$ ]] || die "MAX_AGE_SEC must be a non-negative integer"
-        [[ "$MAX_FUTURE_SEC" =~ ^[0-9]+$ ]] || die "MAX_FUTURE_SEC must be a non-negative integer"
-        [[ -n "$KEY" ]] || die "KEY=<secret_or_path> required for A=w-otp"
+        [[ "$mode" == "gen" || "$mode" == "verify" ]] || die_usage "MODE must be gen or verify for A=w-otp"
+        [[ "$DIGITS" =~ ^[0-9]+$ ]] || die_usage "DIGITS must be an integer"
+        ((DIGITS >= 4 && DIGITS <= 10)) || die_usage "DIGITS must be between 4 and 10"
+        [[ "$MAX_AGE_SEC" =~ ^[0-9]+$ ]] || die_usage "MAX_AGE_SEC must be a non-negative integer"
+        [[ "$MAX_FUTURE_SEC" =~ ^[0-9]+$ ]] || die_usage "MAX_FUTURE_SEC must be a non-negative integer"
+        [[ -n "$KEY" ]] || die_usage "KEY=<secret_or_path> required for A=w-otp"
         secret="$(wotp_secret "$KEY")"
-        [[ -n "$secret" ]] || die "w-otp secret cannot be empty"
+        [[ -n "$secret" ]] || die_usage "w-otp secret cannot be empty"
 
         if [[ -z "$WID" && "$mode" == "gen" ]]; then
             WID="$(wid_next "$W" "$Z" "$T")"
         fi
-        [[ -n "$WID" ]] || die "WID=<wid_string> required for A=w-otp MODE=verify"
+        [[ -n "$WID" ]] || die_usage "WID=<wid_string> required for A=w-otp MODE=verify"
 
         otp="$(wotp_code "$secret" "$WID" "$DIGITS")"
         if [[ "$mode" == "gen" ]]; then
             printf '{"wid":"%s","otp":"%s","digits":%s}\n' "$(json_escape "$WID")" "$otp" "$DIGITS"
             return
         fi
-        [[ -n "$CODE" ]] || die "CODE=<otp_code> required for A=w-otp MODE=verify"
+        [[ -n "$CODE" ]] || die_usage "CODE=<otp_code> required for A=w-otp MODE=verify"
         if ((MAX_AGE_SEC > 0 || MAX_FUTURE_SEC > 0)); then
             local wid_ms now_ms delta_ms
             wid_ms="$(wotp_wid_tick_ms "$WID")" || die "WID timestamp is invalid for time-window verification"
@@ -833,16 +841,16 @@ run_canonical() {
         exit 1
     fi
 
-    [[ "$T" == "sec" || "$T" == "ms" ]] || die "T must be sec or ms"
-    [[ "$N" =~ ^[0-9]+$ ]] || die "N must be a non-negative integer"
-    is_interval "$L" || die "L must be a non-negative integer (seconds)"
+    [[ "$T" == "sec" || "$T" == "ms" ]] || die_usage "T must be sec or ms"
+    [[ "$N" =~ ^[0-9]+$ ]] || die_usage "N must be a non-negative integer"
+    is_interval "$L" || die_usage "L must be a non-negative integer (seconds)"
     # SPEC.md: out-of-range W/Z MUST be rejected in generation as well as
     # validation. is_int must run first -- unvalidated input inside (( ))
     # would be evaluated as bash arithmetic (W=2+2 would pass as 4).
-    is_int "$W" || die "W must be an integer"
-    is_int "$Z" || die "Z must be an integer"
-    ((W > 0 && W <= 18)) || die "W must be between 1 and 18"
-    ((Z >= 0 && Z <= 64)) || die "Z must be between 0 and 64"
+    is_int "$W" || die_usage "W must be an integer"
+    is_int "$Z" || die_usage "Z must be an integer"
+    ((W > 0 && W <= 18)) || die_usage "W must be between 1 and 18"
+    ((Z >= 0 && Z <= 64)) || die_usage "Z must be between 0 and 64"
 
     run_python_wid_cli() {
         local impl_dir="$ROOT_DIR/python"
@@ -892,10 +900,10 @@ run_canonical() {
     elif [[ "$E" == *","* ]]; then
         state_mode="${E%%,*}"
     fi
-    is_transport "$R" || die "transport R=$R is only available in the Rust implementation (services/transports are Rust-only)"
+    is_transport "$R" || die_usage "transport R=$R is only available in the Rust implementation (services/transports are Rust-only)"
     case "$state_mode" in
     state | stateless | sql) ;;
-    *) die "E must be state|stateless|sql (optionally +transport)" ;;
+    *) die_usage "E must be state|stateless|sql (optionally +transport)" ;;
     esac
 
     local data_dir
@@ -1008,7 +1016,7 @@ run_canonical() {
         ;;
     esac
 
-    die "unknown A=$A"
+    die_usage "unknown A=$A"
 }
 # Built-in sanity checks; silent, exit 0/1.
 run_selftest() {
@@ -1226,62 +1234,62 @@ main() {
         while [[ $# -gt 0 ]]; do
             case "$1" in
             --n)
-                [[ $# -ge 2 ]] || die "missing value for --n"
+                [[ $# -ge 2 ]] || die_usage "missing value for --n"
                 n=$2
                 shift 2
                 ;;
             --procs)
-                [[ $# -ge 2 ]] || die "missing value for --procs"
+                [[ $# -ge 2 ]] || die_usage "missing value for --procs"
                 procs=$2
                 _got_procs="true"
                 shift 2
                 ;;
             --per)
-                [[ $# -ge 2 ]] || die "missing value for --per"
+                [[ $# -ge 2 ]] || die_usage "missing value for --per"
                 per=$2
                 shift 2
                 ;;
             --kind)
-                [[ $# -ge 2 ]] || die "missing value for --kind"
+                [[ $# -ge 2 ]] || die_usage "missing value for --kind"
                 kind=$2
                 shift 2
                 ;;
             --W)
-                [[ $# -ge 2 ]] || die "missing value for --W"
+                [[ $# -ge 2 ]] || die_usage "missing value for --W"
                 W=$2
                 shift 2
                 ;;
             --Z)
-                [[ $# -ge 2 ]] || die "missing value for --Z"
+                [[ $# -ge 2 ]] || die_usage "missing value for --Z"
                 Z=$2
                 shift 2
                 ;;
             --time-unit)
-                [[ $# -ge 2 ]] || die "missing value for --time-unit"
+                [[ $# -ge 2 ]] || die_usage "missing value for --time-unit"
                 time_unit=$2
                 shift 2
                 ;;
-            *) die "invalid argument: $1" ;;
+            *) die_usage "invalid argument: $1" ;;
             esac
         done
 
-        is_int "$n" || die "n must be an integer"
-        is_int "$procs" || die "procs must be an integer"
-        is_int "$per" || die "per must be an integer"
-        is_int "$W" || die "W must be an integer"
-        is_int "$Z" || die "Z must be an integer"
+        is_int "$n" || die_usage "n must be an integer"
+        is_int "$procs" || die_usage "procs must be an integer"
+        is_int "$per" || die_usage "per must be an integer"
+        is_int "$W" || die_usage "W must be an integer"
+        is_int "$Z" || die_usage "Z must be an integer"
         if [[ "${_got_procs}" = "false" ]]; then
             procs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
             # cap auto-detected procs to avoid very long runs in shell
             ((procs > 4)) && procs=4
         fi
-        ((n > 0)) || die "n must be > 0"
-        ((procs >= 0)) || die "procs must be >= 0"
-        ((per > 0)) || die "per must be > 0"
-        ((W > 0 && W <= 18)) || die "W must be between 1 and 18"
-        ((Z >= 0 && Z <= 64)) || die "Z must be between 0 and 64"
-        [[ "$time_unit" == "sec" || "$time_unit" == "ms" ]] || die "time-unit must be sec or ms"
-        [[ "$kind" == "wid" || "$kind" == "hlc" ]] || die "kind must be wid or hlc"
+        ((n > 0)) || die_usage "n must be > 0"
+        ((procs >= 0)) || die_usage "procs must be >= 0"
+        ((per > 0)) || die_usage "per must be > 0"
+        ((W > 0 && W <= 18)) || die_usage "W must be between 1 and 18"
+        ((Z >= 0 && Z <= 64)) || die_usage "Z must be between 0 and 64"
+        [[ "$time_unit" == "sec" || "$time_unit" == "ms" ]] || die_usage "time-unit must be sec or ms"
+        [[ "$kind" == "wid" || "$kind" == "hlc" ]] || die_usage "kind must be wid or hlc"
         run_selftest "$n" "$procs" "$per" "$kind" "$W" "$Z" "$time_unit"
         exit $?
     fi
@@ -1305,7 +1313,7 @@ main() {
 
     local id=""
     if [[ "$cmd" == "validate" || "$cmd" == "parse" ]]; then
-        [[ $# -ge 1 ]] || die "$cmd requires an id"
+        [[ $# -ge 1 ]] || die_usage "$cmd requires an id"
         id=$1
         shift
     fi
@@ -1313,52 +1321,56 @@ main() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
         --kind)
-            [[ $# -ge 2 ]] || die "missing value for --kind"
+            [[ $# -ge 2 ]] || die_usage "missing value for --kind"
             kind=$2
             shift 2
             ;;
         --node)
-            [[ $# -ge 2 ]] || die "missing value for --node"
+            [[ $# -ge 2 ]] || die_usage "missing value for --node"
             node=$2
             shift 2
             ;;
         --W)
-            [[ $# -ge 2 ]] || die "missing value for --W"
+            [[ $# -ge 2 ]] || die_usage "missing value for --W"
             W=$2
             shift 2
             ;;
         --Z)
-            [[ $# -ge 2 ]] || die "missing value for --Z"
+            [[ $# -ge 2 ]] || die_usage "missing value for --Z"
             Z=$2
             shift 2
             ;;
         --count)
-            [[ $# -ge 2 ]] || die "missing value for --count"
+            [[ $# -ge 2 ]] || die_usage "missing value for --count"
             count=$2
             shift 2
             ;;
         --time-unit)
-            [[ $# -ge 2 ]] || die "missing value for --time-unit"
+            [[ $# -ge 2 ]] || die_usage "missing value for --time-unit"
             time_unit=$2
             shift 2
             ;;
         --json)
+            # --json belongs to parse/healthcheck only; the other five
+            # implementations reject it elsewhere, so accepting (and
+            # silently ignoring) it here was surface drift.
+            [[ "$cmd" == "parse" || "$cmd" == "healthcheck" ]] || die_usage "unknown flag: --json"
             json=true
             shift
             ;;
-        *) die "invalid argument: $1" ;;
+        *) die_usage "invalid argument: $1" ;;
         esac
     done
 
-    [[ "$kind" == "wid" || "$kind" == "hlc" ]] || die "kind must be wid or hlc"
-    is_int "$W" || die "W must be an integer"
-    is_int "$Z" || die "Z must be an integer"
-    ((W > 0 && W <= 18)) || die "W must be between 1 and 18"
-    ((Z >= 0 && Z <= 64)) || die "Z must be between 0 and 64"
-    [[ "$time_unit" == "sec" || "$time_unit" == "ms" ]] || die "time-unit must be sec or ms"
+    [[ "$kind" == "wid" || "$kind" == "hlc" ]] || die_usage "kind must be wid or hlc"
+    is_int "$W" || die_usage "W must be an integer"
+    is_int "$Z" || die_usage "Z must be an integer"
+    ((W > 0 && W <= 18)) || die_usage "W must be between 1 and 18"
+    ((Z >= 0 && Z <= 64)) || die_usage "Z must be between 0 and 64"
+    [[ "$time_unit" == "sec" || "$time_unit" == "ms" ]] || die_usage "time-unit must be sec or ms"
 
     if [[ "$kind" == "hlc" ]]; then
-        valid_node "$node" || die "invalid node"
+        valid_node "$node" || die_usage "invalid node"
     fi
 
     case "$cmd" in
@@ -1368,8 +1380,8 @@ main() {
     stream)
         # --count 0 streams forever, matching canonical N=0 and every other
         # implementation (this used to silently rewrite 0 to 10).
-        is_int "$count" || die "count must be an integer"
-        ((count >= 0)) || die "count must be >= 0"
+        is_int "$count" || die_usage "count must be an integer"
+        ((count >= 0)) || die_usage "count must be >= 0"
         local i=0
         while ((count == 0 || i < count)); do
             if [[ "$kind" == "wid" ]]; then wid_next "$W" "$Z" "$time_unit"; else hlc_next "$node" "$W" "$Z" "$time_unit"; fi
@@ -1419,10 +1431,15 @@ main() {
         $ok || exit 1
         ;;
     bench)
-        local n start end elapsed ids_per_sec i
+        # Millisecond timing via now_tick ms: second-granularity date +%s
+        # floored sub-second runs to 1s, inflating ids_per_sec and making the
+        # numbers incomparable to the other implementations' bench output.
+        # (In the sec_counter fallback mode the ms digits are synthetic, so
+        # resolution degrades to ~1s there — still never worse than before.)
+        local n start_ms end_ms elapsed_ms ids_per_sec i
         n=$count
         if [[ $n -le 0 ]]; then n=10000; fi
-        start=$(date +%s)
+        start_ms=$(now_tick ms)
         if [[ "$kind" == "wid" ]]; then
             for ((i = 0; i < n; i++)); do
                 wid_next "$W" "$Z" "$time_unit" >/dev/null
@@ -1432,16 +1449,16 @@ main() {
                 hlc_next "$node" "$W" "$Z" "$time_unit" >/dev/null
             done
         fi
-        end=$(date +%s)
-        elapsed=$((end - start))
-        if [[ $elapsed -le 0 ]]; then elapsed=1; fi
-        ids_per_sec=$((n / elapsed))
-        printf '{"impl":"sh","kind":"%s","W":%s,"Z":%s,"time_unit":"%s","n":%s,"seconds":%s,"ids_per_sec":%s}\n' \
-            "$kind" "$W" "$Z" "$time_unit" "$n" "$elapsed" "$ids_per_sec"
+        end_ms=$(now_tick ms)
+        elapsed_ms=$((end_ms - start_ms))
+        if ((elapsed_ms <= 0)); then elapsed_ms=1; fi
+        ids_per_sec=$(((n * 1000) / elapsed_ms))
+        printf '{"impl":"sh","kind":"%s","W":%s,"Z":%s,"time_unit":"%s","n":%s,"seconds":%d.%03d,"ids_per_sec":%s}\n' \
+            "$kind" "$W" "$Z" "$time_unit" "$n" "$((elapsed_ms / 1000))" "$((elapsed_ms % 1000))" "$ids_per_sec"
         ;;
     *)
         usage >&2
-        die "unknown command: $cmd"
+        die_usage "unknown command: $cmd"
         ;;
     esac
 }

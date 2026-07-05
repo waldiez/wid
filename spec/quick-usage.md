@@ -67,6 +67,21 @@ CREATE TABLE events (
 );
 ```
 
+## Exit Codes
+
+All six CLIs share one exit-code contract, enforced by
+`make cli-surface-check` (`spec/conformance/cli_surface.json` pins the exact
+codes):
+
+| Code | Meaning |
+| :--: | :------ |
+| `0`  | Success. |
+| `1`  | Operation failed: invalid id (`validate`/`parse`), failed healthcheck, signature/OTP verification failure (including freshness-window rejections), missing or unreadable key/data files, runtime errors. |
+| `2`  | Usage error: no/unknown command, unknown flag or `KEY=`, missing required value or argument (id, `KEY=`, `WID=`, `SIG=`, `CODE=`), non-integer or out-of-range `W`/`Z`/`N`/`L`/`DIGITS`, invalid `T`/`R`/`E`/`MODE`/kind/node. |
+
+Scripts can branch on 1-vs-2 to distinguish "the operation failed" from "the
+invocation was malformed" in any implementation.
+
 ## Context Belongs in Columns, Not in the ID
 
 WIDs deliberately carry no semantic "scope": a plain WID's suffix is random

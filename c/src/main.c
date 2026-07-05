@@ -445,10 +445,12 @@ static int sql_allocate_next_wid(
     return -1;
 }
 
+/* Returns 0 on success, 2 for a usage error (missing WID=), 1 for an
+ * operational failure (unreadable data file, allocation failure). */
 static int build_message_buf(const canon_opts_t *c, unsigned char **out, size_t *out_len) {
     if (!c->WID[0]) {
         fprintf(stderr, "error: WID=<wid_string> required\n");
-        return 1;
+        return 2;
     }
     size_t wid_len = strlen(c->WID);
     char header[64];
@@ -544,7 +546,7 @@ static int b64url_decode(const char *in, unsigned char *out, size_t out_cap) {
 static int run_sign(const canon_opts_t *c) {
     if (!c->KEY[0]) {
         fprintf(stderr, "error: KEY=<private_key_path> required for A=sign\n");
-        return 1;
+        return 2;
     }
     if (access(c->KEY, R_OK) != 0) {
         fprintf(stderr, "error: private key file not found: %s\n", c->KEY);
@@ -553,7 +555,8 @@ static int run_sign(const canon_opts_t *c) {
 
     unsigned char *msg = NULL;
     size_t msg_len = 0;
-    if (build_message_buf(c, &msg, &msg_len) != 0) return 1;
+    int build_rc = build_message_buf(c, &msg, &msg_len);
+    if (build_rc != 0) return build_rc;
 
     FILE *kf = fopen(c->KEY, "rb");
     if (!kf) {
@@ -598,11 +601,11 @@ static int run_sign(const canon_opts_t *c) {
 static int run_verify(const canon_opts_t *c) {
     if (!c->KEY[0]) {
         fprintf(stderr, "error: KEY=<public_key_path> required for A=verify\n");
-        return 1;
+        return 2;
     }
     if (!c->SIG[0]) {
         fprintf(stderr, "error: SIG=<signature_string> required for A=verify\n");
-        return 1;
+        return 2;
     }
     if (access(c->KEY, R_OK) != 0) {
         fprintf(stderr, "error: public key file not found: %s\n", c->KEY);
@@ -611,7 +614,8 @@ static int run_verify(const canon_opts_t *c) {
 
     unsigned char *msg = NULL;
     size_t msg_len = 0;
-    if (build_message_buf(c, &msg, &msg_len) != 0) return 1;
+    int build_rc = build_message_buf(c, &msg, &msg_len);
+    if (build_rc != 0) return build_rc;
 
     unsigned char sig[128];
     int siglen = b64url_decode(c->SIG, sig, sizeof(sig));
@@ -724,23 +728,23 @@ static int run_wotp(const canon_opts_t *c, wid_time_unit_t unit) {
     for (size_t i = 0; mode[i]; i++) mode[i] = (char)tolower((unsigned char)mode[i]);
     if (strcmp(mode, "gen") != 0 && strcmp(mode, "verify") != 0) {
         fprintf(stderr, "error: MODE must be gen or verify for A=w-otp\n");
-        return 1;
+        return 2;
     }
     if (!c->KEY[0]) {
         fprintf(stderr, "error: KEY=<secret_or_path> required for A=w-otp\n");
-        return 1;
+        return 2;
     }
     if (c->DIGITS < 4 || c->DIGITS > 10) {
         fprintf(stderr, "error: DIGITS must be between 4 and 10\n");
-        return 1;
+        return 2;
     }
     if (c->MAX_AGE_SEC < 0) {
         fprintf(stderr, "error: MAX_AGE_SEC must be a non-negative integer\n");
-        return 1;
+        return 2;
     }
     if (c->MAX_FUTURE_SEC < 0) {
         fprintf(stderr, "error: MAX_FUTURE_SEC must be a non-negative integer\n");
-        return 1;
+        return 2;
     }
     char secret[PATH_MAX];
     switch (resolve_wotp_secret(c->KEY, secret, sizeof(secret))) {
@@ -748,10 +752,10 @@ static int run_wotp(const canon_opts_t *c, wid_time_unit_t unit) {
         break;
     case 2:
         fprintf(stderr, "error: w-otp secret exceeds %d bytes\n", PATH_MAX - 1);
-        return 1;
+        return 2;
     default:
         fprintf(stderr, "error: w-otp secret cannot be empty\n");
-        return 1;
+        return 2;
     }
     /* Use the caller's WID as-is (no length limit — the other five
      * implementations accept any WID string here); the fixed buffer is only
@@ -767,7 +771,7 @@ static int run_wotp(const canon_opts_t *c, wid_time_unit_t unit) {
         widv = genbuf;
     } else {
         fprintf(stderr, "error: WID=<wid_string> required for A=w-otp MODE=verify\n");
-        return 1;
+        return 2;
     }
     char otp[32];
     if (compute_wotp(secret, widv, c->DIGITS, otp, sizeof(otp)) != 0) {
@@ -780,7 +784,7 @@ static int run_wotp(const canon_opts_t *c, wid_time_unit_t unit) {
     }
     if (!c->CODE[0]) {
         fprintf(stderr, "error: CODE=<otp_code> required for A=w-otp MODE=verify\n");
-        return 1;
+        return 2;
     }
     if (c->MAX_AGE_SEC > 0 || c->MAX_FUTURE_SEC > 0) {
         int64_t wid_ms = 0;
@@ -846,7 +850,7 @@ static int run_canonical(const canon_opts_t *c) {
     if (strcmp(c->A, "healthcheck") == 0) return cmd_healthcheck(&o);
 
     fprintf(stderr, "error: unknown A=%s\n", c->A);
-    return 1;
+    return 2;
 }
 
 static int run_canonical_sql_next(const canon_opts_t *c, wid_time_unit_t unit) {
@@ -886,7 +890,7 @@ static int run_canonical_sql_stream(const canon_opts_t *c, wid_time_unit_t unit)
     return 0;
 }
 
-static bool parse_opts(int argc, char **argv, int start, bool allow_count, cli_opts_t *o) {
+static bool parse_opts(int argc, char **argv, int start, bool allow_count, bool allow_json, cli_opts_t *o) {
     o->kind = "wid";
     o->node = HLC_DEFAULT_NODE;
     o->W = WID_DEFAULT_W;
@@ -913,6 +917,10 @@ static bool parse_opts(int argc, char **argv, int start, bool allow_count, cli_o
         } else if (allow_count && strcmp(argv[i], "--count") == 0) {
             if (i + 1 >= argc || !parse_int(argv[++i], &o->count)) return false;
         } else if (strcmp(argv[i], "--json") == 0) {
+            /* --json belongs to parse/healthcheck only; the other five
+             * implementations reject it elsewhere, so accepting (and
+             * silently ignoring) it here was surface drift. */
+            if (!allow_json) return false;
             o->json = true;
         } else {
             return false;
@@ -1133,11 +1141,11 @@ static void print_completion(const char *shell) {
             "  if [[ \"$cur\" == *=* ]]; then\n"
             "    local key=\"${cur%%%%=*}\" val=\"${cur#*=}\" vals=\"\"\n"
             "    case \"$key\" in\n"
-            "      A) vals=\"next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions\" ;;\n"
+            "      A) vals=\"next stream healthcheck sign verify w-otp help-actions\" ;;\n"
             "      T) vals=\"sec ms\" ;;\n"
             "      I) vals=\"auto sh bash\" ;;\n"
             "      E) vals=\"state stateless sql\" ;;\n"
-            "      R) vals=\"auto mqtt ws redis null stdout\" ;;\n"
+            "      R) vals=\"auto null stdout\" ;;\n"
             "      M) vals=\"true false\" ;;\n"
             "    esac\n"
             "    local IFS=$'\\n'\n"
@@ -1159,11 +1167,11 @@ static void print_completion(const char *shell) {
             "    local key=\"${cur%%%%=*}\"\n"
             "    local -a vals=()\n"
             "    case \"$key\" in\n"
-            "      A) vals=(next stream healthcheck sign verify w-otp discover scaffold run start stop status logs saf saf-wid wir wism wihp wipr duplex help-actions) ;;\n"
+            "      A) vals=(next stream healthcheck sign verify w-otp help-actions) ;;\n"
             "      T) vals=(sec ms) ;;\n"
             "      I) vals=(auto sh bash) ;;\n"
             "      E) vals=(state stateless sql) ;;\n"
-            "      R) vals=(auto mqtt ws redis null stdout) ;;\n"
+            "      R) vals=(auto null stdout) ;;\n"
             "      M) vals=(true false) ;;\n"
             "    esac\n"
             "    compadd -P \"${key}=\" -- \"${vals[@]}\"\n"
@@ -1183,11 +1191,11 @@ static void print_completion(const char *shell) {
             "complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a parse -d 'Parse a WID string'\n"
             "complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a help-actions -d 'Show canonical action matrix'\n"
             "complete -c wid -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a completion -d 'Print shell completion script'\n"
-            "complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=start A=stop A=status A=logs A=help-actions' -d 'Action'\n"
+            "complete -c wid -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=help-actions' -d 'Action'\n"
             "complete -c wid -f -a 'T=sec T=ms' -d 'Time unit'\n"
             "complete -c wid -f -a 'I=auto I=sh I=bash' -d 'Input source'\n"
             "complete -c wid -f -a 'E=state E=stateless E=sql' -d 'State mode'\n"
-            "complete -c wid -f -a 'R=auto R=mqtt R=ws R=redis R=null R=stdout' -d 'Transport'\n"
+            "complete -c wid -f -a 'R=auto R=null R=stdout' -d 'Transport'\n"
             "complete -c wid -f -a 'M=true M=false' -d 'Milliseconds mode'\n"
             "complete -c wid -f -a 'W=' -d 'Sequence width'\n"
             "complete -c wid -f -a 'Z=' -d 'Padding length'\n"
@@ -1237,18 +1245,20 @@ int main(int argc, char **argv) {
 
     cli_opts_t opts;
 
+    /* Usage errors (bad flags/values, missing arguments) exit 2; operational
+     * failures exit 1 — the shared contract in spec/quick-usage.md. */
     if (strcmp(argv[1], "next") == 0) {
-        if (!parse_opts(argc, argv, 2, false, &opts)) {
+        if (!parse_opts(argc, argv, 2, false, false, &opts)) {
             fprintf(stderr, "error: invalid arguments\n");
-            return 1;
+            return 2;
         }
         return cmd_next(&opts);
     }
 
     if (strcmp(argv[1], "stream") == 0) {
-        if (!parse_opts(argc, argv, 2, true, &opts)) {
+        if (!parse_opts(argc, argv, 2, true, false, &opts)) {
             fprintf(stderr, "error: invalid arguments\n");
-            return 1;
+            return 2;
         }
         return cmd_stream(&opts);
     }
@@ -1256,11 +1266,11 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "validate") == 0) {
         if (argc < 3) {
             fprintf(stderr, "error: validate requires an id\n");
-            return 1;
+            return 2;
         }
-        if (!parse_opts(argc, argv, 3, false, &opts)) {
+        if (!parse_opts(argc, argv, 3, false, false, &opts)) {
             fprintf(stderr, "error: invalid arguments\n");
-            return 1;
+            return 2;
         }
         return cmd_validate(argv[2], &opts);
     }
@@ -1268,27 +1278,27 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "parse") == 0) {
         if (argc < 3) {
             fprintf(stderr, "error: parse requires an id\n");
-            return 1;
+            return 2;
         }
-        if (!parse_opts(argc, argv, 3, false, &opts)) {
+        if (!parse_opts(argc, argv, 3, false, true, &opts)) {
             fprintf(stderr, "error: invalid arguments\n");
-            return 1;
+            return 2;
         }
         return cmd_parse(argv[2], &opts);
     }
 
     if (strcmp(argv[1], "healthcheck") == 0) {
-        if (!parse_opts(argc, argv, 2, false, &opts)) {
+        if (!parse_opts(argc, argv, 2, false, true, &opts)) {
             fprintf(stderr, "error: invalid arguments\n");
-            return 1;
+            return 2;
         }
         return cmd_healthcheck(&opts);
     }
 
     if (strcmp(argv[1], "bench") == 0) {
-        if (!parse_opts(argc, argv, 2, true, &opts)) {
+        if (!parse_opts(argc, argv, 2, true, false, &opts)) {
             fprintf(stderr, "error: invalid arguments\n");
-            return 1;
+            return 2;
         }
         return cmd_bench(&opts);
     }

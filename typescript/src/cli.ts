@@ -5,6 +5,8 @@ import { resolve } from "node:path";
 import { createHmac, createPrivateKey, createPublicKey, sign as cryptoSign, timingSafeEqual, verify as cryptoVerify } from "node:crypto";
 import {
   HLCWidGen,
+  MAX_W,
+  MAX_Z,
   parseHlcWid,
   parseWid,
   validateHlcWid,
@@ -12,6 +14,25 @@ import {
   WidGen,
 } from "./index";
 import { parseTimeUnit, type TimeUnit } from "./time";
+
+/**
+ * Malformed invocation (unknown command/flag/key/action, missing required
+ * value, out-of-range parameter). Exits 2 per the shared cross-language
+ * contract (spec/quick-usage.md "Exit codes"); operational failures exit 1.
+ */
+class UsageError extends Error {}
+
+/** Node charset check shared with the generators ([A-Za-z0-9_]+). */
+const CLI_NODE_RE = /^[A-Za-z0-9_]+$/;
+
+/** CLI wrapper for parseTimeUnit: a bad time unit is a usage error. */
+function parseTimeUnitArg(value: string): TimeUnit {
+  try {
+    return parseTimeUnit(value);
+  } catch (e) {
+    throw new UsageError((e as Error).message);
+  }
+}
 
 /** CLI mode selector for WID vs HLC workflows. */
 type Kind = "wid" | "hlc";
@@ -94,11 +115,11 @@ Help:
 function parseIntStrict(value: string, name: string): number {
   // Number.parseInt("2+2", 10) parses the prefix and yields 2; the whole
   // string must be an integer so garbage is an error, never a silent guess.
-  if (!/^-?[0-9]+$/.test(value)) throw new Error(`invalid integer for ${name}`);
+  if (!/^-?[0-9]+$/.test(value)) throw new UsageError(`invalid integer for ${name}`);
   return Number.parseInt(value, 10);
 }
 
-function parseOpts(args: string[], allowCount: boolean): Opts {
+function parseOpts(args: string[], allowCount: boolean, allowJson: boolean): Opts {
   const opts: Opts = {
     kind: "wid",
     node: process.env.NODE ?? "ts",
@@ -113,48 +134,53 @@ function parseOpts(args: string[], allowCount: boolean): Opts {
     const arg = args[i];
     switch (arg) {
       case "--kind":
-        if (i + 1 >= args.length) throw new Error("missing value for --kind");
+        if (i + 1 >= args.length) throw new UsageError("missing value for --kind");
         opts.kind = args[++i] as Kind;
         break;
       case "--node":
-        if (i + 1 >= args.length) throw new Error("missing value for --node");
+        if (i + 1 >= args.length) throw new UsageError("missing value for --node");
         opts.node = args[++i];
         break;
       case "--W":
-        if (i + 1 >= args.length) throw new Error("missing value for --W");
+        if (i + 1 >= args.length) throw new UsageError("missing value for --W");
         opts.W = parseIntStrict(args[++i], "--W");
         break;
       case "--Z":
-        if (i + 1 >= args.length) throw new Error("missing value for --Z");
+        if (i + 1 >= args.length) throw new UsageError("missing value for --Z");
         opts.Z = parseIntStrict(args[++i], "--Z");
         break;
       case "--time-unit":
       case "--T":
-        if (i + 1 >= args.length) throw new Error("missing value for --time-unit");
-        opts.timeUnit = parseTimeUnit(args[++i]);
+        if (i + 1 >= args.length) throw new UsageError("missing value for --time-unit");
+        opts.timeUnit = parseTimeUnitArg(args[++i]);
         break;
       case "--count":
-        if (!allowCount) throw new Error("unknown flag: --count");
-        if (i + 1 >= args.length) throw new Error("missing value for --count");
+        if (!allowCount) throw new UsageError("unknown flag: --count");
+        if (i + 1 >= args.length) throw new UsageError("missing value for --count");
         opts.count = parseIntStrict(args[++i], "--count");
         break;
       case "--json":
+        // --json belongs to parse/healthcheck only; the other five
+        // implementations reject it elsewhere, so accepting (and silently
+        // ignoring) it here was surface drift.
+        if (!allowJson) throw new UsageError("unknown flag: --json");
         opts.json = true;
         break;
       default:
-        throw new Error(`unknown flag: ${arg}`);
+        throw new UsageError(`unknown flag: ${arg}`);
     }
   }
 
-  if (opts.kind !== "wid" && opts.kind !== "hlc") throw new Error("--kind must be one of: wid, hlc");
-  if (opts.W <= 0) throw new Error("W must be > 0");
-  if (opts.Z < 0) throw new Error("Z must be >= 0");
-  if (opts.count < 0) throw new Error("count must be >= 0");
+  if (opts.kind !== "wid" && opts.kind !== "hlc") throw new UsageError("--kind must be one of: wid, hlc");
+  if (opts.W <= 0 || opts.W > MAX_W) throw new UsageError("W must be between 1 and 18");
+  if (opts.Z < 0 || opts.Z > MAX_Z) throw new UsageError("Z must be between 0 and 64");
+  if (opts.count < 0) throw new UsageError("count must be >= 0");
+  if (opts.kind === "hlc" && !CLI_NODE_RE.test(opts.node)) throw new UsageError("invalid node");
   return opts;
 }
 
 function runNext(args: string[]): void {
-  const opts = parseOpts(args, false);
+  const opts = parseOpts(args, false, false);
   if (opts.kind === "wid") {
     console.log(new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next());
     return;
@@ -163,7 +189,7 @@ function runNext(args: string[]): void {
 }
 
 function runStream(args: string[]): void {
-  const opts = parseOpts(args, true);
+  const opts = parseOpts(args, true, false);
   if (opts.kind === "wid") {
     const gen = new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit });
     for (let i = 0; opts.count === 0 || i < opts.count; i += 1) console.log(gen.next());
@@ -174,9 +200,9 @@ function runStream(args: string[]): void {
 }
 
 function runValidate(args: string[]): void {
-  if (args.length === 0) throw new Error("validate requires an id");
+  if (args.length === 0) throw new UsageError("validate requires an id");
   const id = args[0];
-  const opts = parseOpts(args.slice(1), false);
+  const opts = parseOpts(args.slice(1), false, false);
   const ok =
     opts.kind === "wid"
       ? validateWid(id, opts.W, opts.Z, opts.timeUnit)
@@ -186,9 +212,9 @@ function runValidate(args: string[]): void {
 }
 
 function runParse(args: string[]): void {
-  if (args.length === 0) throw new Error("parse requires an id");
+  if (args.length === 0) throw new UsageError("parse requires an id");
   const id = args[0];
-  const opts = parseOpts(args.slice(1), false);
+  const opts = parseOpts(args.slice(1), false, true);
 
   if (opts.kind === "wid") {
     const parsed = parseWid(id, opts.W, opts.Z, opts.timeUnit);
@@ -239,7 +265,7 @@ function runParse(args: string[]): void {
 }
 
 function runHealthcheck(args: string[]): void {
-  const opts = parseOpts(args, false);
+  const opts = parseOpts(args, false, true);
   const sample =
     opts.kind === "wid"
       ? new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next()
@@ -269,7 +295,7 @@ function runHealthcheck(args: string[]): void {
 }
 
 function runBench(args: string[]): void {
-  const opts = parseOpts(args, true);
+  const opts = parseOpts(args, true, false);
   const n = opts.count > 0 ? opts.count : 100000;
 
   const start = process.hrtime.bigint();
@@ -316,7 +342,7 @@ function parseCanonical(args: string[]): Canon {
     // indexOf, not split("=", 2): JS split drops the remainder after the
     // second '=', which silently truncates values like KEY=abc=def.
     const eq = arg.indexOf("=");
-    if (eq < 0) throw new Error(`expected KEY=VALUE, got '${arg}'`);
+    if (eq < 0) throw new UsageError(`expected KEY=VALUE, got '${arg}'`);
     const k = arg.slice(0, eq);
     // An empty value (e.g. `D=`) is accepted, matching the other five
     // implementations: string keys take "" verbatim and numeric keys fail
@@ -348,7 +374,7 @@ function parseCanonical(args: string[]): Canon {
         out.Z = parseIntStrict(v, "Z");
         break;
       case "T":
-        out.T = parseTimeUnit(v);
+        out.T = parseTimeUnitArg(v);
         break;
       case "R":
         out.R = v;
@@ -390,7 +416,7 @@ function parseCanonical(args: string[]): Canon {
         out.MAX_FUTURE_SEC = parseIntStrict(v, "MAX_FUTURE_SEC");
         break;
       default:
-        throw new Error(`unknown key: ${k}`);
+        throw new UsageError(`unknown key: ${k}`);
     }
   }
 
@@ -403,10 +429,13 @@ function parseCanonical(args: string[]): Canon {
       ? "healthcheck"
       : out.A;
 
-  if (out.W <= 0) throw new Error("W must be > 0");
-  if (out.Z < 0 || out.N < 0 || out.L < 0) throw new Error("Z/N/L must be >= 0");
+  // Reject out-of-range W/Z here (usage error, exit 2) instead of letting
+  // the generator constructor report it as an operational failure.
+  if (out.W <= 0 || out.W > MAX_W) throw new UsageError("W must be between 1 and 18");
+  if (out.Z < 0 || out.Z > MAX_Z) throw new UsageError("Z must be between 0 and 64");
+  if (out.N < 0 || out.L < 0) throw new UsageError("N/L must be >= 0");
   if (!["auto", "null", "stdout"].includes(out.R)) {
-    throw new Error(`transport R=${out.R} is only available in the Rust implementation (services/transports are Rust-only)`);
+    throw new UsageError(`transport R=${out.R} is only available in the Rust implementation (services/transports are Rust-only)`);
   }
 
   return out;
@@ -470,7 +499,7 @@ function b64urlDecode(s: string): Buffer {
 
 function buildSignVerifyMessage(c: Canon): Buffer {
   const wid = c.WID ?? "";
-  if (!wid) throw new Error("WID=<wid_string> required");
+  if (!wid) throw new UsageError("WID=<wid_string> required");
   // Canonical message: "wid-sig-v1:" + len(WID) + ":" + WID + DATA. The domain
   // prefix and explicit WID byte-length frame the WID/DATA boundary.
   const widBuf = Buffer.from(wid, "utf8");
@@ -485,7 +514,7 @@ function buildSignVerifyMessage(c: Canon): Buffer {
 
 function runSign(c: Canon): number {
   const keyPath = c.KEY ?? "";
-  if (!keyPath) throw new Error("KEY=<private_key_path> required for A=sign");
+  if (!keyPath) throw new UsageError("KEY=<private_key_path> required for A=sign");
   if (!existsSync(keyPath)) throw new Error(`private key file not found: ${keyPath}`);
   const message = buildSignVerifyMessage(c);
   const key = createPrivateKey(readFileSync(keyPath));
@@ -499,8 +528,8 @@ function runSign(c: Canon): number {
 function runVerify(c: Canon): number {
   const keyPath = c.KEY ?? "";
   const sigText = c.SIG ?? "";
-  if (!keyPath) throw new Error("KEY=<public_key_path> required for A=verify");
-  if (!sigText) throw new Error("SIG=<signature_string> required for A=verify");
+  if (!keyPath) throw new UsageError("KEY=<public_key_path> required for A=verify");
+  if (!sigText) throw new UsageError("SIG=<signature_string> required for A=verify");
   if (!existsSync(keyPath)) throw new Error(`public key file not found: ${keyPath}`);
   const message = buildSignVerifyMessage(c);
   const key = createPublicKey(readFileSync(keyPath));
@@ -563,20 +592,20 @@ function wotpWidTickMs(wid: string): number {
 
 function runWOtp(c: Canon): number {
   const mode = (c.MODE ?? "gen").toLowerCase();
-  if (mode !== "gen" && mode !== "verify") throw new Error("MODE must be gen or verify for A=w-otp");
-  if (!c.KEY || c.KEY.length === 0) throw new Error("KEY=<secret_or_path> required for A=w-otp");
+  if (mode !== "gen" && mode !== "verify") throw new UsageError("MODE must be gen or verify for A=w-otp");
+  if (!c.KEY || c.KEY.length === 0) throw new UsageError("KEY=<secret_or_path> required for A=w-otp");
   const secret = resolveWOtpSecret(c.KEY);
-  if (!secret) throw new Error("w-otp secret cannot be empty");
+  if (!secret) throw new UsageError("w-otp secret cannot be empty");
   const digits = c.DIGITS ?? 6;
-  if (!Number.isInteger(digits) || digits < 4 || digits > 10) throw new Error("DIGITS must be an integer between 4 and 10");
+  if (!Number.isInteger(digits) || digits < 4 || digits > 10) throw new UsageError("DIGITS must be an integer between 4 and 10");
   const maxAgeSec = c.MAX_AGE_SEC ?? 0;
   const maxFutureSec = c.MAX_FUTURE_SEC ?? 5;
-  if (!Number.isInteger(maxAgeSec) || maxAgeSec < 0) throw new Error("MAX_AGE_SEC must be a non-negative integer");
-  if (!Number.isInteger(maxFutureSec) || maxFutureSec < 0) throw new Error("MAX_FUTURE_SEC must be a non-negative integer");
+  if (!Number.isInteger(maxAgeSec) || maxAgeSec < 0) throw new UsageError("MAX_AGE_SEC must be a non-negative integer");
+  if (!Number.isInteger(maxFutureSec) || maxFutureSec < 0) throw new UsageError("MAX_FUTURE_SEC must be a non-negative integer");
 
   let wid = c.WID ?? "";
   if (!wid && mode === "gen") wid = new WidGen({ W: c.W, Z: c.Z, timeUnit: c.T }).next();
-  if (!wid) throw new Error("WID=<wid_string> required for A=w-otp MODE=verify");
+  if (!wid) throw new UsageError("WID=<wid_string> required for A=w-otp MODE=verify");
 
   const otp = computeWOtp(secret, wid, digits);
   if (mode === "gen") {
@@ -585,7 +614,7 @@ function runWOtp(c: Canon): number {
   }
 
   const code = c.CODE ?? "";
-  if (!code) throw new Error("CODE=<otp_code> required for A=w-otp MODE=verify");
+  if (!code) throw new UsageError("CODE=<otp_code> required for A=w-otp MODE=verify");
   if (maxAgeSec > 0 || maxFutureSec > 0) {
     const widMs = wotpWidTickMs(wid);
     const nowMs = Date.now();
@@ -759,7 +788,7 @@ function runCanonical(args: string[]): number {
   if (c.A === "verify") return runVerify(c);
   if (c.A === "w-otp") return runWOtp(c);
 
-  throw new Error(`unknown A=${c.A}`);
+  throw new UsageError(`unknown A=${c.A}`);
 }
 
 function printCompletion(shell: string): void {
@@ -775,7 +804,7 @@ function printCompletion(shell: string): void {
       T) vals="sec ms" ;;
       I) vals="auto sh bash" ;;
       E) vals="state stateless sql" ;;
-      R) vals="auto mqtt ws redis null stdout" ;;
+      R) vals="auto null stdout" ;;
       M) vals="true false" ;;
     esac
     local IFS=$'\\n'
@@ -802,7 +831,7 @@ _wid_complete() {
       T) vals=(sec ms) ;;
       I) vals=(auto sh bash) ;;
       E) vals=(state stateless sql) ;;
-      R) vals=(auto mqtt ws redis null stdout) ;;
+      R) vals=(auto null stdout) ;;
       M) vals=(true false) ;;
     esac
     compadd -P "\${key}=" -- "\${vals[@]}"
@@ -828,7 +857,7 @@ complete -c wid-ts -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp 
 complete -c wid-ts -f -a 'T=sec T=ms' -d 'Time unit'
 complete -c wid-ts -f -a 'I=auto I=sh I=bash' -d 'Input source'
 complete -c wid-ts -f -a 'E=state E=stateless E=sql' -d 'State mode'
-complete -c wid-ts -f -a 'R=auto R=mqtt R=ws R=redis R=null R=stdout' -d 'Transport'
+complete -c wid-ts -f -a 'R=auto R=null R=stdout' -d 'Transport'
 complete -c wid-ts -f -a 'M=true M=false' -d 'Milliseconds mode'
 complete -c wid-ts -f -a 'W=' -d 'Sequence width'
 complete -c wid-ts -f -a 'Z=' -d 'Padding length'
@@ -872,7 +901,7 @@ function main(): number {
       return runCanonical(args);
     } catch (e) {
       console.error(`error: ${(e as Error).message}`);
-      return 1;
+      return e instanceof UsageError ? 2 : 1;
     }
   }
 
@@ -922,12 +951,14 @@ function main(): number {
         runBench(rest);
         return 0;
       default:
-        throw new Error(`unknown command: ${cmd}`);
+        throw new UsageError(`unknown command: ${cmd}`);
     }
   } catch (e) {
     console.error(`error: ${(e as Error).message}`);
-    return 1;
+    return e instanceof UsageError ? 2 : 1;
   }
 }
 
-process.exit(main());
+// Set exitCode instead of calling process.exit(): exit() can truncate stdout
+// still buffered on a pipe; exitCode lets the event loop drain first.
+process.exitCode = main();

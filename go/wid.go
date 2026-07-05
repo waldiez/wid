@@ -31,6 +31,7 @@ var (
 	ErrInvalidRemoteClock  = errors.New("remote clock values must be non-negative")
 	ErrInvalidTimeUnit     = errors.New("time-unit must be sec or ms")
 	ErrInvalidTimeUnitText = errors.New("invalid time-unit")
+	ErrInvalidState        = errors.New("state values must be non-negative (last_seq may be -1)")
 )
 
 // TimeUnit enumerates the supported time-precision modes for WID and HLC helpers.
@@ -433,13 +434,19 @@ func (g *WidGen) State() (int64, int64) {
 	return g.lastTick, g.lastSeq
 }
 
-// RestoreState resumes from persisted (lastTick, lastSeq) state;
-// out-of-range ticks saturate to the formattable range on output.
-func (g *WidGen) RestoreState(lastTick, lastSeq int64) {
+// RestoreState resumes from persisted (lastTick, lastSeq) state. It rejects
+// lastTick < 0 and lastSeq < -1 (-1 is the valid "nothing emitted this tick
+// yet" resume value), mirroring HLCWidGen.RestoreState and the other
+// implementations.
+func (g *WidGen) RestoreState(lastTick, lastSeq int64) error {
+	if lastTick < 0 || lastSeq < -1 {
+		return ErrInvalidState
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.lastTick = lastTick
 	g.lastSeq = lastSeq
+	return nil
 }
 
 // HLCWidGen tracks hybrid logical clock state for HLC-WID generation.

@@ -347,7 +347,15 @@ var WidGen = class {
   get state() {
     return { lastSec: this.lastSec, lastSeq: this.lastSeq };
   }
+  /**
+   * Restore persisted generator state. Rejects `lastSec < 0` and
+   * `lastSeq < -1` (-1 is the valid "nothing emitted this tick yet" resume
+   * value), mirroring `HLCWidGen.restoreState` and the other implementations.
+   */
   restoreState(lastSec, lastSeq) {
+    if (!Number.isFinite(lastSec) || !Number.isFinite(lastSeq) || lastSec < 0 || lastSeq < -1) {
+      throw new Error("invalid state: lastSec must be >= 0 and lastSeq >= -1");
+    }
     this.lastSec = lastSec;
     this.lastSeq = lastSeq;
     this.persistState();

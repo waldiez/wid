@@ -23,9 +23,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TextIO
 
-from .core import WidCore
+from .core import parse_time_unit
 from .hlc import HLCWidGen
-from .parse import parse_hlc_wid, parse_wid, validate_hlc_wid, validate_wid
+from .parse import (
+    MAX_W,
+    MAX_Z,
+    parse_hlc_wid,
+    parse_wid,
+    validate_hlc_wid,
+    validate_wid,
+)
 from .wid import WidGen
 
 if TYPE_CHECKING:
@@ -156,7 +163,7 @@ def _run_emit_mode(mode: str, argv: list[str]) -> None:
 
     gen: Callable[[], str]
     g: WidGen | HLCWidGen
-    effective_time_unit = WidCore.TimeUnit.from_string(args.time_unit)
+    effective_time_unit = parse_time_unit(args.time_unit)
     if args.kind == "wid":
         g = WidGen(w=args.W, z=args.Z, time_unit=effective_time_unit)
         gen = g.next
@@ -195,7 +202,7 @@ def _run_healthcheck_mode(argv: list[str]) -> None:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
-    effective_time_unit = WidCore.TimeUnit.from_string(args.time_unit)
+    effective_time_unit = parse_time_unit(args.time_unit)
     ok: bool = False
     if args.kind == "wid":
         sample = WidGen(w=args.W, z=args.Z, time_unit=effective_time_unit).next()
@@ -244,7 +251,7 @@ def _run_bench_mode(argv: list[str]) -> None:
     args = ap.parse_args(argv)
 
     n = args.count if args.count > 0 else 100000
-    effective_time_unit = WidCore.TimeUnit.from_string(args.time_unit)
+    effective_time_unit = parse_time_unit(args.time_unit)
     g: WidGen | HLCWidGen
     if args.kind == "wid":
         g = WidGen(w=args.W, z=args.Z, time_unit=effective_time_unit)
@@ -315,7 +322,7 @@ def _repo_root() -> Path | None:
 def _run_cmd(
     cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None
 ) -> None:
-    """Run a subprocess, streaming its output; return the exit code."""
+    """Run a subprocess, streaming its output; raise on non-zero exit."""
     subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env, check=True)
 
 
@@ -379,7 +386,7 @@ def _sql_allocate_next_wid(
             gen = WidGen(
                 w=w_val,
                 z=z_val,
-                time_unit=WidCore.TimeUnit.from_string(time_unit),
+                time_unit=parse_time_unit(time_unit),
             )
             gen.restore_state(last_sec, last_seq)
             wid_id = gen.next()
@@ -398,21 +405,39 @@ def _sql_allocate_next_wid(
         conn.close()
 
 
+def _require_canon(canon: dict[str, str], key: str, message: str) -> str:
+    """Return a required canonical parameter or raise the usage error.
+
+    Missing required parameters are usage errors (ValueError -> exit 2);
+    indexing ``canon[...]`` directly raised an uncaught KeyError traceback.
+    """
+    value = canon.get(key, "")
+    if not value:
+        raise ValueError(message)
+    return value
+
+
 def _run_sign_mode(canon: dict[str, str]) -> None:
     """Handle ``A=sign``: Ed25519-sign a WID (plus optional payload)."""
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import ed25519
 
-    wid_str = canon["WID"]
-    key_path = Path(canon["KEY"]).expanduser().resolve()
+    wid_str = _require_canon(canon, "WID", "WID=<wid_string> required for A=sign")
+    raw_key = _require_canon(canon, "KEY", "KEY=<private_key_path> required for A=sign")
+    key_path = Path(raw_key).expanduser().resolve()
     data_path_str = canon.get("DATA")
     out_path_str = canon.get("OUT")
 
     if not key_path.exists():
         raise FileNotFoundError(f"private key file not found: {key_path}")
 
-    with open(key_path, "rb") as f:
-        private_key = serialization.load_pem_private_key(f.read(), password=None)
+    try:
+        with open(key_path, "rb") as f:
+            private_key = serialization.load_pem_private_key(f.read(), password=None)
+    except ValueError as exc:
+        # Bad key material is an operational failure (exit 1), not a usage
+        # error: cryptography raises ValueError, which would exit 2.
+        raise RuntimeError("sign failed (ensure Ed25519 private key PEM)") from exc
 
     if not isinstance(private_key, ed25519.Ed25519PrivateKey):
         raise TypeError("Loaded key is not an Ed25519 private key.")
@@ -445,16 +470,28 @@ def _run_verify_mode(canon: dict[str, str]) -> None:
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import ed25519
 
-    wid_str = canon["WID"]
-    key_path = Path(canon["KEY"]).expanduser().resolve()
-    sig_str = canon["SIG"]
+    wid_str = _require_canon(canon, "WID", "WID=<wid_string> required for A=verify")
+    raw_key = _require_canon(
+        canon, "KEY", "KEY=<public_key_path> required for A=verify"
+    )
+    sig_str = _require_canon(
+        canon, "SIG", "SIG=<signature_string> required for A=verify"
+    )
+    key_path = Path(raw_key).expanduser().resolve()
     data_path_str = canon.get("DATA")
 
     if not key_path.exists():
         raise FileNotFoundError(f"public key file not found: {key_path}")
 
-    with open(key_path, "rb") as f:
-        public_key = serialization.load_pem_public_key(f.read())
+    try:
+        with open(key_path, "rb") as f:
+            public_key = serialization.load_pem_public_key(f.read())
+    except ValueError as exc:
+        # Bad key material is an operational failure (exit 1), not a usage
+        # error: cryptography raises ValueError, which would exit 2.
+        raise RuntimeError(
+            "invalid public key (ensure Ed25519 public key PEM)"
+        ) from exc
 
     if not isinstance(public_key, ed25519.Ed25519PublicKey):
         raise TypeError("Loaded key is not an Ed25519 public key.")
@@ -470,7 +507,13 @@ def _run_verify_mode(canon: dict[str, str]) -> None:
         with open(data_path, "rb") as f:
             message += f.read()
 
-    decoded_signature = base64.urlsafe_b64decode(sig_str + "===")  # Add padding back
+    try:
+        # Add padding back; base64 raises binascii.Error (a ValueError
+        # subclass) on garbage, which would exit 2 as a usage error — but a
+        # malformed signature is a verification failure (exit 1) everywhere.
+        decoded_signature = base64.urlsafe_b64decode(sig_str + "===")
+    except ValueError as exc:
+        raise RuntimeError("invalid signature encoding") from exc
 
     try:
         public_key.verify(decoded_signature, message)
@@ -553,7 +596,7 @@ def _run_wotp_mode(  # noqa: C901
 
     wid_str = canon.get("WID", "").strip()
     if not wid_str and mode == "gen":
-        unit = WidCore.TimeUnit.from_string(time_unit)
+        unit = parse_time_unit(time_unit)
         gen = WidGen(w=w_val, z=z_val, time_unit=unit)
         wid_str = gen.next()
     if not wid_str:
@@ -682,7 +725,7 @@ def _run_canonical(argv: list[str]) -> bool:  # noqa: C901
     )
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    effective_time_unit = WidCore.TimeUnit.from_string(time_unit)
+    effective_time_unit = parse_time_unit(time_unit)
 
     # E may carry a "+transport" / ",transport" suffix from the full canonical
     # grammar; only the state-mode half is meaningful here (transports are
@@ -768,6 +811,19 @@ def _run_canonical(argv: list[str]) -> bool:  # noqa: C901
     raise ValueError(f"unknown A={action}")
 
 
+def _check_shape_bounds(w: int, z: int) -> None:
+    """Reject out-of-range W/Z as a usage error (exit 2).
+
+    Checked before validate/parse run so a bad parameter is not misreported
+    as the id itself being invalid (exit 1) — the shared contract in
+    spec/quick-usage.md "Exit codes".
+    """
+    if w <= 0 or w > MAX_W:
+        raise ValueError("W must be between 1 and 18")
+    if z < 0 or z > MAX_Z:
+        raise ValueError("Z must be between 0 and 64")
+
+
 def _parse_validate_flags(args: list[str]) -> tuple[str, int, int, str]:
     """Parse --kind --W --Z --time-unit flags; return (kind, W, Z, time_unit)."""
     kind = "wid"
@@ -797,6 +853,7 @@ def _parse_validate_flags(args: list[str]) -> tuple[str, int, int, str]:
             raise ValueError(f"{arg} requires a value")
         else:
             raise ValueError(f"unknown flag: {arg}")
+    _check_shape_bounds(w, z)
     return kind, w, z, time_unit
 
 

@@ -159,10 +159,8 @@ def parse_wid(
         if not _hex_re(Z).match(seg):
             return None
         padding = seg
-    else:
-        if Z > 0:
-            # allow missing padding even if Z>0 (caller chooses policy)
-            padding = None
+    # A missing pad is allowed even when Z > 0 (padding stays None),
+    # matching SPEC.md and the other implementations.
 
     return ParsedWid(raw=wid, timestamp=ts, sequence=seq, padding=padding)
 

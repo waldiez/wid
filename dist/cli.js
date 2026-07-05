@@ -203,7 +203,15 @@ var WidGen = class {
   get state() {
     return { lastSec: this.lastSec, lastSeq: this.lastSeq };
   }
+  /**
+   * Restore persisted generator state. Rejects `lastSec < 0` and
+   * `lastSeq < -1` (-1 is the valid "nothing emitted this tick yet" resume
+   * value), mirroring `HLCWidGen.restoreState` and the other implementations.
+   */
   restoreState(lastSec, lastSeq) {
+    if (!Number.isFinite(lastSec) || !Number.isFinite(lastSeq) || lastSec < 0 || lastSeq < -1) {
+      throw new Error("invalid state: lastSec must be >= 0 and lastSeq >= -1");
+    }
     this.lastSec = lastSec;
     this.lastSeq = lastSeq;
     this.persistState();
@@ -338,6 +346,16 @@ var MANIFEST_MAGIC = new Uint8Array([87, 73, 68, 77]);
 var MAX_MANIFEST_SIZE = 64 * 1024;
 
 // typescript/src/cli.ts
+var UsageError = class extends Error {
+};
+var CLI_NODE_RE = /^[A-Za-z0-9_]+$/;
+function parseTimeUnitArg(value) {
+  try {
+    return parseTimeUnit(value);
+  } catch (e) {
+    throw new UsageError(e.message);
+  }
+}
 function printHelp() {
   console.error(`wid - WID/HLC-WID generator CLI
 
@@ -369,10 +387,10 @@ Help:
   A=help-actions`);
 }
 function parseIntStrict(value, name) {
-  if (!/^-?[0-9]+$/.test(value)) throw new Error(`invalid integer for ${name}`);
+  if (!/^-?[0-9]+$/.test(value)) throw new UsageError(`invalid integer for ${name}`);
   return Number.parseInt(value, 10);
 }
-function parseOpts(args, allowCount) {
+function parseOpts(args, allowCount, allowJson) {
   const opts = {
     kind: "wid",
     node: process.env.NODE ?? "ts",
@@ -386,46 +404,48 @@ function parseOpts(args, allowCount) {
     const arg = args[i];
     switch (arg) {
       case "--kind":
-        if (i + 1 >= args.length) throw new Error("missing value for --kind");
+        if (i + 1 >= args.length) throw new UsageError("missing value for --kind");
         opts.kind = args[++i];
         break;
       case "--node":
-        if (i + 1 >= args.length) throw new Error("missing value for --node");
+        if (i + 1 >= args.length) throw new UsageError("missing value for --node");
         opts.node = args[++i];
         break;
       case "--W":
-        if (i + 1 >= args.length) throw new Error("missing value for --W");
+        if (i + 1 >= args.length) throw new UsageError("missing value for --W");
         opts.W = parseIntStrict(args[++i], "--W");
         break;
       case "--Z":
-        if (i + 1 >= args.length) throw new Error("missing value for --Z");
+        if (i + 1 >= args.length) throw new UsageError("missing value for --Z");
         opts.Z = parseIntStrict(args[++i], "--Z");
         break;
       case "--time-unit":
       case "--T":
-        if (i + 1 >= args.length) throw new Error("missing value for --time-unit");
-        opts.timeUnit = parseTimeUnit(args[++i]);
+        if (i + 1 >= args.length) throw new UsageError("missing value for --time-unit");
+        opts.timeUnit = parseTimeUnitArg(args[++i]);
         break;
       case "--count":
-        if (!allowCount) throw new Error("unknown flag: --count");
-        if (i + 1 >= args.length) throw new Error("missing value for --count");
+        if (!allowCount) throw new UsageError("unknown flag: --count");
+        if (i + 1 >= args.length) throw new UsageError("missing value for --count");
         opts.count = parseIntStrict(args[++i], "--count");
         break;
       case "--json":
+        if (!allowJson) throw new UsageError("unknown flag: --json");
         opts.json = true;
         break;
       default:
-        throw new Error(`unknown flag: ${arg}`);
+        throw new UsageError(`unknown flag: ${arg}`);
     }
   }
-  if (opts.kind !== "wid" && opts.kind !== "hlc") throw new Error("--kind must be one of: wid, hlc");
-  if (opts.W <= 0) throw new Error("W must be > 0");
-  if (opts.Z < 0) throw new Error("Z must be >= 0");
-  if (opts.count < 0) throw new Error("count must be >= 0");
+  if (opts.kind !== "wid" && opts.kind !== "hlc") throw new UsageError("--kind must be one of: wid, hlc");
+  if (opts.W <= 0 || opts.W > MAX_W) throw new UsageError("W must be between 1 and 18");
+  if (opts.Z < 0 || opts.Z > MAX_Z) throw new UsageError("Z must be between 0 and 64");
+  if (opts.count < 0) throw new UsageError("count must be >= 0");
+  if (opts.kind === "hlc" && !CLI_NODE_RE.test(opts.node)) throw new UsageError("invalid node");
   return opts;
 }
 function runNext(args) {
-  const opts = parseOpts(args, false);
+  const opts = parseOpts(args, false, false);
   if (opts.kind === "wid") {
     console.log(new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next());
     return;
@@ -433,7 +453,7 @@ function runNext(args) {
   console.log(new HLCWidGen({ node: opts.node, W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next());
 }
 function runStream(args) {
-  const opts = parseOpts(args, true);
+  const opts = parseOpts(args, true, false);
   if (opts.kind === "wid") {
     const gen2 = new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit });
     for (let i = 0; opts.count === 0 || i < opts.count; i += 1) console.log(gen2.next());
@@ -443,17 +463,17 @@ function runStream(args) {
   for (let i = 0; opts.count === 0 || i < opts.count; i += 1) console.log(gen.next());
 }
 function runValidate(args) {
-  if (args.length === 0) throw new Error("validate requires an id");
+  if (args.length === 0) throw new UsageError("validate requires an id");
   const id = args[0];
-  const opts = parseOpts(args.slice(1), false);
+  const opts = parseOpts(args.slice(1), false, false);
   const ok = opts.kind === "wid" ? validateWid(id, opts.W, opts.Z, opts.timeUnit) : validateHlcWid(id, opts.W, opts.Z, opts.timeUnit);
   console.log(ok ? "true" : "false");
   if (!ok) throw new Error("invalid wid");
 }
 function runParse(args) {
-  if (args.length === 0) throw new Error("parse requires an id");
+  if (args.length === 0) throw new UsageError("parse requires an id");
   const id = args[0];
-  const opts = parseOpts(args.slice(1), false);
+  const opts = parseOpts(args.slice(1), false, true);
   if (opts.kind === "wid") {
     const parsed2 = parseWid(id, opts.W, opts.Z, opts.timeUnit);
     if (!parsed2) {
@@ -501,7 +521,7 @@ function runParse(args) {
   console.log(`padding=${parsed.padding ?? ""}`);
 }
 function runHealthcheck(args) {
-  const opts = parseOpts(args, false);
+  const opts = parseOpts(args, false, true);
   const sample = opts.kind === "wid" ? new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next() : new HLCWidGen({ node: opts.node, W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next();
   const ok = opts.kind === "wid" ? validateWid(sample, opts.W, opts.Z, opts.timeUnit) : validateHlcWid(sample, opts.W, opts.Z, opts.timeUnit);
   if (opts.json) {
@@ -521,7 +541,7 @@ function runHealthcheck(args) {
   if (!ok) throw new Error("healthcheck failed");
 }
 function runBench(args) {
-  const opts = parseOpts(args, true);
+  const opts = parseOpts(args, true, false);
   const n = opts.count > 0 ? opts.count : 1e5;
   const start = process.hrtime.bigint();
   if (opts.kind === "wid") {
@@ -563,7 +583,7 @@ function parseCanonical(args) {
   };
   for (const arg of args) {
     const eq = arg.indexOf("=");
-    if (eq < 0) throw new Error(`expected KEY=VALUE, got '${arg}'`);
+    if (eq < 0) throw new UsageError(`expected KEY=VALUE, got '${arg}'`);
     const k = arg.slice(0, eq);
     const vRaw = arg.slice(eq + 1);
     const v = vRaw === "#" ? defaultValueFor(k) : vRaw;
@@ -591,7 +611,7 @@ function parseCanonical(args) {
         out.Z = parseIntStrict(v, "Z");
         break;
       case "T":
-        out.T = parseTimeUnit(v);
+        out.T = parseTimeUnitArg(v);
         break;
       case "R":
         out.R = v;
@@ -633,15 +653,16 @@ function parseCanonical(args) {
         out.MAX_FUTURE_SEC = parseIntStrict(v, "MAX_FUTURE_SEC");
         break;
       default:
-        throw new Error(`unknown key: ${k}`);
+        throw new UsageError(`unknown key: ${k}`);
     }
   }
   if (out.M) out.T = "ms";
   out.A = out.A === "id" || out.A === "default" ? "next" : out.A === "hc" ? "healthcheck" : out.A;
-  if (out.W <= 0) throw new Error("W must be > 0");
-  if (out.Z < 0 || out.N < 0 || out.L < 0) throw new Error("Z/N/L must be >= 0");
+  if (out.W <= 0 || out.W > MAX_W) throw new UsageError("W must be between 1 and 18");
+  if (out.Z < 0 || out.Z > MAX_Z) throw new UsageError("Z must be between 0 and 64");
+  if (out.N < 0 || out.L < 0) throw new UsageError("N/L must be >= 0");
   if (!["auto", "null", "stdout"].includes(out.R)) {
-    throw new Error(`transport R=${out.R} is only available in the Rust implementation (services/transports are Rust-only)`);
+    throw new UsageError(`transport R=${out.R} is only available in the Rust implementation (services/transports are Rust-only)`);
   }
   return out;
 }
@@ -700,7 +721,7 @@ function b64urlDecode(s) {
 }
 function buildSignVerifyMessage(c) {
   const wid = c.WID ?? "";
-  if (!wid) throw new Error("WID=<wid_string> required");
+  if (!wid) throw new UsageError("WID=<wid_string> required");
   const widBuf = Buffer.from(wid, "utf8");
   const header = Buffer.from(`wid-sig-v1:${widBuf.length}:`, "ascii");
   const parts = [header, widBuf];
@@ -712,7 +733,7 @@ function buildSignVerifyMessage(c) {
 }
 function runSign(c) {
   const keyPath = c.KEY ?? "";
-  if (!keyPath) throw new Error("KEY=<private_key_path> required for A=sign");
+  if (!keyPath) throw new UsageError("KEY=<private_key_path> required for A=sign");
   if (!(0, import_node_fs.existsSync)(keyPath)) throw new Error(`private key file not found: ${keyPath}`);
   const message = buildSignVerifyMessage(c);
   const key = (0, import_node_crypto.createPrivateKey)((0, import_node_fs.readFileSync)(keyPath));
@@ -725,8 +746,8 @@ function runSign(c) {
 function runVerify(c) {
   const keyPath = c.KEY ?? "";
   const sigText = c.SIG ?? "";
-  if (!keyPath) throw new Error("KEY=<public_key_path> required for A=verify");
-  if (!sigText) throw new Error("SIG=<signature_string> required for A=verify");
+  if (!keyPath) throw new UsageError("KEY=<public_key_path> required for A=verify");
+  if (!sigText) throw new UsageError("SIG=<signature_string> required for A=verify");
   if (!(0, import_node_fs.existsSync)(keyPath)) throw new Error(`public key file not found: ${keyPath}`);
   const message = buildSignVerifyMessage(c);
   const key = (0, import_node_crypto.createPublicKey)((0, import_node_fs.readFileSync)(keyPath));
@@ -770,26 +791,26 @@ function wotpWidTickMs(wid) {
 }
 function runWOtp(c) {
   const mode = (c.MODE ?? "gen").toLowerCase();
-  if (mode !== "gen" && mode !== "verify") throw new Error("MODE must be gen or verify for A=w-otp");
-  if (!c.KEY || c.KEY.length === 0) throw new Error("KEY=<secret_or_path> required for A=w-otp");
+  if (mode !== "gen" && mode !== "verify") throw new UsageError("MODE must be gen or verify for A=w-otp");
+  if (!c.KEY || c.KEY.length === 0) throw new UsageError("KEY=<secret_or_path> required for A=w-otp");
   const secret = resolveWOtpSecret(c.KEY);
-  if (!secret) throw new Error("w-otp secret cannot be empty");
+  if (!secret) throw new UsageError("w-otp secret cannot be empty");
   const digits = c.DIGITS ?? 6;
-  if (!Number.isInteger(digits) || digits < 4 || digits > 10) throw new Error("DIGITS must be an integer between 4 and 10");
+  if (!Number.isInteger(digits) || digits < 4 || digits > 10) throw new UsageError("DIGITS must be an integer between 4 and 10");
   const maxAgeSec = c.MAX_AGE_SEC ?? 0;
   const maxFutureSec = c.MAX_FUTURE_SEC ?? 5;
-  if (!Number.isInteger(maxAgeSec) || maxAgeSec < 0) throw new Error("MAX_AGE_SEC must be a non-negative integer");
-  if (!Number.isInteger(maxFutureSec) || maxFutureSec < 0) throw new Error("MAX_FUTURE_SEC must be a non-negative integer");
+  if (!Number.isInteger(maxAgeSec) || maxAgeSec < 0) throw new UsageError("MAX_AGE_SEC must be a non-negative integer");
+  if (!Number.isInteger(maxFutureSec) || maxFutureSec < 0) throw new UsageError("MAX_FUTURE_SEC must be a non-negative integer");
   let wid = c.WID ?? "";
   if (!wid && mode === "gen") wid = new WidGen({ W: c.W, Z: c.Z, timeUnit: c.T }).next();
-  if (!wid) throw new Error("WID=<wid_string> required for A=w-otp MODE=verify");
+  if (!wid) throw new UsageError("WID=<wid_string> required for A=w-otp MODE=verify");
   const otp = computeWOtp(secret, wid, digits);
   if (mode === "gen") {
     console.log(JSON.stringify({ wid, otp, digits }));
     return 0;
   }
   const code = c.CODE ?? "";
-  if (!code) throw new Error("CODE=<otp_code> required for A=w-otp MODE=verify");
+  if (!code) throw new UsageError("CODE=<otp_code> required for A=w-otp MODE=verify");
   if (maxAgeSec > 0 || maxFutureSec > 0) {
     const widMs = wotpWidTickMs(wid);
     const nowMs = Date.now();
@@ -921,7 +942,7 @@ function runCanonical(args) {
   if (c.A === "sign") return runSign(c);
   if (c.A === "verify") return runVerify(c);
   if (c.A === "w-otp") return runWOtp(c);
-  throw new Error(`unknown A=${c.A}`);
+  throw new UsageError(`unknown A=${c.A}`);
 }
 function printCompletion(shell) {
   if (shell === "bash") {
@@ -936,7 +957,7 @@ function printCompletion(shell) {
       T) vals="sec ms" ;;
       I) vals="auto sh bash" ;;
       E) vals="state stateless sql" ;;
-      R) vals="auto mqtt ws redis null stdout" ;;
+      R) vals="auto null stdout" ;;
       M) vals="true false" ;;
     esac
     local IFS=$'\\n'
@@ -963,7 +984,7 @@ _wid_complete() {
       T) vals=(sec ms) ;;
       I) vals=(auto sh bash) ;;
       E) vals=(state stateless sql) ;;
-      R) vals=(auto mqtt ws redis null stdout) ;;
+      R) vals=(auto null stdout) ;;
       M) vals=(true false) ;;
     esac
     compadd -P "\${key}=" -- "\${vals[@]}"
@@ -989,7 +1010,7 @@ complete -c wid-ts -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp 
 complete -c wid-ts -f -a 'T=sec T=ms' -d 'Time unit'
 complete -c wid-ts -f -a 'I=auto I=sh I=bash' -d 'Input source'
 complete -c wid-ts -f -a 'E=state E=stateless E=sql' -d 'State mode'
-complete -c wid-ts -f -a 'R=auto R=mqtt R=ws R=redis R=null R=stdout' -d 'Transport'
+complete -c wid-ts -f -a 'R=auto R=null R=stdout' -d 'Transport'
 complete -c wid-ts -f -a 'M=true M=false' -d 'Milliseconds mode'
 complete -c wid-ts -f -a 'W=' -d 'Sequence width'
 complete -c wid-ts -f -a 'Z=' -d 'Padding length'
@@ -1029,7 +1050,7 @@ function main() {
       return runCanonical(args);
     } catch (e) {
       console.error(`error: ${e.message}`);
-      return 1;
+      return e instanceof UsageError ? 2 : 1;
     }
   }
   const [cmd, ...rest] = args;
@@ -1074,12 +1095,12 @@ function main() {
         runBench(rest);
         return 0;
       default:
-        throw new Error(`unknown command: ${cmd}`);
+        throw new UsageError(`unknown command: ${cmd}`);
     }
   } catch (e) {
     console.error(`error: ${e.message}`);
-    return 1;
+    return e instanceof UsageError ? 2 : 1;
   }
 }
-process.exit(main());
+process.exitCode = main();
 //# sourceMappingURL=cli.js.map

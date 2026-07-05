@@ -27,6 +27,11 @@ node_modules/
 # tool writing to some/dir/dist/) stays ignored and cannot be committed.
 !/dist/
 !/dist/**
+# ...but never Python build artifacts: `python -m build` / `hatch build` also
+# default to the repo-root dist/, and the un-ignore above would otherwise put
+# wheels/sdists one careless `git add` away from being committed.
+/dist/*.whl
+/dist/*.tar.gz
 
 # C
 c/.build/

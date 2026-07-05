@@ -238,7 +238,9 @@ static inline int64_t wid_parse_digits_i64(const char *s, int n) {
     return v;
 }
 
-/* Parse and calendar-validate the timestamp field. */
+/* Parse and calendar-validate the timestamp field. Safe on any
+ * NUL-terminated string of any length: the guard below rejects strings
+ * shorter than the timestamp field before the fixed-offset indexing runs. */
 static inline bool wid_parse_timestamp(
     const char *s,
     wid_time_unit_t unit,
@@ -252,6 +254,15 @@ static inline bool wid_parse_timestamp(
 ) {
     int ts_len = wid_timestamp_len(unit);
     if (!s) return false;
+
+    /* Bounds guard: the indexing below reads up to s[ts_len]. The CLI's
+     * callers pre-check the total length, but this is a public single-header
+     * helper — a header-only caller passing a short string must get a clean
+     * false, not an out-of-bounds read. Scanning byte-by-byte up to the
+     * first NUL is safe on any NUL-terminated string. */
+    for (int i = 0; i <= ts_len; i++) {
+        if (s[i] == '\0') return false;
+    }
 
     if (s[8] != 'T') return false;
     for (int i = 0; i < 8; i++) if (!wid_is_digit(s[i])) return false;

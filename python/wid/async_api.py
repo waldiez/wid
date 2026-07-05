@@ -4,22 +4,15 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any
 
+from .core import parse_time_unit as _parse_time_unit
 from .hlc import HLCWidGen
 from .wid import WidGen, WidGenState
 
 if TYPE_CHECKING:
 
     from collections.abc import AsyncIterator
-    from typing import Any
-
-
-def _parse_time_unit(value: str) -> Literal["sec", "ms"]:
-    """Normalize a time-unit argument to 'sec' or 'ms'."""
-    if value not in {"sec", "ms"}:
-        raise ValueError("time_unit must be 'sec' or 'ms'")
-    return cast(Literal["sec", "ms"], value)
 
 
 def _reject_unknown_kwargs(kwargs: dict[str, Any]) -> None:
@@ -103,7 +96,9 @@ class AsyncSqliteWidStateStore:
                 (full_key,),
             )
             await conn.commit()
-            while True:
+            # Same retry budget as the sync CLI path: bounded, so pathological
+            # contention surfaces as an error instead of a livelock.
+            for _ in range(64):
                 async with conn.execute(
                     "SELECT last_tick,last_seq FROM wid_state WHERE k=?",
                     (full_key,),
@@ -127,6 +122,7 @@ class AsyncSqliteWidStateStore:
                 if cur2.rowcount == 1:
                     return out
                 await asyncio.sleep(0)
+            raise RuntimeError("sql allocation contention: retry budget exhausted")
         finally:
             await conn.close()
 

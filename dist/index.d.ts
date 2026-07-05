@@ -112,6 +112,11 @@ declare class WidGen {
     next(): string;
     nextN(n: number): string[];
     get state(): WidStateSnapshot;
+    /**
+     * Restore persisted generator state. Rejects `lastSec < 0` and
+     * `lastSeq < -1` (-1 is the valid "nothing emitted this tick yet" resume
+     * value), mirroring `HLCWidGen.restoreState` and the other implementations.
+     */
     restoreState(lastSec: number, lastSeq: number): void;
 }
 

@@ -79,15 +79,22 @@ wid W=4 A=next L=0 D=# I=auto E=state Z=6
 | 2 | **Python**     | [python/](https://github.com/waldiez/wid/tree/main/python)         | `pytest`     | Yes    | Async generators · `aiosqlite` SQL |
 | 3 | **C**          | [c/](https://github.com/waldiez/wid/tree/main/c)                   | custom       | Yes    | Single-header `wid.h`              |
 | 4 | **TypeScript** | [typescript/](https://github.com/waldiez/wid/tree/main/typescript) | `vitest`     | Yes    | ESM + CJS · browser-ready          |
-| 5 | **Go**         | [go/](https://github.com/waldiez/wid/tree/main/go)                 | `go test`    | Yes    | Thread-safe · stdlib only          |
+| 5 | **Go**         | [go/](https://github.com/waldiez/wid/tree/main/go)                 | `go test`    | Yes    | Thread-safe · stdlib-only library¹ |
 | 6 | **sh**         | [sh/](https://github.com/waldiez/wid/tree/main/sh)                 | self-test    | Yes    | Canonical Bash orchestrator       |
 
 <!-- markdownlint-enable MD060 -->
 
+¹ The Go *library* is dependency-free, but the Go CLI's `E=sql` mode shells
+out to the external `sqlite3` command-line binary (deliberately — bundling a
+SQLite driver would drag in CGo or a large translated dependency). Install
+`sqlite3` to use `E=sql` with the Go CLI; every other action needs nothing
+beyond the Go toolchain. The Rust/Python/TS/C implementations use in-process
+SQLite instead.
+
 All implementations conform to the same [specification](https://github.com/waldiez/wid/blob/main/spec/SPEC.md). Cross-language conformance is enforced in CI by executable harnesses that drive every implementation against the shared fixtures in `spec/conformance/`:
 
 - `make id-conformance` — `valid.json` / `invalid.json` (identifier accept/reject) across all six
-- `make cli-surface-check` — `cli_surface.json`: the shared flag matrix, defaults table, stream cadence, error surface (clean rejection, no crash), unbounded-stream semantics (`--count 0` / `N=0`), and cross-language output parity (identical w-otp codes from identical inputs, including values containing `=`) across all six
+- `make cli-surface-check` — `cli_surface.json`: the shared flag matrix, defaults table, stream cadence, error surface (clean rejection, no crash, and the shared exit-code contract: 2 = usage error, 1 = operational failure — see `spec/quick-usage.md`), unbounded-stream semantics (`--count 0` / `N=0`), and cross-language output parity (identical w-otp codes from identical inputs, including values containing `=`) across all six
 - `make stream-conformance` — streaming behavior
 - `tools/check_wotp_parity.sh` and `tools/smoke_crypto.sh` — crypto (`sign`/`verify`/`w-otp`) parity and interop
 

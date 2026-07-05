@@ -18,11 +18,59 @@ use serde_json::json;
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 use wid::{
-    HLCWidGen, TimeUnit, WidGen, parse_hlc_wid_with_unit, parse_wid_with_unit,
+    HLCWidGen, MAX_W, MAX_Z, TimeUnit, WidGen, parse_hlc_wid_with_unit, parse_wid_with_unit,
     validate_hlc_wid_with_unit, validate_wid_with_unit,
 };
 
 type HmacSha256 = Hmac<Sha256>;
+
+/// CLI error carrying its exit code — the shared cross-language contract
+/// (spec/quick-usage.md "Exit codes"): usage errors exit 2, operational
+/// failures exit 1.
+enum CliError {
+    /// Malformed invocation: unknown command/flag/key/action, missing
+    /// required value or argument, out-of-range parameter. Exit 2.
+    Usage(String),
+    /// The operation itself failed: invalid id, verification failure,
+    /// missing/unreadable key or data files, runtime errors. Exit 1.
+    Fail(String),
+}
+
+impl CliError {
+    fn exit_code(&self) -> i32 {
+        match self {
+            CliError::Usage(_) => 2,
+            CliError::Fail(_) => 1,
+        }
+    }
+
+    fn message(&self) -> &str {
+        match self {
+            CliError::Usage(m) | CliError::Fail(m) => m,
+        }
+    }
+}
+
+fn usage(msg: impl Into<String>) -> CliError {
+    CliError::Usage(msg.into())
+}
+
+fn fail(msg: impl Into<String>) -> CliError {
+    CliError::Fail(msg.into())
+}
+
+/// Out-of-range W/Z is a usage error (exit 2) in every implementation —
+/// checked up front so validate/parse report it as such instead of
+/// misreporting the id itself as invalid (exit 1).
+fn check_shape_bounds(w: usize, z: usize) -> Result<(), CliError> {
+    if w == 0 || w > MAX_W {
+        return Err(usage("W must be between 1 and 18"));
+    }
+    if z > MAX_Z {
+        return Err(usage("Z must be between 0 and 64"));
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone)]
 struct ValidateOpts {
@@ -174,17 +222,17 @@ fn parse_emit_flags(args: &[String], allow_count: bool) -> Result<EmitOpts, Stri
     parse_surface_flags(args, true, allow_count)
 }
 
-fn run_next(args: &[String]) -> Result<(), String> {
-    let opts = parse_emit_flags(args, false)?;
+fn run_next(args: &[String]) -> Result<(), CliError> {
+    let opts = parse_emit_flags(args, false).map_err(usage)?;
 
     if opts.kind == "wid" {
         let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, opts.time_unit)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| usage(e.to_string()))?;
         println!("{}", generator.next_wid());
     } else {
         let mut generator =
             HLCWidGen::new_with_time_unit(opts.node, opts.w, opts.z, opts.time_unit)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| usage(e.to_string()))?;
         println!("{}", generator.next_hlc_wid());
     }
 
@@ -195,18 +243,18 @@ fn run_next(args: &[String]) -> Result<(), String> {
 /// stream default, and always the flag-mode value) means emit back-to-back;
 /// an explicit `L=n` sleeps n seconds between emissions in every
 /// implementation.
-fn run_stream(args: &[String], interval_secs: u64) -> Result<(), String> {
-    let opts = parse_emit_flags(args, true)?;
+fn run_stream(args: &[String], interval_secs: u64) -> Result<(), CliError> {
+    let opts = parse_emit_flags(args, true).map_err(usage)?;
     let mut emitted = 0usize;
 
-    let emit_one = |line: String| -> Result<(), String> {
+    let emit_one = |line: String| -> Result<(), CliError> {
         println!("{line}");
-        io::stdout().flush().map_err(|e| e.to_string())
+        io::stdout().flush().map_err(|e| fail(e.to_string()))
     };
 
     if opts.kind == "wid" {
         let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, opts.time_unit)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| usage(e.to_string()))?;
         loop {
             if opts.count > 0 && emitted >= opts.count {
                 break;
@@ -220,7 +268,7 @@ fn run_stream(args: &[String], interval_secs: u64) -> Result<(), String> {
     } else {
         let mut generator =
             HLCWidGen::new_with_time_unit(opts.node, opts.w, opts.z, opts.time_unit)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| usage(e.to_string()))?;
         loop {
             if opts.count > 0 && emitted >= opts.count {
                 break;
@@ -236,7 +284,7 @@ fn run_stream(args: &[String], interval_secs: u64) -> Result<(), String> {
     Ok(())
 }
 
-fn run_healthcheck(args: &[String]) -> Result<(), String> {
+fn run_healthcheck(args: &[String]) -> Result<(), CliError> {
     let mut json_mode = false;
     let mut tail: Vec<String> = Vec::new();
     for arg in args {
@@ -247,85 +295,60 @@ fn run_healthcheck(args: &[String]) -> Result<(), String> {
         }
     }
 
-    let opts = parse_emit_flags(&tail, false)?;
+    let opts = parse_emit_flags(&tail, false).map_err(usage)?;
 
-    if opts.kind == "wid" {
+    let (sample, ok) = if opts.kind == "wid" {
         let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, opts.time_unit)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| usage(e.to_string()))?;
         let sample = generator.next_wid();
         let ok = validate_wid_with_unit(&sample, opts.w, opts.z, opts.time_unit);
-
-        if json_mode {
-            let payload = json!({
-                "ok": ok,
-                "kind": opts.kind,
-                "W": opts.w,
-                "Z": opts.z,
-                "time_unit": opts.time_unit.as_str(),
-                "sample_id": sample,
-            });
-            println!(
-                "{}",
-                serde_json::to_string(&payload).map_err(|e| e.to_string())?
-            );
-        } else {
-            println!(
-                "ok={} kind={} sample={}",
-                if ok { "true" } else { "false" },
-                opts.kind,
-                sample
-            );
-        }
-
-        if ok {
-            Ok(())
-        } else {
-            Err("healthcheck failed".to_string())
-        }
+        (sample, ok)
     } else {
         let mut generator =
-            HLCWidGen::new_with_time_unit(opts.node, opts.w, opts.z, opts.time_unit)
-                .map_err(|e| e.to_string())?;
+            HLCWidGen::new_with_time_unit(opts.node.clone(), opts.w, opts.z, opts.time_unit)
+                .map_err(|e| usage(e.to_string()))?;
         let sample = generator.next_hlc_wid();
         let ok = validate_hlc_wid_with_unit(&sample, opts.w, opts.z, opts.time_unit);
+        (sample, ok)
+    };
 
-        if json_mode {
-            let payload = json!({
-                "ok": ok,
-                "kind": opts.kind,
-                "W": opts.w,
-                "Z": opts.z,
-                "time_unit": opts.time_unit.as_str(),
-                "sample_id": sample,
-            });
-            println!(
-                "{}",
-                serde_json::to_string(&payload).map_err(|e| e.to_string())?
-            );
-        } else {
-            println!(
-                "ok={} kind={} sample={}",
-                if ok { "true" } else { "false" },
-                opts.kind,
-                sample
-            );
-        }
+    if json_mode {
+        let payload = json!({
+            "ok": ok,
+            "kind": opts.kind,
+            "W": opts.w,
+            "Z": opts.z,
+            "time_unit": opts.time_unit.as_str(),
+            "sample_id": sample,
+        });
+        println!(
+            "{}",
+            serde_json::to_string(&payload).map_err(|e| fail(e.to_string()))?
+        );
+    } else {
+        println!(
+            "ok={} kind={} sample={}",
+            if ok { "true" } else { "false" },
+            opts.kind,
+            sample
+        );
+    }
 
-        if ok {
-            Ok(())
-        } else {
-            Err("healthcheck failed".to_string())
-        }
+    if ok {
+        Ok(())
+    } else {
+        Err(fail("healthcheck failed"))
     }
 }
 
-fn run_validate(args: &[String]) -> Result<(), String> {
+fn run_validate(args: &[String]) -> Result<(), CliError> {
     if args.is_empty() {
-        return Err("validate requires an id".to_string());
+        return Err(usage("validate requires an id"));
     }
 
     let id = args[0].clone();
-    let opts = parse_validate_flags(&args[1..])?;
+    let opts = parse_validate_flags(&args[1..]).map_err(usage)?;
+    check_shape_bounds(opts.w, opts.z)?;
 
     let ok = if opts.kind == "wid" {
         validate_wid_with_unit(&id, opts.w, opts.z, opts.time_unit)
@@ -334,16 +357,12 @@ fn run_validate(args: &[String]) -> Result<(), String> {
     };
 
     println!("{}", if ok { "true" } else { "false" });
-    if ok {
-        Ok(())
-    } else {
-        Err("invalid wid".to_string())
-    }
+    if ok { Ok(()) } else { Err(fail("invalid wid")) }
 }
 
-fn run_parse(args: &[String]) -> Result<(), String> {
+fn run_parse(args: &[String]) -> Result<(), CliError> {
     if args.is_empty() {
-        return Err("parse requires an id".to_string());
+        return Err(usage("parse requires an id"));
     }
 
     let id = args[0].clone();
@@ -358,11 +377,12 @@ fn run_parse(args: &[String]) -> Result<(), String> {
         }
     }
 
-    let opts = parse_validate_flags(&tail)?;
+    let opts = parse_validate_flags(&tail).map_err(usage)?;
+    check_shape_bounds(opts.w, opts.z)?;
 
     if opts.kind == "wid" {
-        let parsed =
-            parse_wid_with_unit(&id, opts.w, opts.z, opts.time_unit).map_err(|e| e.to_string())?;
+        let parsed = parse_wid_with_unit(&id, opts.w, opts.z, opts.time_unit)
+            .map_err(|e| fail(e.to_string()))?;
         if json_out {
             let payload = json!({
                 "raw": parsed.raw,
@@ -372,7 +392,7 @@ fn run_parse(args: &[String]) -> Result<(), String> {
             });
             println!(
                 "{}",
-                serde_json::to_string(&payload).map_err(|e| e.to_string())?
+                serde_json::to_string(&payload).map_err(|e| fail(e.to_string()))?
             );
         } else {
             println!("raw={}", parsed.raw);
@@ -382,7 +402,7 @@ fn run_parse(args: &[String]) -> Result<(), String> {
         }
     } else {
         let parsed = parse_hlc_wid_with_unit(&id, opts.w, opts.z, opts.time_unit)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| fail(e.to_string()))?;
         if json_out {
             let payload = json!({
                 "raw": parsed.raw,
@@ -393,7 +413,7 @@ fn run_parse(args: &[String]) -> Result<(), String> {
             });
             println!(
                 "{}",
-                serde_json::to_string(&payload).map_err(|e| e.to_string())?
+                serde_json::to_string(&payload).map_err(|e| fail(e.to_string()))?
             );
         } else {
             println!("raw={}", parsed.raw);
@@ -407,8 +427,8 @@ fn run_parse(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn run_bench(args: &[String]) -> Result<(), String> {
-    let mut opts = parse_emit_flags(args, true)?;
+fn run_bench(args: &[String]) -> Result<(), CliError> {
+    let mut opts = parse_emit_flags(args, true).map_err(usage)?;
     if opts.count == 0 {
         opts.count = 100_000;
     }
@@ -417,14 +437,14 @@ fn run_bench(args: &[String]) -> Result<(), String> {
 
     if opts.kind == "wid" {
         let mut generator = WidGen::new_with_time_unit(opts.w, opts.z, opts.time_unit)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| usage(e.to_string()))?;
         for _ in 0..opts.count {
             let _ = generator.next_wid();
         }
     } else {
         let mut generator =
             HLCWidGen::new_with_time_unit(opts.node.clone(), opts.w, opts.z, opts.time_unit)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| usage(e.to_string()))?;
         for _ in 0..opts.count {
             let _ = generator.next_hlc_wid();
         }
@@ -445,7 +465,7 @@ fn run_bench(args: &[String]) -> Result<(), String> {
     });
     println!(
         "{}",
-        serde_json::to_string(&payload).map_err(|e| e.to_string())?
+        serde_json::to_string(&payload).map_err(|e| fail(e.to_string()))?
     );
     Ok(())
 }
@@ -587,10 +607,10 @@ fn kill_pid(_pid: i32) -> bool {
     false
 }
 
-fn run_service_action(c: &CanonOpts, action: &str) -> Result<(), String> {
+fn run_service_action(c: &CanonOpts, action: &str) -> Result<(), CliError> {
     let root = workspace_root();
     let data_dir = resolve_data_dir(&root, &c.d);
-    fs::create_dir_all(&data_dir).map_err(|e| format!("failed to create data dir: {e}"))?;
+    fs::create_dir_all(&data_dir).map_err(|e| fail(format!("failed to create data dir: {e}")))?;
     let (_state_mode, mut transport) = parse_state_and_transport(c);
     let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "INFO".to_string());
 
@@ -605,11 +625,14 @@ fn run_service_action(c: &CanonOpts, action: &str) -> Result<(), String> {
             transport = "mqtt".to_string();
         }
         if !is_local_service_transport(&transport) {
-            return Err(format!("invalid transport for A={action}: {transport}"));
+            return Err(usage(format!(
+                "invalid transport for A={action}: {transport}"
+            )));
         }
     }
 
-    let mut wid_gen = WidGen::new_with_time_unit(c.w, c.z, c.t).map_err(|e| e.to_string())?;
+    let mut wid_gen =
+        WidGen::new_with_time_unit(c.w, c.z, c.t).map_err(|e| usage(e.to_string()))?;
     let iterations = if c.n == 0 { usize::MAX } else { c.n };
     let mut i = 0usize;
 
@@ -656,15 +679,15 @@ fn run_service_action(c: &CanonOpts, action: &str) -> Result<(), String> {
                 "impl":"rust","action":"run","tick":tick,"transport":transport,
                 "interval":c.l,"data_dir":data_dir
             }),
-            _ => return Err(format!("unknown service action: {action}")),
+            _ => return Err(usage(format!("unknown service action: {action}"))),
         };
 
         if transport != "null" {
             println!(
                 "{}",
-                serde_json::to_string(&payload).map_err(|e| e.to_string())?
+                serde_json::to_string(&payload).map_err(|e| fail(e.to_string()))?
             );
-            io::stdout().flush().map_err(|e| e.to_string())?;
+            io::stdout().flush().map_err(|e| fail(e.to_string()))?;
         }
 
         i += 1;
@@ -676,7 +699,7 @@ fn run_service_action(c: &CanonOpts, action: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn run_discover() -> Result<(), String> {
+fn run_discover() -> Result<(), CliError> {
     let payload = json!({
         "impl":"rust",
         "orchestration":"native",
@@ -685,26 +708,26 @@ fn run_discover() -> Result<(), String> {
     });
     println!(
         "{}",
-        serde_json::to_string(&payload).map_err(|e| e.to_string())?
+        serde_json::to_string(&payload).map_err(|e| fail(e.to_string()))?
     );
     Ok(())
 }
 
-fn run_scaffold(c: &CanonOpts) -> Result<(), String> {
+fn run_scaffold(c: &CanonOpts) -> Result<(), CliError> {
     if c.d.is_empty() {
-        return Err("D=<name> required for A=scaffold".to_string());
+        return Err(usage("D=<name> required for A=scaffold"));
     }
     let root = workspace_root();
     let target = resolve_data_dir(&root, &c.d);
     fs::create_dir_all(target.join("state"))
-        .map_err(|e| format!("failed to scaffold state dir: {e}"))?;
+        .map_err(|e| fail(format!("failed to scaffold state dir: {e}")))?;
     fs::create_dir_all(target.join("logs"))
-        .map_err(|e| format!("failed to scaffold logs dir: {e}"))?;
+        .map_err(|e| fail(format!("failed to scaffold logs dir: {e}")))?;
     println!("scaffolded {}", target.display());
     Ok(())
 }
 
-fn run_status() -> Result<(), String> {
+fn run_status() -> Result<(), CliError> {
     let root = workspace_root();
     let pid_file = runtime_pid_file(&root);
     let log_file = runtime_log_file(&root);
@@ -723,7 +746,7 @@ fn run_status() -> Result<(), String> {
     Ok(())
 }
 
-fn run_logs() -> Result<(), String> {
+fn run_logs() -> Result<(), CliError> {
     let root = workspace_root();
     let log_file = runtime_log_file(&root);
     match fs::read_to_string(&log_file) {
@@ -735,11 +758,11 @@ fn run_logs() -> Result<(), String> {
             println!("wid-rust logs: empty");
             Ok(())
         }
-        Err(e) => Err(format!("failed to read logs: {e}")),
+        Err(e) => Err(fail(format!("failed to read logs: {e}"))),
     }
 }
 
-fn run_stop() -> Result<(), String> {
+fn run_stop() -> Result<(), CliError> {
     let root = workspace_root();
     let pid_file = runtime_pid_file(&root);
     let Some(pid) = parse_pid(&pid_file) else {
@@ -761,7 +784,7 @@ fn run_stop() -> Result<(), String> {
         println!("wid-rust stop: stopped pid={pid}");
         Ok(())
     } else {
-        Err(format!("failed to stop pid={pid}"))
+        Err(fail(format!("failed to stop pid={pid}")))
     }
 }
 
@@ -781,10 +804,10 @@ fn daemon_kv_args(c: &CanonOpts, action: &str) -> Vec<String> {
     ]
 }
 
-fn run_start(c: &CanonOpts) -> Result<(), String> {
+fn run_start(c: &CanonOpts) -> Result<(), CliError> {
     let root = workspace_root();
     let runtime = runtime_dir(&root);
-    fs::create_dir_all(&runtime).map_err(|e| format!("failed to create runtime dir: {e}"))?;
+    fs::create_dir_all(&runtime).map_err(|e| fail(format!("failed to create runtime dir: {e}")))?;
     let pid_file = runtime_pid_file(&root);
     let log_file = runtime_log_file(&root);
 
@@ -816,23 +839,24 @@ fn run_start(c: &CanonOpts) -> Result<(), String> {
                 }
                 let _ = fs::remove_file(&pid_file);
             }
-            Err(e) => return Err(format!("failed to create pid file: {e}")),
+            Err(e) => return Err(fail(format!("failed to create pid file: {e}"))),
         }
     }
     let Some(mut pid_handle) = claimed else {
-        return Err("failed to claim pid file (concurrent start?)".to_string());
+        return Err(fail("failed to claim pid file (concurrent start?)"));
     };
 
     let log = OpenOptions::new()
         .create(true)
         .append(true)
         .open(&log_file)
-        .map_err(|e| format!("failed to open log file: {e}"))?;
+        .map_err(|e| fail(format!("failed to open log file: {e}")))?;
     let log_err = log
         .try_clone()
-        .map_err(|e| format!("failed to clone log fd: {e}"))?;
+        .map_err(|e| fail(format!("failed to clone log fd: {e}")))?;
 
-    let exe = env::current_exe().map_err(|e| format!("failed to resolve current exe: {e}"))?;
+    let exe =
+        env::current_exe().map_err(|e| fail(format!("failed to resolve current exe: {e}")))?;
     let mut cmd = Command::new(exe);
     cmd.arg("__daemon")
         .args(daemon_kv_args(c, "run"))
@@ -856,13 +880,13 @@ fn run_start(c: &CanonOpts) -> Result<(), String> {
         Ok(child) => child,
         Err(e) => {
             let _ = fs::remove_file(&pid_file);
-            return Err(format!("failed to start daemon: {e}"));
+            return Err(fail(format!("failed to start daemon: {e}")));
         }
     };
 
     if let Err(e) = pid_handle.write_all(child.id().to_string().as_bytes()) {
         let _ = fs::remove_file(&pid_file);
-        return Err(format!("failed to write pid file: {e}"));
+        return Err(fail(format!("failed to write pid file: {e}")));
     }
     println!(
         "wid-rust start: started pid={} log={}",
@@ -872,7 +896,7 @@ fn run_start(c: &CanonOpts) -> Result<(), String> {
     Ok(())
 }
 
-fn run_native_orchestration(c: &CanonOpts) -> Result<(), String> {
+fn run_native_orchestration(c: &CanonOpts) -> Result<(), CliError> {
     match c.a.as_str() {
         "discover" => run_discover(),
         "scaffold" => run_scaffold(c),
@@ -888,7 +912,7 @@ fn run_native_orchestration(c: &CanonOpts) -> Result<(), String> {
         "wihp" => run_service_action(c, "wihp"),
         "wipr" => run_service_action(c, "wipr"),
         "duplex" => run_service_action(c, "duplex"),
-        _ => Err(format!("unknown A={}", c.a)),
+        _ => Err(usage(format!("unknown A={}", c.a))),
     }
 }
 
@@ -997,8 +1021,13 @@ fn parse_canonical(args: &[String]) -> Result<CanonOpts, String> {
         _ => o.a,
     };
 
-    if o.w == 0 {
-        return Err("W must be > 0".to_string());
+    // Reject out-of-range W/Z here (usage error, exit 2) instead of letting
+    // the generator constructor report it as an operational failure.
+    if o.w == 0 || o.w > MAX_W {
+        return Err("W must be between 1 and 18".to_string());
+    }
+    if o.z > MAX_Z {
+        return Err("Z must be between 0 and 64".to_string());
     }
     if !is_transport(&o.r) {
         return Err("invalid R transport".to_string());
@@ -1007,8 +1036,8 @@ fn parse_canonical(args: &[String]) -> Result<CanonOpts, String> {
     Ok(o)
 }
 
-fn run_canonical(args: &[String]) -> Result<(), String> {
-    let c = parse_canonical(args)?;
+fn run_canonical(args: &[String]) -> Result<(), CliError> {
+    let c = parse_canonical(args).map_err(usage)?;
 
     if c.a == "help-actions" {
         print_actions();
@@ -1070,15 +1099,16 @@ fn run_canonical(args: &[String]) -> Result<(), String> {
 /// The domain-separation prefix and the explicit WID byte-length frame the
 /// WID/DATA boundary so no bytes can shift between them (a plain `WID || DATA`
 /// concatenation is ambiguous). No temporary files are created.
-fn build_sign_verify_message(c: &CanonOpts) -> Result<Vec<u8>, String> {
+fn build_sign_verify_message(c: &CanonOpts) -> Result<Vec<u8>, CliError> {
     if c.wid.trim().is_empty() {
-        return Err("WID=<wid_string> required".to_string());
+        return Err(usage("WID=<wid_string> required"));
     }
     let wid = c.wid.as_bytes();
     let mut msg = format!("wid-sig-v1:{}:", wid.len()).into_bytes();
     msg.extend_from_slice(wid);
     if !c.data.trim().is_empty() {
-        let data = fs::read(&c.data).map_err(|_| format!("data file not found: {}", c.data))?;
+        let data =
+            fs::read(&c.data).map_err(|_| fail(format!("data file not found: {}", c.data)))?;
         msg.extend_from_slice(&data);
     }
     Ok(msg)
@@ -1097,58 +1127,57 @@ fn load_verifying_key(path: &str) -> Result<VerifyingKey, String> {
         .map_err(|_| "invalid public key (ensure Ed25519 public key PEM)".to_string())
 }
 
-fn run_sign(c: &CanonOpts) -> Result<(), String> {
+fn run_sign(c: &CanonOpts) -> Result<(), CliError> {
     if c.key.trim().is_empty() {
-        return Err("KEY=<private_key_path> required for A=sign".to_string());
+        return Err(usage("KEY=<private_key_path> required for A=sign"));
     }
     if !Path::new(&c.key).exists() {
-        return Err(format!("private key file not found: {}", c.key));
+        return Err(fail(format!("private key file not found: {}", c.key)));
     }
     let msg = build_sign_verify_message(c)?;
-    let key = load_signing_key(&c.key)?;
+    let key = load_signing_key(&c.key).map_err(fail)?;
     let sig: Signature = key.sign(&msg);
     let encoded = URL_SAFE_NO_PAD.encode(sig.to_bytes());
     if c.out.trim().is_empty() {
         println!("{encoded}");
     } else {
         fs::write(&c.out, encoded.as_bytes())
-            .map_err(|e| format!("failed to write OUT file: {e}"))?;
+            .map_err(|e| fail(format!("failed to write OUT file: {e}")))?;
     }
     Ok(())
 }
 
-fn run_verify(c: &CanonOpts) -> Result<(), String> {
+fn run_verify(c: &CanonOpts) -> Result<(), CliError> {
     if c.key.trim().is_empty() {
-        return Err("KEY=<public_key_path> required for A=verify".to_string());
+        return Err(usage("KEY=<public_key_path> required for A=verify"));
     }
     if c.sig.trim().is_empty() {
-        return Err("SIG=<signature_string> required for A=verify".to_string());
+        return Err(usage("SIG=<signature_string> required for A=verify"));
     }
     if !Path::new(&c.key).exists() {
-        return Err(format!("public key file not found: {}", c.key));
+        return Err(fail(format!("public key file not found: {}", c.key)));
     }
     let msg = build_sign_verify_message(c)?;
-    let key = load_verifying_key(&c.key)?;
+    let key = load_verifying_key(&c.key).map_err(fail)?;
     // Accept base64url with or without padding.
     let sig_bytes = URL_SAFE_NO_PAD
         .decode(c.sig.trim().trim_end_matches('='))
-        .map_err(|_| "invalid signature encoding".to_string())?;
-    let sig =
-        Signature::from_slice(&sig_bytes).map_err(|_| "invalid signature encoding".to_string())?;
+        .map_err(|_| fail("invalid signature encoding"))?;
+    let sig = Signature::from_slice(&sig_bytes).map_err(|_| fail("invalid signature encoding"))?;
     match key.verify_strict(&msg, &sig) {
         Ok(()) => {
             println!("Signature valid.");
             Ok(())
         }
-        Err(_) => Err("Signature invalid.".to_string()),
+        Err(_) => Err(fail("Signature invalid.")),
     }
 }
 
+/// Resolve `KEY=` to the secret: file contents if a file with that exact
+/// name exists, else the literal value. Emptiness is checked by the caller
+/// (an empty result is a usage error, a read failure an operational one).
 fn resolve_wotp_secret(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Err("w-otp secret cannot be empty".to_string());
-    }
     if Path::new(trimmed).is_file() {
         let s =
             fs::read_to_string(trimmed).map_err(|e| format!("failed to read secret file: {e}"))?;
@@ -1215,56 +1244,61 @@ fn wotp_wid_tick_ms(wid: &str) -> Result<i64, String> {
     Ok(dt.timestamp_millis() + millis)
 }
 
-fn run_wotp(c: &CanonOpts) -> Result<(), String> {
+fn run_wotp(c: &CanonOpts) -> Result<(), CliError> {
     let mode = {
         let m = c.mode.trim().to_ascii_lowercase();
         if m.is_empty() { "gen".to_string() } else { m }
     };
     if mode != "gen" && mode != "verify" {
-        return Err("MODE must be gen or verify for A=w-otp".to_string());
+        return Err(usage("MODE must be gen or verify for A=w-otp"));
     }
     if c.key.trim().is_empty() {
-        return Err("KEY=<secret_or_path> required for A=w-otp".to_string());
+        return Err(usage("KEY=<secret_or_path> required for A=w-otp"));
     }
     if c.digits < 4 || c.digits > 10 {
-        return Err("DIGITS must be between 4 and 10".to_string());
+        return Err(usage("DIGITS must be between 4 and 10"));
     }
-    let secret = resolve_wotp_secret(&c.key)?;
+    let secret = resolve_wotp_secret(&c.key).map_err(fail)?;
+    // An empty secret *file* must be rejected like an empty inline secret
+    // (the Python/TS/sh/C implementations already do).
+    if secret.is_empty() {
+        return Err(usage("w-otp secret cannot be empty"));
+    }
     let wid = if c.wid.trim().is_empty() && mode == "gen" {
         WidGen::new_with_time_unit(c.w, c.z, c.t)
-            .map_err(|e| e.to_string())?
+            .map_err(|e| usage(e.to_string()))?
             .next_wid()
     } else {
         c.wid.clone()
     };
     if wid.trim().is_empty() {
-        return Err("WID=<wid_string> required for A=w-otp MODE=verify".to_string());
+        return Err(usage("WID=<wid_string> required for A=w-otp MODE=verify"));
     }
-    let otp = compute_wotp(&secret, &wid, c.digits)?;
+    let otp = compute_wotp(&secret, &wid, c.digits).map_err(fail)?;
     if mode == "gen" {
         println!("{}", json!({"wid": wid, "otp": otp, "digits": c.digits}));
         return Ok(());
     }
     if c.code.trim().is_empty() {
-        return Err("CODE=<otp_code> required for A=w-otp MODE=verify".to_string());
+        return Err(usage("CODE=<otp_code> required for A=w-otp MODE=verify"));
     }
     if c.max_age_sec > 0 || c.max_future_sec > 0 {
-        let wid_ms = wotp_wid_tick_ms(&wid)?;
+        let wid_ms = wotp_wid_tick_ms(&wid).map_err(fail)?;
         let now_ms = chrono::Utc::now().timestamp_millis();
         let delta = now_ms - wid_ms;
         if delta < 0 {
             if -delta > (c.max_future_sec as i64) * 1000 {
-                return Err("OTP invalid: WID timestamp is too far in the future".to_string());
+                return Err(fail("OTP invalid: WID timestamp is too far in the future"));
             }
         } else if c.max_age_sec > 0 && delta > (c.max_age_sec as i64) * 1000 {
-            return Err("OTP invalid: WID timestamp is too old".to_string());
+            return Err(fail("OTP invalid: WID timestamp is too old"));
         }
     }
     if bool::from(c.code.as_bytes().ct_eq(otp.as_bytes())) {
         println!("OTP valid.");
         return Ok(());
     }
-    Err("OTP invalid.".to_string())
+    Err(fail("OTP invalid."))
 }
 
 fn sql_state_path(c: &CanonOpts) -> PathBuf {
@@ -1319,7 +1353,9 @@ fn sql_allocate_next_wid(
         .unwrap_or((0, -1));
 
     let mut generator = WidGen::new_with_time_unit(c.w, c.z, c.t).map_err(|e| e.to_string())?;
-    generator.restore_state(last_tick, last_seq);
+    generator
+        .restore_state(last_tick, last_seq)
+        .map_err(|_| "invalid SQL state values".to_string())?;
     let id = generator.next_wid();
     let (next_tick, next_seq) = generator.state();
 
@@ -1333,31 +1369,31 @@ fn sql_allocate_next_wid(
     Ok(id)
 }
 
-fn run_canonical_sql_next(c: &CanonOpts) -> Result<(), String> {
+fn run_canonical_sql_next(c: &CanonOpts) -> Result<(), CliError> {
     let root = workspace_root();
     let dd = resolve_data_dir(&root, &c.d);
-    fs::create_dir_all(&dd).map_err(|e| format!("failed to create data dir: {e}"))?;
-    let mut conn = sql_open(c)?;
+    fs::create_dir_all(&dd).map_err(|e| fail(format!("failed to create data dir: {e}")))?;
+    let mut conn = sql_open(c).map_err(fail)?;
     let key = sql_state_key(c);
-    let id = sql_allocate_next_wid(&mut conn, c, &key)?;
+    let id = sql_allocate_next_wid(&mut conn, c, &key).map_err(fail)?;
     println!("{id}");
     Ok(())
 }
 
-fn run_canonical_sql_stream(c: &CanonOpts) -> Result<(), String> {
+fn run_canonical_sql_stream(c: &CanonOpts) -> Result<(), CliError> {
     let root = workspace_root();
     let dd = resolve_data_dir(&root, &c.d);
-    fs::create_dir_all(&dd).map_err(|e| format!("failed to create data dir: {e}"))?;
-    let mut conn = sql_open(c)?;
+    fs::create_dir_all(&dd).map_err(|e| fail(format!("failed to create data dir: {e}")))?;
+    let mut conn = sql_open(c).map_err(fail)?;
     let key = sql_state_key(c);
     let mut emitted = 0usize;
     loop {
         if c.n > 0 && emitted >= c.n {
             break;
         }
-        let id = sql_allocate_next_wid(&mut conn, c, &key)?;
+        let id = sql_allocate_next_wid(&mut conn, c, &key).map_err(fail)?;
         println!("{id}");
-        io::stdout().flush().map_err(|e| e.to_string())?;
+        io::stdout().flush().map_err(|e| fail(e.to_string()))?;
         emitted += 1;
         if c.l_explicit && c.l > 0 && (c.n == 0 || emitted < c.n) {
             thread::sleep(Duration::from_secs(c.l as u64));
@@ -1444,6 +1480,13 @@ complete -c wid -f -a 'L=' -d 'Interval seconds'
     }
 }
 
+fn exit_on_error(res: Result<(), CliError>) {
+    if let Err(err) = res {
+        eprintln!("error: {}", err.message());
+        process::exit(err.exit_code());
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
 
@@ -1454,18 +1497,12 @@ fn main() {
 
     if args[0] == "__daemon" {
         let daemon_args: Vec<String> = args[1..].to_vec();
-        if let Err(err) = run_canonical(&daemon_args) {
-            eprintln!("error: {err}");
-            process::exit(1);
-        }
+        exit_on_error(run_canonical(&daemon_args));
         return;
     }
 
     if args.iter().any(|a| a.contains('=')) {
-        if let Err(err) = run_canonical(&args) {
-            eprintln!("error: {err}");
-            process::exit(1);
-        }
+        exit_on_error(run_canonical(&args));
         return;
     }
 
@@ -1504,20 +1541,17 @@ fn main() {
                 let a = g.next_wid();
                 let b = g.next_wid();
                 if a >= b {
-                    Err("selftest failed: non-monotonic".to_string())
+                    Err(fail("selftest failed: non-monotonic"))
                 } else {
                     Ok(())
                 }
             }
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(fail(e.to_string())),
         },
-        _ => Err(format!("unknown command: {cmd}")),
+        _ => Err(usage(format!("unknown command: {cmd}"))),
     };
 
-    if let Err(err) = res {
-        eprintln!("error: {err}");
-        process::exit(1);
-    }
+    exit_on_error(res);
 }
 
 #[cfg(test)]
