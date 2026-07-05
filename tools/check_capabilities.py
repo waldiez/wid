@@ -50,7 +50,13 @@ def backtick_tokens(line: str) -> set[str]:
 
 
 CORE_ACTIONS = {
-    "next", "stream", "validate", "parse", "healthcheck", "bench", "selftest"
+    "next",
+    "stream",
+    "validate",
+    "parse",
+    "healthcheck",
+    "bench",
+    "selftest",
 }
 
 

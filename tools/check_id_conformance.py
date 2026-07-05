@@ -52,9 +52,9 @@ def choose_python_cmd() -> list[str]:
     return ["python3"]
 
 
-def available_impls() -> (
-    tuple[dict[str, tuple[list[str], dict[str, str] | None]], list[str]]
-):
+def available_impls() -> tuple[
+    dict[str, tuple[list[str], dict[str, str] | None]], list[str]
+]:
     """Map implementation name to (argv prefix, env), plus skipped names."""
     go_env = {**os.environ, "GOCACHE": str((ROOT / ".local" / "go-cache").resolve())}
     candidates: dict[str, tuple[list[str], dict[str, str] | None]] = {
@@ -144,8 +144,14 @@ def check_generation(
         )
     emitted = proc.stdout.strip().splitlines()[-1] if proc.stdout.strip() else ""
     validate_args = [
-        "validate", emitted, "--kind", "wid",
-        "--W", str(params["W"]), "--Z", str(params["Z"]),
+        "validate",
+        emitted,
+        "--kind",
+        "wid",
+        "--W",
+        str(params["W"]),
+        "--Z",
+        str(params["Z"]),
     ]
     round_trip = subprocess.run(
         base + validate_args,
@@ -199,9 +205,9 @@ def run_impl(
 
 def load_cases(path: Path) -> list[dict[str, Any]]:
     """Load the test_cases array from one fixture file."""
-    cases: list[dict[str, Any]] = json.loads(
-        path.read_text(encoding="utf-8")
-    )["test_cases"]
+    cases: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))[
+        "test_cases"
+    ]
     return cases
 
 

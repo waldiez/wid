@@ -114,7 +114,7 @@ def main() -> None:  # pylint: disable=too-many-locals
     assert not verify_envelope(tampered, pub_a), "tampered_wid should fail"
 
     # tampered_data
-    tampered_data = Envelope(**{**env.__dict__, "data_hash": f"sha256:{'0'*64}"})
+    tampered_data = Envelope(**{**env.__dict__, "data_hash": f"sha256:{'0' * 64}"})
     assert not verify_envelope(tampered_data, pub_a), "tampered_data should fail"
 
     # wrong_key

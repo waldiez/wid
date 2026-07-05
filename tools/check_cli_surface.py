@@ -260,9 +260,7 @@ SECTION_CHECKS = (
 )
 
 
-def check_parity(
-    impls: dict[str, Impl], case: dict[str, Any]
-) -> list[str]:
+def check_parity(impls: dict[str, Impl], case: dict[str, Any]) -> list[str]:
     """Run one parity case across all implementations; return failures.
 
     Parity cases compare implementations against each other, so they run

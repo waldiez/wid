@@ -13,7 +13,14 @@ from pathlib import Path
 from typing import cast
 
 REQUIRED = {
-    "wid", "sig", "key_id", "alg", "issued_at", "expires_at", "data_hash", "version"
+    "wid",
+    "sig",
+    "key_id",
+    "alg",
+    "issued_at",
+    "expires_at",
+    "data_hash",
+    "version",
 }
 
 

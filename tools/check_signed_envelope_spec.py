@@ -39,8 +39,14 @@ def validate_shape(  # pylint: disable=too-many-return-statements
 ) -> tuple[bool, str]:
     """Check one envelope object against the spec shape; (ok, reason)."""
     required = [
-        "version", "wid", "sig", "key_id", "alg",
-        "issued_at", "expires_at", "data_hash",
+        "version",
+        "wid",
+        "sig",
+        "key_id",
+        "alg",
+        "issued_at",
+        "expires_at",
+        "data_hash",
     ]
     for k in required:
         if k not in env:

@@ -11,7 +11,6 @@ from .hlc import HLCWidGen
 from .wid import WidGen, WidGenState
 
 if TYPE_CHECKING:
-
     from collections.abc import AsyncIterator
 
 
