@@ -1,0 +1,73 @@
+# Pre-commit hooks, run by `prek` (a fast, drop-in pre-commit runner).
+#
+#   pip install -e ".[dev]"   # installs prek + ruff + black + mypy
+#   prek install              # wire the git hook (also: prek install -t pre-push)
+#   prek run --all-files      # run everything once, ad hoc
+#
+# The Python hooks deliberately mirror the Makefile's python-lint / python-fmt /
+# python-typecheck targets so the hook and CI enforce the same thing. Fast,
+# always-available checks run at commit; the slower mypy typecheck runs on push.
+minimum_pre_commit_version: "3.5.0"
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  # --- Universal hygiene -----------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=512]
+
+  # --- Python (mirrors `make python-lint` / `python-fmt`) --------------------
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff (lint + autofix)
+        entry: ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: black
+        name: black
+        entry: black
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+
+  # --- Core toolchain formatters (only when those files change) --------------
+  - repo: local
+    hooks:
+      - id: rustfmt
+        name: cargo fmt --check
+        entry: cargo fmt --all --check --
+        language: system
+        types: [rust]
+        pass_filenames: false
+      - id: gofmt
+        name: gofmt
+        entry: gofmt -l -w
+        language: system
+        types: [go]
+
+  # --- Slower gate: run on push, not on every commit -------------------------
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (python-typecheck)
+        entry: mypy python/wid/ tools/
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        stages: [pre-push]

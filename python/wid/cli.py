@@ -419,11 +419,15 @@ def _require_canon(canon: dict[str, str], key: str, message: str) -> str:
 
 def _run_sign_mode(canon: dict[str, str]) -> None:
     """Handle ``A=sign``: Ed25519-sign a WID (plus optional payload)."""
+    # Validate required params (usage errors, exit 2) BEFORE importing
+    # cryptography: a missing optional dependency is an operational failure
+    # (ImportError -> exit 1), and must not mask a missing KEY= usage error.
+    wid_str = _require_canon(canon, "WID", "WID=<wid_string> required for A=sign")
+    raw_key = _require_canon(canon, "KEY", "KEY=<private_key_path> required for A=sign")
+
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import ed25519
 
-    wid_str = _require_canon(canon, "WID", "WID=<wid_string> required for A=sign")
-    raw_key = _require_canon(canon, "KEY", "KEY=<private_key_path> required for A=sign")
     key_path = Path(raw_key).expanduser().resolve()
     data_path_str = canon.get("DATA")
     out_path_str = canon.get("OUT")
@@ -466,10 +470,9 @@ def _run_sign_mode(canon: dict[str, str]) -> None:
 
 def _run_verify_mode(canon: dict[str, str]) -> None:
     """Handle ``A=verify``: check an Ed25519 signature for a WID."""
-    from cryptography.exceptions import InvalidSignature
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import ed25519
-
+    # Validate required params (usage errors, exit 2) BEFORE importing
+    # cryptography, so a missing optional dependency (ImportError -> exit 1)
+    # never masks a missing KEY=/SIG=/WID= usage error.
     wid_str = _require_canon(canon, "WID", "WID=<wid_string> required for A=verify")
     raw_key = _require_canon(
         canon, "KEY", "KEY=<public_key_path> required for A=verify"
@@ -477,6 +480,11 @@ def _run_verify_mode(canon: dict[str, str]) -> None:
     sig_str = _require_canon(
         canon, "SIG", "SIG=<signature_string> required for A=verify"
     )
+
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ed25519
+
     key_path = Path(raw_key).expanduser().resolve()
     data_path_str = canon.get("DATA")
 
@@ -1016,7 +1024,8 @@ selftest completion"
 }
 complete -o nospace -F _wid_complete wid""")
     elif shell == "zsh":
-        print(r"""#compdef wid
+        print(
+            r"""#compdef wid
 _wid_complete() {
   local cur="${words[-1]}"
   local -a cmds=(
@@ -1039,7 +1048,9 @@ _wid_complete() {
     compadd -- "${cmds[@]}" A= W= Z= T= N= L= D= I= E= R= M=
   fi
 }
-_wid_complete """ + '"$@"')
+_wid_complete """
+            + '"$@"'
+        )
     elif shell == "fish":
         print(_fish_completion())
     else:
