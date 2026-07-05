@@ -157,6 +157,17 @@ wid A=w-otp MODE=verify KEY=<secret_or_path> WID=<wid_string> CODE=<otp_code> [D
 2. Take the first 4 digest bytes as an unsigned 32-bit integer.
 3. Compute `otp = value mod 10^DIGITS` and zero-pad to `DIGITS`.
 
+> **Effective code space is bounded by the 32-bit input, not by `10^DIGITS`.**
+> Because `value` is only 4 bytes wide (max `2^32 - 1 = 4294967295`), the
+> `mod 10^DIGITS` reduction is a true reduction only while `10^DIGITS <= 2^32`,
+> i.e. for `DIGITS <= 9`. At `DIGITS = 10` the modulus is a no-op: codes never
+> exceed `4294967295`, so the leading decimal digit is always `0`–`4` and
+> `DIGITS = 10` carries no more entropy than the ~4.29×10⁹ ceiling (roughly 9.6
+> digits). Treat `DIGITS = 9` as the point of diminishing returns. Widening the
+> integer (e.g. 5+ digest bytes) would lift this ceiling but is a **breaking**
+> change to the code for every `(secret, WID)` pair and is intentionally not
+> made here.
+
 **Output**:
 *   `MODE=gen`: JSON payload with `wid`, `otp`, `digits`.
 *   `MODE=verify`: success message + exit `0` if valid; invalid message + exit `1` otherwise.
@@ -176,10 +187,13 @@ WID," not one-time freshness. Operators MUST account for the following:
     `openssl(1)` as a process argument (visible via `ps`/`/proc` to same-user
     processes) — prefer a non-`sh` implementation where local secret exposure
     matters.
-*   **Brute-force / online guessing.** The code space is only `10^DIGITS`
-    (`10^6` at the default `DIGITS=6`, as low as `10^4` at `DIGITS=4`). Verifiers
-    **MUST** rate-limit and/or lock out repeated failed attempts, and should use
-    the largest `DIGITS` the channel tolerates for higher-value uses.
+*   **Brute-force / online guessing.** The code space is at most `10^DIGITS`
+    (`10^6` at the default `DIGITS=6`, as low as `10^4` at `DIGITS=4`) and is
+    additionally capped at `2^32` (~4.29×10⁹) by the 32-bit truncation — so
+    `DIGITS >= 10` does not reach a full `10^DIGITS` space (see the Computation
+    note). Verifiers **MUST** rate-limit and/or lock out repeated failed
+    attempts, and should use the largest useful `DIGITS` (up to 9) the channel
+    tolerates for higher-value uses.
 *   **Replay / single-use.** Because the code is a pure function of
     `(secret, WID)`, it is inherently replayable for the same WID. If single-use
     semantics are required, the verifier **MUST** track and reject already-seen
@@ -188,8 +202,10 @@ WID," not one-time freshness. Operators MUST account for the following:
     to a time window around the WID timestamp; this narrows, but does not
     eliminate, replay within the window.
 *   **Truncation.** Codes are derived from the first 4 HMAC bytes (not RFC 4226
-    dynamic truncation); this is adequate for a short numeric code but is not a
-    substitute for the rate-limiting and single-use controls above.
+    dynamic truncation), so the pre-modulus value is a fixed 32-bit quantity.
+    This is adequate for a short numeric code but is not a substitute for the
+    rate-limiting and single-use controls above, and it caps the usable entropy
+    at ~32 bits regardless of `DIGITS` (see the Computation note on `DIGITS = 10`).
 
 **1.0.0 rollout scope**:
 * Primary: `sh`, `rust`, `c`, `go`, `python`, `typescript`.
