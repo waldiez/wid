@@ -27,7 +27,10 @@ mod hlc;
 mod manifest;
 mod wid;
 
-pub use async_api::{async_hlc_wid_stream, async_next_hlc_wid, async_next_wid, async_wid_stream};
+pub use async_api::{
+    AsyncHlcWidStream, AsyncWidStream, async_hlc_wid_stream, async_next_hlc_wid, async_next_wid,
+    async_wid_stream,
+};
 pub use hlc::{
     HLCState, HLCWidGen, ParsedHlcWid, parse_hlc_wid, parse_hlc_wid_with_unit, validate_hlc_wid,
     validate_hlc_wid_with_unit,
