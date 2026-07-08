@@ -1,6 +1,6 @@
 # WID Specification
 
-**Version**: 1.0.0  
+**Version**: 1.0.0
 **Status**: Release Candidate — frozen for v1.0.0; changes before the first
 tag are editorial only. Release state is tracked in the repository
 `CHANGELOG.md`.
@@ -128,32 +128,32 @@ LETTER     ::= "a"..."z" | "A"..."Z"
 ```shell
 function next_wid(W, Z, time_unit):
     now_tick = current_utc_tick(time_unit)   # sec or ms
-    
+
     # Ensure monotonicity
     if now_tick <= last_tick:
         tick = last_tick
     else:
         tick = now_tick
-    
+
     # Increment sequence
     if tick == last_tick:
         seq = last_seq + 1
     else:
         seq = 0
-    
+
     # Handle sequence overflow
     if seq > 10^W - 1:
         tick = tick + 1
         seq = 0
-    
+
     # Update state
     last_tick = tick
     last_seq = seq
-    
+
     # Format components
     ts = format_timestamp(tick, time_unit)  # "YYYYMMDDTHHMMSS" | "YYYYMMDDTHHMMSSmmm"
     seq_str = zero_pad(seq, W)      # W digits
-    
+
     # Build WID
     if Z > 0:
         pad = random_hex(Z)
@@ -167,23 +167,23 @@ function next_wid(W, Z, time_unit):
 ```bash
 function next_hlc_wid(W, Z, node, time_unit):
     now = current_utc_tick(time_unit)  # sec or ms
-    
+
     # Update physical time
     if now > pt:
         pt = now
         lc = 0
     else:
         lc = lc + 1
-    
+
     # Handle overflow
     if lc > 10^W - 1:
         pt = pt + 1
         lc = 0
-    
+
     # Format
     ts = format_timestamp(pt, time_unit)
     lc_str = zero_pad(lc, W)
-    
+
     if Z > 0:
         pad = random_hex(Z)
         return ts + "." + lc_str + "Z-" + node + "-" + pad
@@ -193,7 +193,7 @@ function next_hlc_wid(W, Z, node, time_unit):
 function observe(remote_pt, remote_lc):
     now = current_utc_tick(time_unit)
     new_pt = max(now, pt, remote_pt)
-    
+
     if new_pt == pt == remote_pt:
         lc = max(lc, remote_lc) + 1
     elif new_pt == pt:
@@ -202,7 +202,7 @@ function observe(remote_pt, remote_lc):
         lc = remote_lc + 1
     else:
         lc = 0
-    
+
     pt = new_pt
     # Handle overflow
     if lc > 10^W - 1:

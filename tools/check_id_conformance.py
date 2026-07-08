@@ -52,9 +52,11 @@ def choose_python_cmd() -> list[str]:
     return ["python3"]
 
 
+# fmt: off
 def available_impls() -> tuple[
     dict[str, tuple[list[str], dict[str, str] | None]], list[str]
 ]:
+# fmt: on
     """Map implementation name to (argv prefix, env), plus skipped names."""
     go_env = {**os.environ, "GOCACHE": str((ROOT / ".local" / "go-cache").resolve())}
     candidates: dict[str, tuple[list[str], dict[str, str] | None]] = {

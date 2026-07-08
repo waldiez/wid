@@ -750,14 +750,15 @@ def _run_canonical(argv: list[str]) -> bool:  # noqa: C901
                 # sh/wid is a bash script; Windows cannot exec it directly
                 # (and a checkout usually has no bash). Refuse up front with a
                 # clear message instead of a cryptic subprocess exec error.
-                raise RuntimeError(
+                msg = (
                     "I=sh/I=bash is not available on Windows: it delegates to "
                     "the bash script sh/wid, which Windows cannot execute. Use "
                     "the default/native Python path (omit I=, or I=auto)."
                 )
+                raise RuntimeError(msg)
             root_dir = _repo_root()
             if root_dir is None:
-                raise RuntimeError(
+                msg = (
                     "I=sh/I=bash delegates to the sibling sh/wid script, which is "
                     "only present in a source checkout of the repository. The "
                     "installed 'waldiez-wid' package bundles the Python "
@@ -765,6 +766,7 @@ def _run_canonical(argv: list[str]) -> bool:  # noqa: C901
                     "Windows even from a checkout, since it is a bash script). "
                     "Use the default/native Python path (omit I=, or I=auto) here."
                 )
+                raise RuntimeError(msg)
             _run_shell_wid(root_dir, canon)
             return True
 
@@ -1024,6 +1026,7 @@ selftest completion"
 }
 complete -o nospace -F _wid_complete wid""")
     elif shell == "zsh":
+        # fmt: off
         print(
             r"""#compdef wid
 _wid_complete() {
@@ -1051,6 +1054,7 @@ _wid_complete() {
 _wid_complete """
             + '"$@"'
         )
+        # fmt: on
     elif shell == "fish":
         print(_fish_completion())
     else:

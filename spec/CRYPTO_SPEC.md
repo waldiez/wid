@@ -1,6 +1,6 @@
 # WID Cryptography Specification
 
-**Version**: 1.1.0  
+**Version**: 1.1.0
 **Status**: Active
 
 > **Changelog 1.1.0 (breaking):** the `A=sign`/`A=verify` message is now the
