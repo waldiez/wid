@@ -1355,53 +1355,68 @@ fn sql_open(c: &CanonOpts) -> Result<rusqlite::Connection, String> {
     Ok(conn)
 }
 
-/// Allocate the next WID atomically: read-modify-write the persisted generator
-/// state inside a single `IMMEDIATE` transaction so concurrent processes cannot
-/// interleave. All values are bound as parameters (no SQL string interpolation).
+/// Allocate the next WID via compare-and-swap on the persisted generator
+/// state row.  The UPDATE's WHERE clause encodes the expected previous
+/// (last_tick, last_seq); if another process changed the row between our
+/// SELECT and UPDATE, `rows_affected` returns 0 and we retry (up to 64
+/// times — the same budget used by the Python/Go/TypeScript/C
+/// implementations).  The busy timeout absorbs transient lock contention.
+/// All values are bound as parameters (no SQL string interpolation).
 fn sql_allocate_next_wid(
-    conn: &mut rusqlite::Connection,
+    conn: &rusqlite::Connection,
     c: &CanonOpts,
     key: &str,
 ) -> Result<String, String> {
     use rusqlite::OptionalExtension;
-    let tx = conn
-        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-        .map_err(|e| format!("sql begin failed: {e}"))?;
 
-    let (last_tick, last_seq): (i64, i64) = tx
-        .query_row(
-            "SELECT last_tick, last_seq FROM wid_state WHERE k=?1",
-            [key],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()
-        .map_err(|e| format!("sql load failed: {e}"))?
-        .unwrap_or((0, -1));
-
-    let mut generator = WidGen::new_with_time_unit(c.w, c.z, c.t).map_err(|e| e.to_string())?;
-    generator
-        .restore_state(last_tick, last_seq)
-        .map_err(|_| "invalid SQL state values".to_string())?;
-    let id = generator.next_wid();
-    let (next_tick, next_seq) = generator.state();
-
-    tx.execute(
-        "INSERT INTO wid_state(k, last_tick, last_seq) VALUES(?1, ?2, ?3)\
-         ON CONFLICT(k) DO UPDATE SET last_tick=?2, last_seq=?3",
-        rusqlite::params![key, next_tick, next_seq],
+    // Seed the row if it does not exist yet.
+    conn.execute(
+        "INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES(?1,0,-1)",
+        rusqlite::params![key],
     )
-    .map_err(|e| format!("sql update failed: {e}"))?;
-    tx.commit().map_err(|e| format!("sql commit failed: {e}"))?;
-    Ok(id)
+    .map_err(|e| format!("sql seed failed: {e}"))?;
+
+    for _ in 0..64 {
+        let (last_tick, last_seq): (i64, i64) = conn
+            .query_row(
+                "SELECT last_tick, last_seq FROM wid_state WHERE k=?1",
+                [key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| format!("sql load failed: {e}"))?
+            .unwrap_or((0, -1));
+
+        let mut generator = WidGen::new_with_time_unit(c.w, c.z, c.t).map_err(|e| e.to_string())?;
+        generator
+            .restore_state(last_tick, last_seq)
+            .map_err(|_| "invalid SQL state values".to_string())?;
+        let id = generator.next_wid();
+        let (next_tick, next_seq) = generator.state();
+
+        let rows = conn
+            .execute(
+                "UPDATE wid_state SET last_tick=?2, last_seq=?3 \
+                 WHERE k=?1 AND last_tick=?4 AND last_seq=?5",
+                rusqlite::params![key, next_tick, next_seq, last_tick, last_seq],
+            )
+            .map_err(|e| format!("sql update failed: {e}"))?;
+
+        if rows == 1 {
+            return Ok(id);
+        }
+    }
+
+    Err("sql allocation contention: retry budget exhausted".to_string())
 }
 
 fn run_canonical_sql_next(c: &CanonOpts) -> Result<(), CliError> {
     let root = workspace_root();
     let dd = resolve_data_dir(&root, &c.d);
     fs::create_dir_all(&dd).map_err(|e| fail(format!("failed to create data dir: {e}")))?;
-    let mut conn = sql_open(c).map_err(fail)?;
+    let conn = sql_open(c).map_err(fail)?;
     let key = sql_state_key(c);
-    let id = sql_allocate_next_wid(&mut conn, c, &key).map_err(fail)?;
+    let id = sql_allocate_next_wid(&conn, c, &key).map_err(fail)?;
     println!("{id}");
     Ok(())
 }
@@ -1410,14 +1425,14 @@ fn run_canonical_sql_stream(c: &CanonOpts) -> Result<(), CliError> {
     let root = workspace_root();
     let dd = resolve_data_dir(&root, &c.d);
     fs::create_dir_all(&dd).map_err(|e| fail(format!("failed to create data dir: {e}")))?;
-    let mut conn = sql_open(c).map_err(fail)?;
+    let conn = sql_open(c).map_err(fail)?;
     let key = sql_state_key(c);
     let mut emitted = 0usize;
     loop {
         if c.n > 0 && emitted >= c.n {
             break;
         }
-        let id = sql_allocate_next_wid(&mut conn, c, &key).map_err(fail)?;
+        let id = sql_allocate_next_wid(&conn, c, &key).map_err(fail)?;
         println!("{id}");
         io::stdout().flush().map_err(|e| fail(e.to_string()))?;
         emitted += 1;
