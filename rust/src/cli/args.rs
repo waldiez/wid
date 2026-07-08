@@ -125,6 +125,7 @@ pub(crate) fn parse_surface_flags(
         time_unit: TimeUnit::Sec,
         count: 0,
     };
+    let mut z_explicit = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -132,7 +133,10 @@ pub(crate) fn parse_surface_flags(
             "--kind" => opts.kind = flag_value(args, i, "--kind")?.to_string(),
             "--node" if allow_node => opts.node = flag_value(args, i, "--node")?.to_string(),
             "--W" => opts.w = flag_usize(args, i, "--W")?,
-            "--Z" => opts.z = flag_usize(args, i, "--Z")?,
+            "--Z" => {
+                opts.z = flag_usize(args, i, "--Z")?;
+                z_explicit = true;
+            }
             "--time-unit" | "--T" => {
                 opts.time_unit = parse_time_unit(flag_value(args, i, "--time-unit")?)?;
             }
@@ -140,6 +144,12 @@ pub(crate) fn parse_surface_flags(
             _ => return Err(format!("unknown flag: {}", args[i])),
         }
         i += 2;
+    }
+
+    // HLC-WID defaults to Z=0 (no random padding) per spec convention;
+    // plain WID keeps Z=6. An explicit --Z always wins.
+    if !z_explicit && opts.kind == "hlc" {
+        opts.z = 0;
     }
 
     match opts.kind.as_str() {
@@ -310,5 +320,32 @@ mod tests {
         let c =
             parse_canonical(&["A=waf".to_string(), "W=4".to_string(), "Z=6".to_string()]).unwrap();
         assert_eq!(c.a, "saf-wid");
+    }
+
+    #[test]
+    fn test_hlc_defaults_to_z0() {
+        let opts = parse_emit_flags(&["--kind".to_string(), "hlc".to_string()], true).unwrap();
+        assert_eq!(opts.z, 0, "HLC should default to Z=0");
+    }
+
+    #[test]
+    fn test_wid_defaults_to_z6() {
+        let opts = parse_emit_flags(&[], true).unwrap();
+        assert_eq!(opts.z, 6, "plain WID should default to Z=6");
+    }
+
+    #[test]
+    fn test_hlc_explicit_z_overrides_default() {
+        let opts = parse_emit_flags(
+            &[
+                "--kind".to_string(),
+                "hlc".to_string(),
+                "--Z".to_string(),
+                "12".to_string(),
+            ],
+            true,
+        )
+        .unwrap();
+        assert_eq!(opts.z, 12, "explicit --Z should override HLC default");
     }
 }

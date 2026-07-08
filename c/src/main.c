@@ -912,6 +912,7 @@ static bool parse_opts(int argc, char **argv, int start, bool allow_count, bool 
     o->count = 0;
     o->json = false;
     o->interval_secs = 0;
+    bool z_explicit = false;
 
     for (int i = start; i < argc; i++) {
         if (strcmp(argv[i], "--kind") == 0) {
@@ -924,6 +925,7 @@ static bool parse_opts(int argc, char **argv, int start, bool allow_count, bool 
             if (i + 1 >= argc || !parse_int(argv[++i], &o->W)) return false;
         } else if (strcmp(argv[i], "--Z") == 0) {
             if (i + 1 >= argc || !parse_int(argv[++i], &o->Z)) return false;
+            z_explicit = true;
         } else if (strcmp(argv[i], "--time-unit") == 0 || strcmp(argv[i], "--T") == 0) {
             if (i + 1 >= argc) return false;
             if (!wid_time_unit_from_str(argv[++i], &o->time_unit)) return false;
@@ -941,6 +943,9 @@ static bool parse_opts(int argc, char **argv, int start, bool allow_count, bool 
     }
 
     if (strcmp(o->kind, "wid") != 0 && strcmp(o->kind, "hlc") != 0) return false;
+    /* HLC-WID defaults to Z=0 (no random padding) per spec convention;
+     * plain WID keeps Z=6. An explicit --Z always wins. */
+    if (!z_explicit && strcmp(o->kind, "hlc") == 0) o->Z = 0;
     if (o->W <= 0 || o->Z < 0) return false;
     if (o->W > WID_MAX_W || o->Z > WID_MAX_Z) return false;
     if (o->count < 0) return false;

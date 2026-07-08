@@ -18,6 +18,12 @@ import {
  * value that fits in an int64 (10^19 overflows), so W > 18 cannot be
  * represented by the i64-based implementations and is rejected uniformly
  * across all six languages.
+ *
+ * **JavaScript precision note:** JS numbers are IEEE-754 doubles, so
+ * sequences above 2^53 (~16+ digits, W >= 16) lose integer precision.
+ * This implementation caps maxSeq at Number.MAX_SAFE_INTEGER - 1 (~9e15)
+ * so overflow detection and rollover still work. Validation uses string
+ * comparison and is exact regardless of W.
  */
 export const MAX_W = 18;
 /** Maximum padding width (hex chars); matches the C implementation's WID_MAX_Z. */
