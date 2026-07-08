@@ -90,7 +90,7 @@ class HLCWidGen:
         self._cached_sec = -1
         self._cached_ts = ""
 
-    def _ts_for_sec(self, sec: int) -> str:
+    def _ts_for_tick(self, sec: int) -> str:
         # Saturate instead of raising from datetime.fromtimestamp: a
         # corrupted resume state degrades to a pinned timestamp.
         """Format a (clamped) seconds tick as the WID timestamp field."""
@@ -153,7 +153,7 @@ class HLCWidGen:
 
         self._rollover_if_needed()
 
-        ts = self._ts_for_sec(self.pt)
+        ts = self._ts_for_tick(self.pt)
         lc_str = str(self.lc).zfill(self.W)
 
         if self.Z > 0:

@@ -7,7 +7,7 @@ from .async_api import (
     async_next_wid,
     async_wid_stream,
 )
-from .hlc import HLCWidGen
+from .hlc import HLCState, HLCWidGen
 from .parse import (
     MAX_W,
     MAX_Z,
@@ -22,6 +22,7 @@ from .wid import (
     MemoryWidStateStore,
     SqliteWidStateStore,
     WidGen,
+    WidGenState,
     WidStateStore,
 )
 
@@ -29,9 +30,11 @@ __all__ = [
     "MAX_W",
     "MAX_Z",
     "HLCWidGen",
+    "HLCState",
     "ParsedHlcWid",
     "ParsedWid",
     "WidGen",
+    "WidGenState",
     "WidStateStore",
     "MemoryWidStateStore",
     "SqliteWidStateStore",
@@ -44,5 +47,4 @@ __all__ = [
     "parse_wid",
     "validate_hlc_wid",
     "validate_wid",
-    "parse",
 ]

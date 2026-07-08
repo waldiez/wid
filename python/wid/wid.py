@@ -201,7 +201,7 @@ class WidGen:
             # Keep generator functional even if persistence fails.
             return
 
-    def _ts_for_sec(self, sec: int) -> str:
+    def _ts_for_tick(self, sec: int) -> str:
         # Saturate instead of raising from datetime.fromtimestamp: a
         # corrupted resume state degrades to a pinned timestamp.
         """Format a (clamped) seconds tick as the WID timestamp field."""
@@ -242,7 +242,7 @@ class WidGen:
         self.last_sec, self.last_seq = sec, seq
         self._persist_state()
 
-        ts = self._ts_for_sec(sec)
+        ts = self._ts_for_tick(sec)
         seq_str = str(seq).zfill(self.W)
 
         if self.Z > 0:
