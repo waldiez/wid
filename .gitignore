@@ -13,6 +13,7 @@ dist/
 .pytest_cache/
 .coverage
 .coverage.*
+coverage/
 coverage.xml
 junit.xml
 htmlcov/
