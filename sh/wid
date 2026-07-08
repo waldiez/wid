@@ -644,9 +644,6 @@ run_canonical() {
         esac
     done
 
-    # HLC-WID defaults to Z=0 (no random padding) per spec convention.
-    if [[ "$kind" == "hlc" ]]; then Z=0; fi
-
     # Treat "#" as placeholder ("use default"), useful for Make invocations.
     [[ "$A" == "#" ]] && A="next"
     [[ "$W" == "#" ]] && W="4"
@@ -1059,9 +1056,6 @@ run_selftest() {
         prev="$cur"
     done
 
-    # HLC-WID defaults to Z=0 (no random padding) per spec convention.
-    if [[ "$kind" == "hlc" ]]; then Z=0; fi
-
     # ------------------------------------------------------------
     # Optional concurrency uniqueness test:
     # - wid requires Z>0 (Z=0 is not unique across processes)
@@ -1371,15 +1365,15 @@ main() {
         esac
     done
 
-    # HLC-WID defaults to Z=0 (no random padding) per spec convention.
-    if [[ "$kind" == "hlc" ]]; then Z=0; fi
-
     [[ "$kind" == "wid" || "$kind" == "hlc" ]] || die_usage "kind must be wid or hlc"
     is_int "$W" || die_usage "W must be an integer"
     is_int "$Z" || die_usage "Z must be an integer"
     ((W > 0 && W <= 18)) || die_usage "W must be between 1 and 18"
     ((Z >= 0 && Z <= 64)) || die_usage "Z must be between 0 and 64"
     [[ "$time_unit" == "sec" || "$time_unit" == "ms" ]] || die_usage "time-unit must be sec or ms"
+
+    # HLC-WID defaults to Z=0 (no random padding) per spec convention.
+    if [[ "$kind" == "hlc" ]]; then Z=0; fi
 
     if [[ "$kind" == "hlc" ]]; then
         valid_node "$node" || die_usage "invalid node"
