@@ -1168,7 +1168,7 @@ if __name__ == "__main__":
     main()
 
 
-def _resolve_z(kind, z):
+def _resolve_z(kind: str, z: int | None) -> int:
     """HLC-WID defaults to Z=0, WID to Z=6. Explicit Z always wins."""
     if z is not None:
         return z
