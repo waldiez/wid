@@ -354,11 +354,13 @@ static int sql_state_path(const canon_opts_t *c, char out[PATH_MAX]) {
     return join_path(out, PATH_MAX, dd, "/wid_state.sqlite");
 }
 
-/* Allocate the next WID atomically using the bundled libsqlite3 C API (no
- * external `sqlite3` binary). The read-modify-write of the persisted generator
- * state runs inside a single BEGIN IMMEDIATE transaction so concurrent
- * processes cannot interleave; the busy timeout absorbs lock contention. All
- * values are bound as parameters (no SQL string interpolation). */
+/* Allocate the next WID via compare-and-swap on the persisted generator
+ * state row.  The UPDATE's WHERE clause encodes the expected previous
+ * (last_tick, last_seq); if another process changed the row between our
+ * SELECT and UPDATE, sqlite3_changes() returns 0 and we retry (up to 64
+ * times — the same budget used by the Python/Go/TypeScript implementations).
+ * The busy timeout absorbs transient lock contention.  All values are bound
+ * as parameters (no SQL string interpolation). */
 static int sql_allocate_next_wid(
     const canon_opts_t *c,
     wid_time_unit_t unit,
@@ -379,68 +381,79 @@ static int sql_allocate_next_wid(
     }
     sqlite3_busy_timeout(db, 5000);
 
-    int rc = -1;
     if (sqlite3_exec(db,
                      "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, "
                      "last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL);",
-                     NULL,
-                     NULL,
-                     NULL) != SQLITE_OK) {
-        sqlite3_close(db);
-        return -1;
-    }
-    if (sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) {
+                     NULL, NULL, NULL) != SQLITE_OK) {
         sqlite3_close(db);
         return -1;
     }
 
-    int64_t last_tick = 0;
-    int64_t last_seq = -1;
-    sqlite3_stmt *sel = NULL;
-    if (sqlite3_prepare_v2(db, "SELECT last_tick, last_seq FROM wid_state WHERE k=?1;", -1, &sel, NULL) !=
-        SQLITE_OK) {
-        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
-        sqlite3_close(db);
-        return -1;
-    }
-    sqlite3_bind_text(sel, 1, key, -1, SQLITE_TRANSIENT);
-    int step = sqlite3_step(sel);
-    if (step == SQLITE_ROW) {
-        last_tick = sqlite3_column_int64(sel, 0);
-        last_seq = sqlite3_column_int64(sel, 1);
-    } else if (step != SQLITE_DONE) {
-        sqlite3_finalize(sel);
-        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
-        sqlite3_close(db);
-        return -1;
-    }
-    sqlite3_finalize(sel);
-
-    wid_gen_t g;
-    wid_gen_init_ex(&g, c->W, c->Z, unit);
-    g.last_tick = last_tick;
-    g.last_seq = last_seq;
-    wid_gen_next(&g, out, WID_MAX_LEN);
-
-    sqlite3_stmt *up = NULL;
+    /* Seed the row if it does not exist yet. */
+    sqlite3_stmt *ins = NULL;
     if (sqlite3_prepare_v2(db,
-                           "INSERT INTO wid_state(k, last_tick, last_seq) VALUES(?1, ?2, ?3) "
-                           "ON CONFLICT(k) DO UPDATE SET last_tick=?2, last_seq=?3;",
-                           -1,
-                           &up,
-                           NULL) == SQLITE_OK) {
+                           "INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) "
+                           "VALUES(?1,0,-1);",
+                           -1, &ins, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(ins, 1, key, -1, SQLITE_TRANSIENT);
+        sqlite3_step(ins);
+        sqlite3_finalize(ins);
+    }
+
+    for (int attempt = 0; attempt < 64; attempt++) {
+        /* Read current state. */
+        int64_t last_tick = 0;
+        int64_t last_seq = -1;
+        sqlite3_stmt *sel = NULL;
+        if (sqlite3_prepare_v2(db,
+                               "SELECT last_tick, last_seq FROM wid_state WHERE k=?1;",
+                               -1, &sel, NULL) != SQLITE_OK) {
+            sqlite3_close(db);
+            return -1;
+        }
+        sqlite3_bind_text(sel, 1, key, -1, SQLITE_TRANSIENT);
+        int step = sqlite3_step(sel);
+        if (step == SQLITE_ROW) {
+            last_tick = sqlite3_column_int64(sel, 0);
+            last_seq = sqlite3_column_int64(sel, 1);
+        } else if (step != SQLITE_DONE) {
+            sqlite3_finalize(sel);
+            sqlite3_close(db);
+            return -1;
+        }
+        sqlite3_finalize(sel);
+
+        /* Generate the candidate WID from this state. */
+        wid_gen_t g;
+        wid_gen_init_ex(&g, c->W, c->Z, unit);
+        g.last_tick = last_tick;
+        g.last_seq = last_seq;
+        wid_gen_next(&g, out, WID_MAX_LEN);
+
+        /* Compare-and-swap: only update if the row still holds the values
+         * we read.  If another process changed them, changes() returns 0
+         * and we loop around to read the new state and retry. */
+        sqlite3_stmt *up = NULL;
+        if (sqlite3_prepare_v2(db,
+                               "UPDATE wid_state SET last_tick=?2, last_seq=?3 "
+                               "WHERE k=?1 AND last_tick=?4 AND last_seq=?5;",
+                               -1, &up, NULL) != SQLITE_OK) {
+            sqlite3_close(db);
+            return -1;
+        }
         sqlite3_bind_text(up, 1, key, -1, SQLITE_TRANSIENT);
         sqlite3_bind_int64(up, 2, g.last_tick);
         sqlite3_bind_int64(up, 3, g.last_seq);
-        if (sqlite3_step(up) == SQLITE_DONE) rc = 0;
+        sqlite3_bind_int64(up, 4, last_tick);
+        sqlite3_bind_int64(up, 5, last_seq);
+        if (sqlite3_step(up) == SQLITE_DONE && sqlite3_changes(db) == 1) {
+            sqlite3_finalize(up);
+            sqlite3_close(db);
+            return 0;
+        }
         sqlite3_finalize(up);
     }
 
-    if (rc == 0 && sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK) {
-        sqlite3_close(db);
-        return 0;
-    }
-    sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
     sqlite3_close(db);
     return -1;
 }
