@@ -66,6 +66,13 @@ CANONICAL_KEYS = {
 TRANSPORTS = {"null", "stdout", "auto"}
 
 
+def _resolve_z(kind: str, z: int | None) -> int:
+    """HLC-WID defaults to Z=0, WID to Z=6. Explicit Z always wins."""
+    if z is not None:
+        return z
+    return 0 if kind == "hlc" else 6
+
+
 def _print_actions() -> None:
     """Print the canonical action matrix (A=...)."""
     print("""wid action matrix
@@ -158,6 +165,9 @@ def _run_emit_mode(mode: str, argv: list[str]) -> None:
         help="sleep between stream emissions in milliseconds (stream mode)",
     )
     args = ap.parse_args(argv)
+    # HLC-WID defaults to Z=0 when --Z not explicitly passed.
+    if args.kind == "hlc" and not any(a in ("--Z", "-Z") for a in argv):
+        args.Z = 0
     args.Z = _resolve_z(args.kind, args.Z)
     if args.interval_ms < 0:
         raise ValueError("--interval-ms must be >= 0")
@@ -202,6 +212,15 @@ def _run_healthcheck_mode(argv: list[str]) -> None:
     )
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
+    # HLC-WID defaults to Z=0 when --Z not explicitly passed.
+    if args.kind == "hlc" and not any(a in ("--Z", "-Z") for a in argv):
+        args.Z = 0
+    # HLC-WID defaults to Z=0 when --Z not explicitly passed.
+    if args.kind == "hlc" and not any(a in ("--Z", "-Z") for a in argv):
+        args.Z = 0
+
+    if args.kind == "hlc" and not any(a in ("--Z", "-Z") for a in argv):
+        args.Z = 0
     args.Z = _resolve_z(args.kind, args.Z)
 
     effective_time_unit = parse_time_unit(args.time_unit)
@@ -251,6 +270,15 @@ def _run_bench_mode(argv: list[str]) -> None:
     )
     ap.add_argument("--count", type=int, default=0, help="0 means the default 100000")
     args = ap.parse_args(argv)
+    # HLC-WID defaults to Z=0 when --Z not explicitly passed.
+    if args.kind == "hlc" and not any(a in ("--Z", "-Z") for a in argv):
+        args.Z = 0
+    # HLC-WID defaults to Z=0 when --Z not explicitly passed.
+    if args.kind == "hlc" and not any(a in ("--Z", "-Z") for a in argv):
+        args.Z = 0
+
+    if args.kind == "hlc" and not any(a in ("--Z", "-Z") for a in argv):
+        args.Z = 0
     args.Z = _resolve_z(args.kind, args.Z)
 
     n = args.count if args.count > 0 else 100000
@@ -1166,10 +1194,3 @@ def hlc_wid_main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-def _resolve_z(kind: str, z: int | None) -> int:
-    """HLC-WID defaults to Z=0, WID to Z=6. Explicit Z always wins."""
-    if z is not None:
-        return z
-    return 0 if kind == "hlc" else 6
