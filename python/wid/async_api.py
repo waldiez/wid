@@ -84,9 +84,19 @@ class AsyncSqliteWidStateStore:
             await conn.close()
 
     async def next_wid(
-        self, *, key: str = "wid", w: int = 4, z: int = 6, time_unit: str = "sec"
+        self,
+        *,
+        key: str = "wid",
+        W: int = 4,
+        Z: int = 6,
+        time_unit: str = "sec",
+        **kwargs: Any,
     ) -> str:
         """Allocate one next WID with SQL compare-and-swap semantics."""
+        if "w" in kwargs:
+            W = int(kwargs.pop("w"))  # pyright: ignore[reportConstantRedefinition]
+        if "z" in kwargs:
+            Z = int(kwargs.pop("z"))  # pyright: ignore[reportConstantRedefinition]
         full_key = self._full_key(key)
         conn = await self._connect()
         try:
@@ -107,7 +117,7 @@ class AsyncSqliteWidStateStore:
                     raise RuntimeError("sql state row missing")
                 last_sec = int(row[0])
                 last_seq = int(row[1])
-                gen = WidGen(w=w, z=z, time_unit=_parse_time_unit(time_unit))
+                gen = WidGen(W=W, Z=Z, time_unit=_parse_time_unit(time_unit))
                 gen.restore_state(last_sec, last_seq)
                 out = gen.next()
                 st = gen.state()

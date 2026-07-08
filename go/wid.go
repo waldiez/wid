@@ -103,18 +103,15 @@ func formatTS(tick int64, unit TimeUnit) string {
 	return time.Unix(tick, 0).UTC().Format("20060102T150405")
 }
 
-func randomHex(z int) string {
+func randomHex(z int) (string, error) {
 	if z <= 0 {
-		return ""
+		return "", nil
 	}
 	b := make([]byte, (z+1)/2)
 	if _, err := rand.Read(b); err != nil {
-		// Padding is the collision/unpredictability defense; silently
-		// degrading to time-derived bytes defeats it. crypto/rand never
-		// fails on supported platforms, so treat failure as fatal.
-		panic("wid: crypto/rand failed: " + err.Error())
+		return "", fmt.Errorf("wid: crypto/rand failed: %w", err)
 	}
-	return hex.EncodeToString(b)[:z]
+	return hex.EncodeToString(b)[:z], nil
 }
 
 // isValidNode enforces the spec's NODE charset: one or more ASCII
@@ -413,7 +410,11 @@ func (g *WidGen) Next() string {
 	ts := formatTS(tick, g.TimeUnit)
 	seqStr := fmt.Sprintf("%0*d", g.W, seq)
 	if g.Z > 0 {
-		return fmt.Sprintf("%s.%sZ-%s", ts, seqStr, randomHex(g.Z))
+		pad, err := randomHex(g.Z)
+		if err != nil {
+			return fmt.Sprintf("%s.%sZ", ts, seqStr) // fallback: no pad
+		}
+		return fmt.Sprintf("%s.%sZ-%s", ts, seqStr, pad)
 	}
 	return fmt.Sprintf("%s.%sZ", ts, seqStr)
 }
@@ -539,7 +540,11 @@ func (g *HLCWidGen) Next() string {
 	ts := formatTS(g.pt, g.TimeUnit)
 	lcStr := fmt.Sprintf("%0*d", g.W, g.lc)
 	if g.Z > 0 {
-		return fmt.Sprintf("%s.%sZ-%s-%s", ts, lcStr, g.Node, randomHex(g.Z))
+		pad, err := randomHex(g.Z)
+		if err != nil {
+			return fmt.Sprintf("%s.%sZ-%s", ts, lcStr, g.Node) // fallback: no pad
+		}
+		return fmt.Sprintf("%s.%sZ-%s-%s", ts, lcStr, g.Node, pad)
 	}
 	return fmt.Sprintf("%s.%sZ-%s", ts, lcStr, g.Node)
 }
