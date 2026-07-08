@@ -1,3 +1,3 @@
 module github.com/waldiez/wid
 
-go 1.22
+go 1.25

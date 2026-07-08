@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -796,9 +797,25 @@ func runWOtp(c canon) int {
 	return 1
 }
 
-func sqlEscapeSingle(s string) string {
-	return strings.ReplaceAll(s, "'", "''")
-}
+// validStateKey reports whether k matches the expected state-key format
+// wid:W:Z:T.  All callers build the key from trusted values (W and Z are
+// parsed integers, T is the validated "sec"/"ms" enum), so this is a
+// defence-in-depth guard, not a sanitizer for untrusted input.
+var validStateKey = regexp.MustCompile(`^wid:\d+:\d+:(sec|ms)$`)
+
+// The Go CLI's E=sql mode shells out to the external sqlite3 binary
+// (see README.md for the rationale).  Because the SQL is passed as a
+// command-line argument, driver-level parameterised queries are not
+// available.  Every value interpolated into a statement below comes from
+// one of two safe sources:
+//
+//   - State key: always wid:W:Z:T, guarded by validStateKey above.
+//   - Tick / sequence: int64 formatted with %d – no SQL metacharacters
+//     can appear.
+//
+// This is the only implementation that uses string interpolation; the
+// other five all link an in-process SQLite library and use parameterised
+// queries.
 
 func sqliteExec(dbPath string, sql string) (string, error) {
 	if _, err := exec.LookPath("sqlite3"); err != nil {
@@ -823,16 +840,22 @@ func sqlStateKey(c canon) string {
 }
 
 func sqlEnsureState(dbPath string, key string) error {
-	escaped := sqlEscapeSingle(key)
+	if !validStateKey.MatchString(key) {
+		return errors.New("invalid state key format")
+	}
+	// key is safe for interpolation (guaranteed to match wid:\d+:\d+:(sec|ms)).
 	sql := "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL);" +
-		fmt.Sprintf("INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES('%s',0,-1);", escaped)
+		fmt.Sprintf("INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES('%s',0,-1);", key)
 	_, err := sqliteExec(dbPath, sql)
 	return err
 }
 
 func sqlLoadState(dbPath string, key string) (int64, int64, error) {
-	escaped := sqlEscapeSingle(key)
-	sql := fmt.Sprintf("SELECT last_tick || '|' || last_seq FROM wid_state WHERE k='%s';", escaped)
+	if !validStateKey.MatchString(key) {
+		return 0, 0, errors.New("invalid state key format")
+	}
+	// key is safe for interpolation (guaranteed to match wid:\d+:\d+:(sec|ms)).
+	sql := fmt.Sprintf("SELECT last_tick || '|' || last_seq FROM wid_state WHERE k='%s';", key)
 	raw, err := sqliteExec(dbPath, sql)
 	if err != nil {
 		return 0, 0, err
@@ -853,12 +876,16 @@ func sqlLoadState(dbPath string, key string) (int64, int64, error) {
 }
 
 func sqlCompareAndSwapState(dbPath string, key string, oldTick, oldSeq, newTick, newSeq int64) (bool, error) {
-	escaped := sqlEscapeSingle(key)
+	if !validStateKey.MatchString(key) {
+		return false, errors.New("invalid state key format")
+	}
+	// key is safe for interpolation (guaranteed to match wid:\d+:\d+:(sec|ms));
+	// ticks and seqs are int64 formatted with %d – no SQL metacharacters.
 	sql := fmt.Sprintf(
 		"UPDATE wid_state SET last_tick=%d,last_seq=%d WHERE k='%s' AND last_tick=%d AND last_seq=%d;SELECT changes();",
 		newTick,
 		newSeq,
-		escaped,
+		key,
 		oldTick,
 		oldSeq,
 	)
