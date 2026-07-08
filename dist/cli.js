@@ -770,23 +770,29 @@ function computeWOtp(secret, wid, digits) {
   return String(binary % mod).padStart(digits, "0");
 }
 function wotpWidTickMs(wid) {
-  const m = /^(\d{8})T(\d{6})(\d{3})?\.[0-9]+Z/.exec(wid);
-  if (!m) throw new Error("WID timestamp is invalid for time-window verification");
-  const date = m[1];
-  const hms = m[2];
-  const ms = m[3] ?? "000";
+  const invalid = "WID timestamp is invalid for time-window verification";
+  const ts = wid.split(".", 1)[0];
+  const tIdx = ts.indexOf("T");
+  if (tIdx < 0) throw new Error(invalid);
+  const date = ts.slice(0, tIdx);
+  const time = ts.slice(tIdx + 1);
+  if (date.length !== 8 || time.length !== 6 && time.length !== 9) {
+    throw new Error(invalid);
+  }
+  const allDigits = (s) => /^[0-9]+$/.test(s);
+  if (!allDigits(date) || !allDigits(time)) throw new Error(invalid);
   const y = Number(date.slice(0, 4));
   const mo = Number(date.slice(4, 6));
   const d = Number(date.slice(6, 8));
-  const hh = Number(hms.slice(0, 2));
-  const mm = Number(hms.slice(2, 4));
-  const ss = Number(hms.slice(4, 6));
-  const msec = Number(ms);
+  const hh = Number(time.slice(0, 2));
+  const mm = Number(time.slice(2, 4));
+  const ss = Number(time.slice(4, 6));
+  const ms = time.length === 9 ? Number(time.slice(6, 9)) : 0;
   const dt = /* @__PURE__ */ new Date(0);
   dt.setUTCFullYear(y, mo - 1, d);
-  dt.setUTCHours(hh, mm, ss, msec);
+  dt.setUTCHours(hh, mm, ss, ms);
   const tick = dt.getTime();
-  if (!Number.isFinite(tick)) throw new Error("WID timestamp is invalid for time-window verification");
+  if (!Number.isFinite(tick)) throw new Error(invalid);
   return tick;
 }
 function runWOtp(c) {
