@@ -1310,6 +1310,7 @@ main() {
     local node="$HLC_DEFAULT_NODE"
     local W=$WID_DEFAULT_W
     local Z=$WID_DEFAULT_Z
+    local z_explicit=false
     local count=0
     local json=false
     local time_unit="$TIME_UNIT_DEFAULT"
@@ -1341,6 +1342,7 @@ main() {
         --Z)
             [[ $# -ge 2 ]] || die_usage "missing value for --Z"
             Z=$2
+            z_explicit=true
             shift 2
             ;;
         --count)
@@ -1372,8 +1374,9 @@ main() {
     ((Z >= 0 && Z <= 64)) || die_usage "Z must be between 0 and 64"
     [[ "$time_unit" == "sec" || "$time_unit" == "ms" ]] || die_usage "time-unit must be sec or ms"
 
-    # HLC-WID defaults to Z=0 (no random padding) per spec convention.
-    if [[ "$kind" == "hlc" ]]; then Z=0; fi
+    # HLC-WID defaults to Z=0 (no random padding) per spec convention;
+    # plain WID keeps Z=6. An explicit --Z always wins.
+    if [[ "$kind" == "hlc" && "$z_explicit" != true ]]; then Z=0; fi
 
     if [[ "$kind" == "hlc" ]]; then
         valid_node "$node" || die_usage "invalid node"

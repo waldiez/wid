@@ -138,7 +138,7 @@ def _run_emit_mode(mode: str, argv: list[str]) -> None:
     ap = argparse.ArgumentParser(description=f"Emit WID values ({mode})")
     ap.add_argument("--kind", choices=["wid", "hlc"], default="wid")
     ap.add_argument("--W", type=int, default=_env_int("W", 4))
-    ap.add_argument("--Z", type=int, default=_env_int("Z", 6))
+    ap.add_argument("--Z", type=int, default=None)
     ap.add_argument("--node", type=str, default=os.environ.get("NODE", "py"))
     ap.add_argument(
         "--time-unit",
@@ -158,8 +158,7 @@ def _run_emit_mode(mode: str, argv: list[str]) -> None:
         help="sleep between stream emissions in milliseconds (stream mode)",
     )
     args = ap.parse_args(argv)
-    if args.kind == "hlc" and args.Z == 6:
-        args.Z = 0
+    args.Z = _resolve_z(args.kind, args.Z)
     if args.interval_ms < 0:
         raise ValueError("--interval-ms must be >= 0")
 
@@ -194,7 +193,7 @@ def _run_healthcheck_mode(argv: list[str]) -> None:
     ap = argparse.ArgumentParser(description="Healthcheck WID/HLC generator (strict)")
     ap.add_argument("--kind", choices=["wid", "hlc"], default="wid")
     ap.add_argument("--W", type=int, default=_env_int("W", 4))
-    ap.add_argument("--Z", type=int, default=_env_int("Z", 6))
+    ap.add_argument("--Z", type=int, default=None)
     ap.add_argument("--node", type=str, default=os.environ.get("NODE", "py"))
     ap.add_argument(
         "--time-unit",
@@ -203,8 +202,7 @@ def _run_healthcheck_mode(argv: list[str]) -> None:
     )
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
-    if args.kind == "hlc" and args.Z == 6:
-        args.Z = 0
+    args.Z = _resolve_z(args.kind, args.Z)
 
     effective_time_unit = parse_time_unit(args.time_unit)
     ok: bool = False
@@ -244,7 +242,7 @@ def _run_bench_mode(argv: list[str]) -> None:
     ap = argparse.ArgumentParser(description="Benchmark WID/HLC generation throughput")
     ap.add_argument("--kind", choices=["wid", "hlc"], default="wid")
     ap.add_argument("--W", type=int, default=_env_int("W", 4))
-    ap.add_argument("--Z", type=int, default=_env_int("Z", 6))
+    ap.add_argument("--Z", type=int, default=None)
     ap.add_argument("--node", type=str, default=os.environ.get("NODE", "py"))
     ap.add_argument(
         "--time-unit",
@@ -253,8 +251,7 @@ def _run_bench_mode(argv: list[str]) -> None:
     )
     ap.add_argument("--count", type=int, default=0, help="0 means the default 100000")
     args = ap.parse_args(argv)
-    if args.kind == "hlc" and args.Z == 6:
-        args.Z = 0
+    args.Z = _resolve_z(args.kind, args.Z)
 
     n = args.count if args.count > 0 else 100000
     effective_time_unit = parse_time_unit(args.time_unit)
@@ -1169,3 +1166,10 @@ def hlc_wid_main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def _resolve_z(kind, z):
+    """HLC-WID defaults to Z=0, WID to Z=6. Explicit Z always wins."""
+    if z is not None:
+        return z
+    return 0 if kind == "hlc" else 6

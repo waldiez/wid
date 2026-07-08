@@ -168,6 +168,7 @@ func parseOpts(args []string, allowCount bool, allowJSON bool) (opts, error) {
 		count:    0,
 		json:     false,
 	}
+	zExplicit := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--kind":
@@ -196,6 +197,7 @@ func parseOpts(args []string, allowCount bool, allowJSON bool) (opts, error) {
 			if i+1 >= len(args) {
 				return o, errors.New("missing value for --Z")
 			}
+			zExplicit = true
 			n, err := strconv.Atoi(args[i+1])
 			if err != nil {
 				return o, errors.New("invalid integer for --Z")
@@ -252,8 +254,9 @@ func parseOpts(args []string, allowCount bool, allowJSON bool) (opts, error) {
 	if o.kind == "hlc" && !wid.IsValidNode(o.node) {
 		return o, errors.New("invalid node")
 	}
-	// HLC-WID defaults to Z=0 (no random padding) per spec convention.
-	if o.kind == "hlc" && o.z == 6 {
+	// HLC-WID defaults to Z=0 (no random padding) per spec convention;
+	// plain WID keeps Z=6. An explicit --Z always wins.
+	if o.kind == "hlc" && !zExplicit {
 		o.z = 0
 	}
 	return o, nil

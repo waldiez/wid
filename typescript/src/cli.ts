@@ -130,6 +130,7 @@ function parseOpts(args: string[], allowCount: boolean, allowJson: boolean): Opt
     json: false,
   };
 
+  let zExplicit = false;
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     switch (arg) {
@@ -148,6 +149,7 @@ function parseOpts(args: string[], allowCount: boolean, allowJson: boolean): Opt
       case "--Z":
         if (i + 1 >= args.length) throw new UsageError("missing value for --Z");
         opts.Z = parseIntStrict(args[++i], "--Z");
+        zExplicit = true;
         break;
       case "--time-unit":
       case "--T":
@@ -176,8 +178,9 @@ function parseOpts(args: string[], allowCount: boolean, allowJson: boolean): Opt
   if (opts.Z < 0 || opts.Z > MAX_Z) throw new UsageError("Z must be between 0 and 64");
   if (opts.count < 0) throw new UsageError("count must be >= 0");
   if (opts.kind === "hlc" && !CLI_NODE_RE.test(opts.node)) throw new UsageError("invalid node");
-  // HLC-WID defaults to Z=0 (no random padding) per spec convention.
-  if (opts.kind === "hlc" && opts.Z === 6) {
+  // HLC-WID defaults to Z=0 (no random padding) per spec convention;
+  // plain WID keeps Z=6. An explicit --Z always wins.
+  if (opts.kind === "hlc" && !zExplicit) {
     opts.Z = 0;
   }
   return opts;
