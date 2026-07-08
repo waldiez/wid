@@ -15,7 +15,7 @@
     { "name": "canonical-next-m-shorthand", "args": ["A=next", "M=true"], "lines": 1,
       "params": { "W": 4, "Z": 6, "time_unit": "ms", "kind": "wid" } },
     { "name": "flag-next-hlc", "args": ["next", "--kind", "hlc", "--node", "n_1"], "lines": 1,
-      "params": { "W": 4, "Z": 6, "time_unit": "sec", "kind": "hlc", "node": "n_1" } },
+      "params": { "W": 4, "Z": 0, "time_unit": "sec", "kind": "hlc", "node": "n_1" } },
     { "name": "flag-stream-count", "args": ["stream", "--count", "3"], "lines": 3,
       "params": { "W": 4, "Z": 6, "time_unit": "sec", "kind": "wid" } },
     { "name": "canonical-stream-count", "args": ["A=stream", "N=3"], "lines": 3,

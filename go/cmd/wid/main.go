@@ -252,6 +252,10 @@ func parseOpts(args []string, allowCount bool, allowJSON bool) (opts, error) {
 	if o.kind == "hlc" && !wid.IsValidNode(o.node) {
 		return o, errors.New("invalid node")
 	}
+	// HLC-WID defaults to Z=0 (no random padding) per spec convention.
+	if o.kind == "hlc" && o.z == 6 {
+		o.z = 0
+	}
 	return o, nil
 }
 

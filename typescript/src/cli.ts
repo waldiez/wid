@@ -176,6 +176,10 @@ function parseOpts(args: string[], allowCount: boolean, allowJson: boolean): Opt
   if (opts.Z < 0 || opts.Z > MAX_Z) throw new UsageError("Z must be between 0 and 64");
   if (opts.count < 0) throw new UsageError("count must be >= 0");
   if (opts.kind === "hlc" && !CLI_NODE_RE.test(opts.node)) throw new UsageError("invalid node");
+  // HLC-WID defaults to Z=0 (no random padding) per spec convention.
+  if (opts.kind === "hlc" && opts.Z === 6) {
+    opts.Z = 0;
+  }
   return opts;
 }
 

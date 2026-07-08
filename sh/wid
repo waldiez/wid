@@ -4,6 +4,9 @@ set -euo pipefail
 
 WID_DEFAULT_W=4
 WID_DEFAULT_Z=6
+
+# HLC-WID defaults to Z=0 (no random padding) per spec convention.
+# Applied in _resolve_z below.
 HLC_DEFAULT_NODE="sh"
 TIME_UNIT_DEFAULT="sec"
 
@@ -641,6 +644,9 @@ run_canonical() {
         esac
     done
 
+    # HLC-WID defaults to Z=0 (no random padding) per spec convention.
+    if [[ "$kind" == "hlc" ]]; then Z=0; fi
+
     # Treat "#" as placeholder ("use default"), useful for Make invocations.
     [[ "$A" == "#" ]] && A="next"
     [[ "$W" == "#" ]] && W="4"
@@ -1053,6 +1059,9 @@ run_selftest() {
         prev="$cur"
     done
 
+    # HLC-WID defaults to Z=0 (no random padding) per spec convention.
+    if [[ "$kind" == "hlc" ]]; then Z=0; fi
+
     # ------------------------------------------------------------
     # Optional concurrency uniqueness test:
     # - wid requires Z>0 (Z=0 is not unique across processes)
@@ -1361,6 +1370,9 @@ main() {
         *) die_usage "invalid argument: $1" ;;
         esac
     done
+
+    # HLC-WID defaults to Z=0 (no random padding) per spec convention.
+    if [[ "$kind" == "hlc" ]]; then Z=0; fi
 
     [[ "$kind" == "wid" || "$kind" == "hlc" ]] || die_usage "kind must be wid or hlc"
     is_int "$W" || die_usage "W must be an integer"

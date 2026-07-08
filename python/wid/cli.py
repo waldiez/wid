@@ -158,6 +158,8 @@ def _run_emit_mode(mode: str, argv: list[str]) -> None:
         help="sleep between stream emissions in milliseconds (stream mode)",
     )
     args = ap.parse_args(argv)
+    if args.kind == "hlc" and args.Z == 6:
+        args.Z = 0
     if args.interval_ms < 0:
         raise ValueError("--interval-ms must be >= 0")
 
@@ -201,6 +203,8 @@ def _run_healthcheck_mode(argv: list[str]) -> None:
     )
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
+    if args.kind == "hlc" and args.Z == 6:
+        args.Z = 0
 
     effective_time_unit = parse_time_unit(args.time_unit)
     ok: bool = False
@@ -249,6 +253,8 @@ def _run_bench_mode(argv: list[str]) -> None:
     )
     ap.add_argument("--count", type=int, default=0, help="0 means the default 100000")
     args = ap.parse_args(argv)
+    if args.kind == "hlc" and args.Z == 6:
+        args.Z = 0
 
     n = args.count if args.count > 0 else 100000
     effective_time_unit = parse_time_unit(args.time_unit)
