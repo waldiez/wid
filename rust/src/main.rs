@@ -470,6 +470,32 @@ fn run_bench(args: &[String]) -> Result<(), CliError> {
     Ok(())
 }
 
+fn run_selftest() -> Result<(), CliError> {
+    let mut wg =
+        WidGen::new_with_time_unit(4, 0, TimeUnit::Sec).map_err(|e| fail(e.to_string()))?;
+    let a = wg.next_wid();
+    let b = wg.next_wid();
+    let valid = a < b
+        && validate_wid_with_unit(&a, 4, 0, TimeUnit::Sec)
+        && validate_hlc_wid_with_unit(
+            &HLCWidGen::new_with_time_unit("node01".to_string(), 4, 0, TimeUnit::Sec)
+                .map_err(|e| fail(e.to_string()))?
+                .next_hlc_wid(),
+            4,
+            0,
+            TimeUnit::Sec,
+        )
+        && !validate_wid_with_unit("20260212T091530.0000Z-node01", 4, 0, TimeUnit::Sec)
+        && !validate_hlc_wid_with_unit("20260212T091530.0000Z", 4, 0, TimeUnit::Sec)
+        && validate_wid_with_unit("20260212T091530123.0000Z", 4, 0, TimeUnit::Ms)
+        && validate_hlc_wid_with_unit("20260212T091530123.0000Z-node01", 4, 0, TimeUnit::Ms);
+    if valid {
+        Ok(())
+    } else {
+        Err(fail("selftest failed"))
+    }
+}
+
 fn is_transport(s: &str) -> bool {
     matches!(s, "mqtt" | "ws" | "redis" | "null" | "stdout" | "auto")
 }
@@ -1536,18 +1562,7 @@ fn main() {
         "validate" => run_validate(rest),
         "parse" => run_parse(rest),
         "bench" => run_bench(rest),
-        "selftest" => match WidGen::new_with_time_unit(4, 0, TimeUnit::Sec) {
-            Ok(mut g) => {
-                let a = g.next_wid();
-                let b = g.next_wid();
-                if a >= b {
-                    Err(fail("selftest failed: non-monotonic"))
-                } else {
-                    Ok(())
-                }
-            }
-            Err(e) => Err(fail(e.to_string())),
-        },
+        "selftest" => run_selftest(),
         _ => Err(usage(format!("unknown command: {cmd}"))),
     };
 

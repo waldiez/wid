@@ -3,11 +3,10 @@
 //! Format: `YYYYMMDDTHHMMSS[mmm].<lcW>Z-<node>[-<padZ>]`
 
 use chrono::{DateTime, Utc};
-use once_cell::sync::Lazy;
 use rand::random_range;
 use regex::Regex;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::wid::{TimeUnit, WidError, parse_timestamp};
@@ -31,8 +30,8 @@ pub struct ParsedHlcWid {
 // [0-9], never \d: \d is Unicode-aware in this regex engine and the captured
 // fields are byte-sliced in parse_ts — multi-byte digits would panic there.
 // See the matching comment in wid.rs.
-static HLC_PATTERN_W4_Z0_SEC: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^([0-9]{8})T([0-9]{6})\.([0-9]{4})Z-([A-Za-z0-9_]+)$").unwrap());
+static HLC_PATTERN_W4_Z0_SEC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^([0-9]{8})T([0-9]{6})\.([0-9]{4})Z-([A-Za-z0-9_]+)$").unwrap());
 
 fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
     let lc_part = format!(r"([0-9]{{{w}}})");
@@ -55,7 +54,7 @@ fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
 
 /// Compiled-pattern cache for non-default shapes; see the matching cache in
 /// wid.rs for the rationale (Regex clones share the compiled program).
-static HLC_PATTERN_CACHE: crate::wid::PatternCache = Lazy::new(|| Mutex::new(HashMap::new()));
+static HLC_PATTERN_CACHE: crate::wid::PatternCache = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn cached_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
     let mut cache = HLC_PATTERN_CACHE

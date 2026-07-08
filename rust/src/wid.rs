@@ -6,11 +6,10 @@
 //! Use `next_wid()` for the explicit domain API.
 
 use chrono::{DateTime, TimeZone, Timelike, Utc};
-use once_cell::sync::Lazy;
 use rand::random_range;
 use regex::Regex;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
@@ -137,8 +136,9 @@ impl ParsedWid {
 // digits (\p{Nd}), and the captured date/time fields are byte-sliced below —
 // a multi-byte digit (e.g. Devanagari ०) then panics on a char boundary.
 // Go/JS \d is ASCII-only and Python already uses [0-9] for the same reason.
-static WID_PATTERN_W4_Z6_SEC: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^([0-9]{8})T([0-9]{6})\.([0-9]{4})Z(?:-([0-9a-f]{6}))?$").unwrap());
+static WID_PATTERN_W4_Z6_SEC: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^([0-9]{8})T([0-9]{6})\.([0-9]{4})Z(?:-([0-9a-f]{6}))?$").unwrap()
+});
 
 fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
     let seq_part = format!(r"([0-9]{{{w}}})");
@@ -161,9 +161,9 @@ fn build_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
 /// each time while W=4/Z=6/sec had a cached fast path (the other language
 /// implementations cache every shape). `Regex` clones share the compiled
 /// program, so handing out clones is cheap.
-pub(crate) type PatternCache = Lazy<Mutex<HashMap<(usize, usize, TimeUnit), Regex>>>;
+pub(crate) type PatternCache = LazyLock<Mutex<HashMap<(usize, usize, TimeUnit), Regex>>>;
 
-static WID_PATTERN_CACHE: PatternCache = Lazy::new(|| Mutex::new(HashMap::new()));
+static WID_PATTERN_CACHE: PatternCache = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn cached_pattern(w: usize, z: usize, time_unit: TimeUnit) -> Regex {
     let mut cache = WID_PATTERN_CACHE
