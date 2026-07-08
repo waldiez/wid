@@ -148,19 +148,26 @@ class WidGen:
         state_store: WidStateStore | None = None,
         state_key: str = "wid",
         auto_persist: bool = False,
-        **kwargs: Any,
+        *,
+        w: int | None = None,  # deprecated lowercase alias for W
+        z: int | None = None,  # deprecated lowercase alias for Z
     ) -> None:
         """Initialize the generator."""
-        # Backwards-compatible keyword names: accept both `W`/`Z` and `w`/`z`.
-        if "w" in kwargs:
-            W = int(kwargs.pop("w"))
-        if "z" in kwargs:
-            Z = int(kwargs.pop("z"))
-        if kwargs:
-            # Anything left is a typo (e.g. tine_unit=), not compatibility.
-            raise TypeError(
-                f"unexpected keyword argument(s): {', '.join(sorted(kwargs))}"
+        # Deprecated: lowercase w/z aliases kept for transitional compatibility.
+        if w is not None:
+            import warnings
+
+            warnings.warn(
+                "'w' is deprecated, use 'W' instead", DeprecationWarning, stacklevel=2
             )
+            W = w
+        if z is not None:
+            import warnings
+
+            warnings.warn(
+                "'z' is deprecated, use 'Z' instead", DeprecationWarning, stacklevel=2
+            )
+            Z = z
 
         # Bounds match all six implementations: W > 18 would overflow an
         # int64 sequence; Z > 64 exceeds the C implementation's WID_MAX_Z.

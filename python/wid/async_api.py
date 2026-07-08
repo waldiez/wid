@@ -153,7 +153,7 @@ async def async_next_hlc_wid(
         z = int(kwargs.pop("Z"))
     time_unit = _parse_time_unit(str(kwargs.pop("time_unit", "sec")))
     _reject_unknown_kwargs(kwargs)
-    return HLCWidGen(node, w=w, z=z, time_unit=time_unit).next()
+    return HLCWidGen(node, W=w, Z=z, time_unit=time_unit).next()
 
 
 async def async_wid_stream(
@@ -188,12 +188,12 @@ async def async_wid_stream(
         if database_path is not None
         else None
     )
-    gen = WidGen(w=w, z=z, time_unit=parsed_time_unit) if store is None else None
+    gen = WidGen(W=w, Z=z, time_unit=parsed_time_unit) if store is None else None
     emitted = 0
     while count == 0 or emitted < count:
         if store is not None:
             yield await store.next_wid(
-                key=state_key, w=w, z=z, time_unit=parsed_time_unit
+                key=state_key, W=w, Z=z, time_unit=parsed_time_unit
             )
         else:
             assert gen is not None

@@ -8,7 +8,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Literal, final
+from typing import Literal, final
 
 from .core import clamp_tick
 from .parse import MAX_W, MAX_Z
@@ -49,19 +49,26 @@ class HLCWidGen:
         W: int = 4,
         Z: int = 0,
         time_unit: Literal["sec", "ms"] = "sec",
-        **kwargs: Any,
+        *,
+        w: int | None = None,  # deprecated lowercase alias for W
+        z: int | None = None,  # deprecated lowercase alias for Z
     ) -> None:
         """Initialize the generator."""
-        # Backwards-compatible keyword names: accept `w`/`z` from callers
-        if "w" in kwargs:
-            W = int(kwargs.pop("w"))  # pyright: ignore[reportConstantRedefinition]
-        if "z" in kwargs:
-            Z = int(kwargs.pop("z"))  # pyright: ignore[reportConstantRedefinition]
-        if kwargs:
-            # Anything left is a typo (e.g. tine_unit=), not compatibility.
-            raise TypeError(
-                f"unexpected keyword argument(s): {', '.join(sorted(kwargs))}"
+        # Deprecated: lowercase w/z aliases kept for transitional compatibility.
+        if w is not None:
+            import warnings
+
+            warnings.warn(
+                "'w' is deprecated, use 'W' instead", DeprecationWarning, stacklevel=2
             )
+            W = w
+        if z is not None:
+            import warnings
+
+            warnings.warn(
+                "'z' is deprecated, use 'Z' instead", DeprecationWarning, stacklevel=2
+            )
+            Z = z
 
         if not node or not all(c.isascii() and (c.isalnum() or c == "_") for c in node):
             raise ValueError(

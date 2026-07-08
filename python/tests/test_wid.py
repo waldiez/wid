@@ -493,3 +493,44 @@ class TestWidGenEdgeCases:
         gen = WidGen(W=4, Z=0, time_unit="ms")
         wid = gen.next()
         assert validate_wid(wid, W=4, Z=0, time_unit="ms")
+
+
+class TestWidGenDeprecatedKwargs:
+    """Tests for the deprecated lowercase w=/z= keyword arguments."""
+
+    def test_lowercase_w_emits_deprecation_warning(self) -> None:
+        with pytest.warns(DeprecationWarning, match="'w' is deprecated"):
+            gen = WidGen(w=5, Z=0)
+        assert gen.W == 5
+
+    def test_lowercase_z_emits_deprecation_warning(self) -> None:
+        with pytest.warns(DeprecationWarning, match="'z' is deprecated"):
+            gen = WidGen(W=4, z=3)
+        assert gen.Z == 3
+
+    def test_uppercase_w_z_no_warning(self) -> None:
+        import warnings
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            WidGen(W=4, Z=6)
+        deprecations = [w for w in record if issubclass(w.category, DeprecationWarning)]
+        assert len(deprecations) == 0, f"unexpected deprecation: {deprecations}"
+
+    def test_unknown_kwargs_raises_typeerror(self) -> None:
+        with pytest.raises(TypeError):
+            WidGen(W=4, Z=6, unknown="bad")  # type: ignore[call-arg]
+
+
+class TestHLCWidGenDeprecatedKwargs:
+    """Tests for the deprecated lowercase w=/z= keyword arguments in HLCWidGen."""
+
+    def test_lowercase_w_emits_deprecation_warning(self) -> None:
+        with pytest.warns(DeprecationWarning, match="'w' is deprecated"):
+            gen = HLCWidGen(node="x", w=5, Z=0)
+        assert gen.W == 5
+
+    def test_lowercase_z_emits_deprecation_warning(self) -> None:
+        with pytest.warns(DeprecationWarning, match="'z' is deprecated"):
+            gen = HLCWidGen(node="x", W=4, z=3)
+        assert gen.Z == 3
