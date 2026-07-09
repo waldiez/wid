@@ -61,14 +61,14 @@ class HLCWidGen:
             warnings.warn(
                 "'w' is deprecated, use 'W' instead", DeprecationWarning, stacklevel=2
             )
-            W = w
+            W = w  # pyright: ignore[reportConstantRedefinition]
         if z is not None:
             import warnings
 
             warnings.warn(
                 "'z' is deprecated, use 'Z' instead", DeprecationWarning, stacklevel=2
             )
-            Z = z
+            Z = z  # pyright: ignore[reportConstantRedefinition]
 
         if not node or not all(c.isascii() and (c.isalnum() or c == "_") for c in node):
             raise ValueError(

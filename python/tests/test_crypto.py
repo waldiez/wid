@@ -21,7 +21,6 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 
 # Define the root directory of the project
 REPO_ROOT = Path(__file__).parent.parent.parent.resolve()
-CLI_PATH = REPO_ROOT / "python" / "wid" / "cli.py"
 CONFORMANCE_CRYPTO_PATH = REPO_ROOT / "spec" / "conformance" / "crypto.json"
 
 
