@@ -56,7 +56,7 @@ const NODE_RE = /^[A-Za-z0-9_]+$/;
 function hlcBaseRe(W: number, unit: TimeUnit): RegExp {
   const key = `${W}:${unit}`;
   const cached = HLC_BASE_RE_CACHE.get(key);
-  if (cached) return cached;
+  if (cached) {return cached;}
   const re = new RegExp(`^(\\d{8})T(\\d{${timeDigits(unit)}})\\.(\\d{${W}})Z-([A-Za-z0-9_]+)(.*)$`);
   HLC_BASE_RE_CACHE.set(key, re);
   return re;
@@ -77,37 +77,59 @@ export function validateHlcWid(
 }
 
 /** Parse an HLC-WID into its fields; null if it does not conform. */
+/* eslint-disable complexity */
 export function parseHlcWid(
   wid: string,
   W = 4,
   Z = 0,
   timeUnit: TimeUnit = "sec"
 ): ParsedHlcWid | null {
-  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) return null;
+  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) {
+    return null;
+  }
 
   const match = hlcBaseRe(W, timeUnit).exec(wid);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
 
   const [, dateStr, timeStr, lcStr, node, suffixRaw] = match;
   const suffix = suffixRaw ?? "";
 
-  if (!isValidNode(node)) return null;
+  if (!node || !dateStr || !timeStr || !lcStr) {
+    return null;
+  }
+
+  if (!isValidNode(node)) {
+    return null;
+  }
 
   const timestamp = parseWidTimestamp(dateStr, timeStr, timeUnit);
-  if (!timestamp) return null;
-
+  if (!timestamp) {
+    return null;
+  }
   const logicalCounter = parseInt(lcStr, 10);
 
-  let padding: string | null = null;
-  if (suffix) {
-    if (!suffix.startsWith("-")) return null;
-    const seg = suffix.slice(1);
-    if (Z === 0) return null;
-    if (!hexRe(Z).test(seg)) return null;
-    padding = seg;
+  const padding = parseHlcPadding(suffix, Z);
+  if (padding === undefined) {
+    return null;
   }
 
   return { raw: wid, timestamp, logicalCounter, node, padding };
+}
+
+function parseHlcPadding(suffix: string, Z: number): string | null | undefined {
+  if (!suffix) {
+    return null;
+  }
+  if (!suffix.startsWith("-") || Z === 0) {
+    return undefined;
+  }
+  const seg = suffix.slice(1);
+  if (!hexRe(Z).test(seg)) {
+    return undefined;
+  }
+  return seg;
 }
 
 /** Generator for HLC-WIDs that keeps the logical counter monotonic. */
@@ -126,8 +148,8 @@ export class HLCWidGen {
     const { node, W = 4, Z = 0, timeUnit = "sec" } = options;
     // Bounds match all six implementations: W > 18 would overflow an int64
     // logical counter; Z > 64 exceeds the C implementation's WID_MAX_Z.
-    if (W <= 0 || W > MAX_W) throw new Error("W must be between 1 and 18");
-    if (Z < 0 || Z > MAX_Z) throw new Error("Z must be between 0 and 64");
+    if (W <= 0 || W > MAX_W) {throw new Error("W must be between 1 and 18");}
+    if (Z < 0 || Z > MAX_Z) {throw new Error("Z must be between 0 and 64");}
     if (!isValidNode(node)) {
       throw new Error("node must match [A-Za-z0-9_]+");
     }
@@ -212,7 +234,7 @@ export class HLCWidGen {
   }
 
   restoreState(pt: number, lc: number): void {
-    if (pt < 0 || lc < 0) throw new Error("invalid state");
+    if (pt < 0 || lc < 0) {throw new Error("invalid state");}
     this.pt = pt;
     this.lc = lc;
   }
@@ -228,8 +250,8 @@ export async function* asyncHlcWidStream(
   options: HLCWidGenOptions & { count?: number; intervalMs?: number }
 ): AsyncGenerator<string> {
   const { count = 0, intervalMs = 0, ...genOpts } = options;
-  if (count < 0) throw new Error("count must be >= 0");
-  if (intervalMs < 0) throw new Error("intervalMs must be >= 0");
+  if (count < 0) {throw new Error("count must be >= 0");}
+  if (intervalMs < 0) {throw new Error("intervalMs must be >= 0");}
   const gen = new HLCWidGen(genOpts);
   let emitted = 0;
   while (count === 0 || emitted < count) {

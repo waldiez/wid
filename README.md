@@ -197,6 +197,8 @@ pip install git+https://github.com/waldiez/wid
 
 ```bash
 npm install github:waldiez/wid   # dist/ is committed, so git installs work
+# or (bun/yarn/pnpm...)
+bun add github:waldiez/wid
 ```
 
 ### Go

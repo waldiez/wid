@@ -9,12 +9,13 @@ import {
   parseWid,
   validateHlcWid,
   validateWid
-} from "./chunk-YWXMNCYI.mjs";
+} from "./chunk-EQHEOVAA.mjs";
 
-// typescript/src/cli.ts
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { resolve } from "path";
-import { createHmac, createPrivateKey, createPublicKey, sign as cryptoSign, timingSafeEqual, verify as cryptoVerify } from "crypto";
+// typescript/src/cli/commands.ts
+import { mkdirSync } from "fs";
+import { resolve as resolve2 } from "path";
+
+// typescript/src/cli/types.ts
 var UsageError = class extends Error {
 };
 var CLI_NODE_RE = /^[A-Za-z0-9_]+$/;
@@ -25,6 +26,677 @@ function parseTimeUnitArg(value) {
     throw new UsageError(e.message);
   }
 }
+function parseIntStrict(value, name) {
+  if (!/^-?[0-9]+$/.test(value)) {
+    throw new UsageError(`invalid integer for ${name}`);
+  }
+  return Number.parseInt(value, 10);
+}
+var defaultsMap = {
+  A: "next",
+  W: "4",
+  L: "3600",
+  D: "",
+  I: "auto",
+  E: "state",
+  Z: "6",
+  T: "sec",
+  R: "auto",
+  M: "false",
+  N: "0",
+  WID: "",
+  KEY: "",
+  SIG: "",
+  DATA: "",
+  OUT: "",
+  MODE: "",
+  CODE: "",
+  DIGITS: "6",
+  MAX_AGE_SEC: "0",
+  MAX_FUTURE_SEC: "5"
+};
+function defaultValueFor(key) {
+  return defaultsMap[key] ?? "";
+}
+
+// typescript/src/cli/args.ts
+var optHandlers = {
+  "--kind": (nextArg, opts) => {
+    if (!nextArg) {
+      throw new UsageError("missing value for --kind");
+    }
+    opts.kind = nextArg;
+    return 1;
+  },
+  "--node": (nextArg, opts) => {
+    if (!nextArg) {
+      throw new UsageError("missing value for --node");
+    }
+    opts.node = nextArg;
+    return 1;
+  },
+  "--W": (nextArg, opts) => {
+    if (!nextArg) {
+      throw new UsageError("missing value for --W");
+    }
+    opts.W = parseIntStrict(nextArg, "--W");
+    return 1;
+  },
+  "--Z": (nextArg, opts, flags) => {
+    if (!nextArg) {
+      throw new UsageError("missing value for --Z");
+    }
+    opts.Z = parseIntStrict(nextArg, "--Z");
+    flags.zExplicit = true;
+    return 1;
+  },
+  "--time-unit": (nextArg, opts) => {
+    if (!nextArg) {
+      throw new UsageError("missing value for --time-unit");
+    }
+    opts.timeUnit = parseTimeUnitArg(nextArg);
+    return 1;
+  },
+  "--T": (nextArg, opts) => {
+    if (!nextArg) {
+      throw new UsageError("missing value for --time-unit");
+    }
+    opts.timeUnit = parseTimeUnitArg(nextArg);
+    return 1;
+  }
+};
+function parseSingleOpt(arg, nextArg, opts, flags, allowCount, allowJson) {
+  if (arg === "--count") {
+    if (!allowCount) {
+      throw new UsageError("unknown flag: --count");
+    }
+    if (!nextArg) {
+      throw new UsageError("missing value for --count");
+    }
+    opts.count = parseIntStrict(nextArg, "--count");
+    return 1;
+  }
+  if (arg === "--json") {
+    if (!allowJson) {
+      throw new UsageError("unknown flag: --json");
+    }
+    opts.json = true;
+    return 0;
+  }
+  const handler = optHandlers[arg];
+  if (!handler) {
+    throw new UsageError(`unknown flag: ${arg}`);
+  }
+  return handler(nextArg, opts, flags);
+}
+function validateOpts(opts, zExplicit) {
+  if (opts.kind !== "wid" && opts.kind !== "hlc") {
+    throw new UsageError("--kind must be one of: wid, hlc");
+  }
+  if (opts.W <= 0 || opts.W > MAX_W) {
+    throw new UsageError("W must be between 1 and 18");
+  }
+  if (opts.Z < 0 || opts.Z > MAX_Z) {
+    throw new UsageError("Z must be between 0 and 64");
+  }
+  if (opts.count < 0) {
+    throw new UsageError("count must be >= 0");
+  }
+  if (opts.kind === "hlc" && !CLI_NODE_RE.test(opts.node)) {
+    throw new UsageError("invalid node");
+  }
+  if (opts.kind === "hlc" && !zExplicit) {
+    opts.Z = 0;
+  }
+}
+function parseOpts(args, allowCount, allowJson) {
+  const opts = {
+    kind: "wid",
+    node: process.env.NODE ?? "ts",
+    W: 4,
+    Z: 6,
+    timeUnit: "sec",
+    count: 0,
+    json: false
+  };
+  const flags = { zExplicit: false };
+  for (let i = 0; i < args.length; i += 1) {
+    const argI = args[i];
+    if (!argI) {
+      continue;
+    }
+    const consumed = parseSingleOpt(
+      argI,
+      args[i + 1],
+      opts,
+      flags,
+      allowCount,
+      allowJson
+    );
+    i += consumed;
+  }
+  validateOpts(opts, flags.zExplicit);
+  return opts;
+}
+var canonHandlers = {
+  A: (v, out) => {
+    out.A = v.toLowerCase();
+  },
+  W: (v, out) => {
+    out.W = parseIntStrict(v, "W");
+  },
+  L: (v, out, vRaw) => {
+    out.L = parseIntStrict(v, "L");
+    out.LExplicit = vRaw !== "#";
+  },
+  D: (v, out) => {
+    out.D = v;
+  },
+  I: (v, out) => {
+    out.I = v;
+  },
+  E: (v, out) => {
+    out.E = v;
+  },
+  Z: (v, out) => {
+    out.Z = parseIntStrict(v, "Z");
+  },
+  T: (v, out) => {
+    out.T = parseTimeUnitArg(v);
+  },
+  R: (v, out) => {
+    out.R = v;
+  },
+  M: (v, out) => {
+    out.M = ["1", "true", "yes", "y", "on"].includes(v.toLowerCase());
+  },
+  N: (v, out) => {
+    out.N = parseIntStrict(v, "N");
+  },
+  WID: (v, out) => {
+    out.WID = v;
+  },
+  KEY: (v, out) => {
+    out.KEY = v;
+  },
+  SIG: (v, out) => {
+    out.SIG = v;
+  },
+  DATA: (v, out) => {
+    out.DATA = v;
+  },
+  OUT: (v, out) => {
+    out.OUT = v;
+  },
+  MODE: (v, out) => {
+    out.MODE = v;
+  },
+  CODE: (v, out) => {
+    out.CODE = v;
+  },
+  DIGITS: (v, out) => {
+    out.DIGITS = parseIntStrict(v, "DIGITS");
+  },
+  MAX_AGE_SEC: (v, out) => {
+    out.MAX_AGE_SEC = parseIntStrict(v, "MAX_AGE_SEC");
+  },
+  MAX_FUTURE_SEC: (v, out) => {
+    out.MAX_FUTURE_SEC = parseIntStrict(v, "MAX_FUTURE_SEC");
+  }
+};
+function parseSingleCanonKey(k, v, out, vRaw) {
+  const handler = canonHandlers[k];
+  if (!handler) {
+    throw new UsageError(`unknown key: ${k}`);
+  }
+  handler(v, out, vRaw);
+}
+function validateCanon(out) {
+  if (out.W <= 0 || out.W > MAX_W) {
+    throw new UsageError("W must be between 1 and 18");
+  }
+  if (out.Z < 0 || out.Z > MAX_Z) {
+    throw new UsageError("Z must be between 0 and 64");
+  }
+  if (out.N < 0 || out.L < 0) {
+    throw new UsageError("N/L must be >= 0");
+  }
+  if (!["auto", "null", "stdout"].includes(out.R)) {
+    throw new UsageError(
+      `transport R=${out.R} is only available in the Rust implementation (services/transports are Rust-only)`
+    );
+  }
+}
+function parseCanonical(args) {
+  const out = {
+    A: "next",
+    W: 4,
+    L: 3600,
+    D: "",
+    I: "auto",
+    E: "state",
+    Z: 6,
+    T: "sec",
+    R: "auto",
+    M: false,
+    N: 0,
+    LExplicit: false
+  };
+  for (const arg of args) {
+    const eq = arg.indexOf("=");
+    if (eq < 0) {
+      throw new UsageError(`expected KEY=VALUE, got '${arg}'`);
+    }
+    const k = arg.slice(0, eq);
+    const vRaw = arg.slice(eq + 1);
+    const v = vRaw === "#" ? defaultValueFor(k) : vRaw;
+    parseSingleCanonKey(k, v, out, vRaw);
+  }
+  if (out.M) {
+    out.T = "ms";
+  }
+  out.A = out.A === "id" || out.A === "default" ? "next" : out.A === "hc" ? "healthcheck" : out.A;
+  validateCanon(out);
+  return out;
+}
+
+// typescript/src/cli/crypto.ts
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import {
+  createHmac,
+  createPrivateKey,
+  createPublicKey,
+  sign as cryptoSign,
+  timingSafeEqual,
+  verify as cryptoVerify
+} from "crypto";
+function b64urlEncode(buf) {
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+function b64urlDecode(s) {
+  let std = s.replace(/-/g, "+").replace(/_/g, "/");
+  const m = std.length % 4;
+  if (m === 2) {
+    std += "==";
+  } else if (m === 3) {
+    std += "=";
+  } else if (m === 1) {
+    throw new Error("invalid base64url signature length");
+  }
+  return Buffer.from(std, "base64");
+}
+function buildSignVerifyMessage(c) {
+  const wid = c.WID ?? "";
+  if (!wid) {
+    throw new UsageError("WID=<wid_string> required");
+  }
+  const widBuf = Buffer.from(wid, "utf8");
+  const header = Buffer.from(`wid-sig-v1:${widBuf.length}:`, "ascii");
+  const parts = [header, widBuf];
+  if (c.DATA && c.DATA.length > 0) {
+    if (!existsSync(c.DATA)) {
+      throw new Error(`data file not found: ${c.DATA}`);
+    }
+    parts.push(readFileSync(c.DATA));
+  }
+  return Buffer.concat(parts);
+}
+function runSign(c) {
+  const keyPath = c.KEY ?? "";
+  if (!keyPath) {
+    throw new UsageError("KEY=<private_key_path> required for A=sign");
+  }
+  if (!existsSync(keyPath)) {
+    throw new Error(`private key file not found: ${keyPath}`);
+  }
+  const message = buildSignVerifyMessage(c);
+  const key = createPrivateKey(readFileSync(keyPath));
+  const sig = cryptoSign(null, message, key);
+  const out = b64urlEncode(sig);
+  if (c.OUT && c.OUT.length > 0) {
+    writeFileSync(c.OUT, out, "utf8");
+  } else {
+    console.log(out);
+  }
+  return 0;
+}
+function runVerify(c) {
+  const keyPath = c.KEY ?? "";
+  const sigText = c.SIG ?? "";
+  if (!keyPath) {
+    throw new UsageError("KEY=<public_key_path> required for A=verify");
+  }
+  if (!sigText) {
+    throw new UsageError("SIG=<signature_string> required for A=verify");
+  }
+  if (!existsSync(keyPath)) {
+    throw new Error(`public key file not found: ${keyPath}`);
+  }
+  const message = buildSignVerifyMessage(c);
+  const key = createPublicKey(readFileSync(keyPath));
+  const ok = cryptoVerify(null, message, key, b64urlDecode(sigText));
+  if (ok) {
+    console.log("Signature valid.");
+    return 0;
+  }
+  console.error("Signature invalid.");
+  return 1;
+}
+function resolveWOtpSecret(raw) {
+  if (existsSync(raw)) {
+    return readFileSync(raw, "utf8").trim();
+  }
+  return raw.trim();
+}
+function computeWOtp(secret, wid, digits) {
+  const digest = createHmac("sha256", Buffer.from(secret, "utf8")).update(Buffer.from(wid, "utf8")).digest();
+  const binary = digest.readUInt32BE(0);
+  const mod = 10 ** digits;
+  return String(binary % mod).padStart(digits, "0");
+}
+function parseWotpDateParts(date, time) {
+  const [y, mo, d] = [
+    date.slice(0, 4),
+    date.slice(4, 6),
+    date.slice(6, 8)
+  ].map(Number);
+  const [hh, mm, ss] = [
+    time.slice(0, 2),
+    time.slice(2, 4),
+    time.slice(4, 6)
+  ].map(Number);
+  const ms = time.length === 9 ? Number(time.slice(6, 9)) : 0;
+  return { y, mo, d, hh, mm, ss, ms };
+}
+function validateWidDt(wid, invalid) {
+  const ts = wid.split(".", 1)[0];
+  if (!ts) {
+    throw new Error(invalid);
+  }
+  const tIdx = ts.indexOf("T");
+  if (tIdx < 0) {
+    throw new Error(invalid);
+  }
+  const date = ts.slice(0, tIdx);
+  const time = ts.slice(tIdx + 1);
+  if (date.length !== 8 || time.length !== 6 && time.length !== 9) {
+    throw new Error(invalid);
+  }
+  if (!/^[0-9]+$/.test(date) || !/^[0-9]+$/.test(time)) {
+    throw new Error(invalid);
+  }
+  return { date, time };
+}
+function wotpWidTickMs(wid) {
+  const invalid = "WID timestamp is invalid for time-window verification";
+  const { date, time } = validateWidDt(wid, invalid);
+  const { y, mo, d, hh, mm, ss, ms } = parseWotpDateParts(date, time);
+  if (!y || !mo || !hh) {
+    throw new Error(invalid);
+  }
+  const dt = /* @__PURE__ */ new Date(0);
+  dt.setUTCFullYear(y, mo - 1, d);
+  dt.setUTCHours(hh, mm, ss, ms);
+  const tick = dt.getTime();
+  if (!Number.isFinite(tick)) {
+    throw new Error(invalid);
+  }
+  return tick;
+}
+function runWOtp(c) {
+  const mode = (c.MODE ?? "gen").toLowerCase();
+  if (mode !== "gen" && mode !== "verify") {
+    throw new UsageError("MODE must be gen or verify for A=w-otp");
+  }
+  if (!c.KEY || c.KEY.length === 0) {
+    throw new UsageError("KEY=<secret_or_path> required for A=w-otp");
+  }
+  const secret = resolveWOtpSecret(c.KEY);
+  if (!secret) {
+    throw new UsageError("w-otp secret cannot be empty");
+  }
+  const digits = c.DIGITS ?? 6;
+  if (!Number.isInteger(digits) || digits < 4 || digits > 10) {
+    throw new UsageError("DIGITS must be an integer between 4 and 10");
+  }
+  if (mode === "gen") {
+    return runWOtpGen(c, secret, digits);
+  } else {
+    return runWOtpVerify(c, secret, digits);
+  }
+}
+function runWOtpGen(c, secret, digits) {
+  let wid = c.WID ?? "";
+  if (!wid) {
+    wid = new WidGen({ W: c.W, Z: c.Z, timeUnit: c.T }).next();
+  }
+  const otp = computeWOtp(secret, wid, digits);
+  console.log(JSON.stringify({ wid, otp, digits }));
+  return 0;
+}
+function validateWotpVerifyParams(c, wid, code) {
+  if (!wid) {
+    throw new UsageError("WID=<wid_string> required for A=w-otp MODE=verify");
+  }
+  const maxAgeSec = c.MAX_AGE_SEC ?? 0;
+  const maxFutureSec = c.MAX_FUTURE_SEC ?? 5;
+  if (!Number.isInteger(maxAgeSec) || maxAgeSec < 0) {
+    throw new UsageError("MAX_AGE_SEC must be a non-negative integer");
+  }
+  if (!Number.isInteger(maxFutureSec) || maxFutureSec < 0) {
+    throw new UsageError("MAX_FUTURE_SEC must be a non-negative integer");
+  }
+  if (!code) {
+    throw new UsageError("CODE=<otp_code> required for A=w-otp MODE=verify");
+  }
+  return { maxAgeSec, maxFutureSec };
+}
+function verifyWotpTimeWindow(wid, maxAgeSec, maxFutureSec) {
+  if (maxAgeSec > 0 || maxFutureSec > 0) {
+    const widMs = wotpWidTickMs(wid);
+    const delta = Date.now() - widMs;
+    if (delta < 0 && -delta > maxFutureSec * 1e3) {
+      throw new Error("OTP invalid: WID timestamp is too far in the future");
+    }
+    if (delta >= 0 && maxAgeSec > 0 && delta > maxAgeSec * 1e3) {
+      throw new Error("OTP invalid: WID timestamp is too old");
+    }
+  }
+}
+function runWOtpVerify(c, secret, digits) {
+  const wid = c.WID ?? "";
+  const code = c.CODE ?? "";
+  const { maxAgeSec, maxFutureSec } = validateWotpVerifyParams(c, wid, code);
+  const otp = computeWOtp(secret, wid, digits);
+  verifyWotpTimeWindow(wid, maxAgeSec, maxFutureSec);
+  const got = Buffer.from(code, "utf8");
+  const exp = Buffer.from(otp, "utf8");
+  const ok = got.length === exp.length && timingSafeEqual(got, exp);
+  if (ok) {
+    console.log("OTP valid.");
+    return 0;
+  }
+  console.error("OTP invalid.");
+  return 1;
+}
+
+// typescript/src/cli/sql.ts
+import { resolve } from "path";
+function resolveNodeSqliteDatabaseSync() {
+  const proc = globalThis.process;
+  if (!proc?.versions?.node) {
+    throw new Error("SQLite requires Node.js");
+  }
+  const builtin = typeof proc.getBuiltinModule === "function" ? proc.getBuiltinModule("node:sqlite") : null;
+  if (builtin && typeof builtin === "object" && "DatabaseSync" in builtin) {
+    return builtin.DatabaseSync;
+  }
+  throw new Error("node:sqlite unavailable in this Node runtime");
+}
+function sqlStatePath(c) {
+  const dDir = c.D && c.D.length > 0 ? resolve(c.D) : resolve(".local/services");
+  return resolve(dDir, "wid_state.sqlite");
+}
+function sqlStateKey(c) {
+  return `wid:${c.W}:${c.Z}:${c.T}`;
+}
+function setupSqlDb(db, key) {
+  db.exec("PRAGMA journal_mode=WAL;");
+  db.exec(
+    "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL)"
+  );
+  db.prepare(
+    "INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES(?,0,-1)"
+  ).run(key);
+}
+function trySqlAllocate(key, c, selectStmt, casStmt) {
+  const row = selectStmt.get(key);
+  if (!row || typeof row.last_tick !== "number" || typeof row.last_seq !== "number") {
+    throw new Error("invalid SQL state row");
+  }
+  const gen = new WidGen({ W: c.W, Z: c.Z, timeUnit: c.T });
+  gen.restoreState(row.last_tick, row.last_seq);
+  const id = gen.next();
+  const nextState = gen.state;
+  const updated = casStmt.run(
+    nextState.lastSec,
+    nextState.lastSeq,
+    key,
+    row.last_tick,
+    row.last_seq
+  );
+  if ((updated.changes ?? 0) === 1) {
+    return id;
+  }
+  return void 0;
+}
+function sqlAllocateNextWid(c) {
+  const DatabaseSync = resolveNodeSqliteDatabaseSync();
+  const db = new DatabaseSync(sqlStatePath(c), { timeout: 5e3 });
+  try {
+    const key = sqlStateKey(c);
+    setupSqlDb(db, key);
+    const selectStmt = db.prepare(
+      "SELECT last_tick,last_seq FROM wid_state WHERE k=?"
+    );
+    const casStmt = db.prepare(
+      "UPDATE wid_state SET last_tick=?,last_seq=? WHERE k=? AND last_tick=? AND last_seq=?"
+    );
+    for (let i = 0; i < 256; i += 1) {
+      try {
+        const id = trySqlAllocate(key, c, selectStmt, casStmt);
+        if (id !== void 0) {
+          return id;
+        }
+      } catch (e) {
+        const errcode = e.errcode;
+        const msg = e.message ?? "";
+        if (errcode === 5 || msg.includes("database is locked")) {
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw new Error("sql allocation contention: retry budget exhausted");
+  } finally {
+    db.close?.();
+  }
+}
+
+// typescript/src/cli/completion.ts
+function printBashCompletion() {
+  process.stdout.write(
+    `_wid_complete() {
+  local cur="\${COMP_WORDS[COMP_CWORD]}"
+  local cmds="next stream healthcheck validate parse help-actions bench selftest completion"
+  if [[ "$cur" == *=* ]]; then
+    local key="\${cur%%=*}" val="\${cur#*=}" vals=""
+    case "$key" in
+      A) vals="next stream healthcheck sign verify w-otp help-actions" ;;
+      T) vals="sec ms" ;;
+      I) vals="auto sh bash" ;;
+      E) vals="state stateless sql" ;;
+      R) vals="auto null stdout" ;;
+      M) vals="true false" ;;
+    esac
+    local IFS=$'\\n'
+    COMPREPLY=($(for v in $vals; do [[ "$v" == "$val"* ]] && printf '%s\\n' "\${key}=\${v}"; done))
+  else
+    local kv="A= W= Z= T= N= L= D= I= E= R= M="
+    COMPREPLY=($(compgen -W "$cmds $kv" -- "$cur"))
+  fi
+}
+complete -o nospace -F _wid_complete wid-ts
+`
+  );
+}
+function printZshCompletion() {
+  process.stdout.write(
+    `#compdef wid-ts
+_wid_complete() {
+  local cur="\${words[-1]}"
+  local -a cmds=(next stream healthcheck validate parse help-actions bench selftest completion)
+  if [[ "$cur" == *=* ]]; then
+    local key="\${cur%%=*}"
+    local -a vals=()
+    case "$key" in
+      A) vals=(next stream healthcheck sign verify w-otp help-actions) ;;
+      T) vals=(sec ms) ;;
+      I) vals=(auto sh bash) ;;
+      E) vals=(state stateless sql) ;;
+      R) vals=(auto null stdout) ;;
+      M) vals=(true false) ;;
+    esac
+    compadd -P "\${key}=" -- "\${vals[@]}"
+  else
+    compadd -- "\${cmds[@]}" A= W= Z= T= N= L= D= I= E= R= M=
+  fi
+}
+_wid_complete "$@"
+compdef _wid_complete wid-ts
+`
+  );
+}
+function printFishCompletion() {
+  process.stdout.write(
+    `complete -c wid-ts -e
+complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a next -d 'Emit one WID'
+complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a stream -d 'Stream WIDs continuously'
+complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a healthcheck -d 'Generate and validate a sample WID'
+complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a validate -d 'Validate a WID string'
+complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a parse -d 'Parse a WID string'
+complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a help-actions -d 'Show canonical action matrix'
+complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a completion -d 'Print shell completion script'
+complete -c wid-ts -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=help-actions' -d 'Action'
+complete -c wid-ts -f -a 'T=sec T=ms' -d 'Time unit'
+complete -c wid-ts -f -a 'I=auto I=sh I=bash' -d 'Input source'
+complete -c wid-ts -f -a 'E=state E=stateless E=sql' -d 'State mode'
+complete -c wid-ts -f -a 'R=auto R=null R=stdout' -d 'Transport'
+complete -c wid-ts -f -a 'M=true M=false' -d 'Milliseconds mode'
+complete -c wid-ts -f -a 'W=' -d 'Sequence width'
+complete -c wid-ts -f -a 'Z=' -d 'Padding length'
+complete -c wid-ts -f -a 'N=' -d 'Count'
+complete -c wid-ts -f -a 'L=' -d 'Interval seconds'
+`
+  );
+}
+function printCompletion(shell) {
+  if (shell === "bash") {
+    printBashCompletion();
+  } else if (shell === "zsh") {
+    printZshCompletion();
+  } else if (shell === "fish") {
+    printFishCompletion();
+  } else {
+    process.stderr.write(
+      `error: unknown shell '${shell}'. Use: wid completion bash|zsh|fish
+`
+    );
+    process.exit(1);
+  }
+}
+
+// typescript/src/cli/help.ts
 function printHelp() {
   console.error(`wid - WID/HLC-WID generator CLI
 
@@ -55,122 +727,82 @@ Services (Rust implementation only -- see spec/SERVICES.md):
 Help:
   A=help-actions`);
 }
-function parseIntStrict(value, name) {
-  if (!/^-?[0-9]+$/.test(value)) throw new UsageError(`invalid integer for ${name}`);
-  return Number.parseInt(value, 10);
-}
-function parseOpts(args, allowCount, allowJson) {
-  const opts = {
-    kind: "wid",
-    node: process.env.NODE ?? "ts",
-    W: 4,
-    Z: 6,
-    timeUnit: "sec",
-    count: 0,
-    json: false
-  };
-  let zExplicit = false;
-  for (let i = 0; i < args.length; i += 1) {
-    const arg = args[i];
-    switch (arg) {
-      case "--kind":
-        if (i + 1 >= args.length) throw new UsageError("missing value for --kind");
-        opts.kind = args[++i];
-        break;
-      case "--node":
-        if (i + 1 >= args.length) throw new UsageError("missing value for --node");
-        opts.node = args[++i];
-        break;
-      case "--W":
-        if (i + 1 >= args.length) throw new UsageError("missing value for --W");
-        opts.W = parseIntStrict(args[++i], "--W");
-        break;
-      case "--Z":
-        if (i + 1 >= args.length) throw new UsageError("missing value for --Z");
-        opts.Z = parseIntStrict(args[++i], "--Z");
-        zExplicit = true;
-        break;
-      case "--time-unit":
-      case "--T":
-        if (i + 1 >= args.length) throw new UsageError("missing value for --time-unit");
-        opts.timeUnit = parseTimeUnitArg(args[++i]);
-        break;
-      case "--count":
-        if (!allowCount) throw new UsageError("unknown flag: --count");
-        if (i + 1 >= args.length) throw new UsageError("missing value for --count");
-        opts.count = parseIntStrict(args[++i], "--count");
-        break;
-      case "--json":
-        if (!allowJson) throw new UsageError("unknown flag: --json");
-        opts.json = true;
-        break;
-      default:
-        throw new UsageError(`unknown flag: ${arg}`);
-    }
-  }
-  if (opts.kind !== "wid" && opts.kind !== "hlc") throw new UsageError("--kind must be one of: wid, hlc");
-  if (opts.W <= 0 || opts.W > MAX_W) throw new UsageError("W must be between 1 and 18");
-  if (opts.Z < 0 || opts.Z > MAX_Z) throw new UsageError("Z must be between 0 and 64");
-  if (opts.count < 0) throw new UsageError("count must be >= 0");
-  if (opts.kind === "hlc" && !CLI_NODE_RE.test(opts.node)) throw new UsageError("invalid node");
-  if (opts.kind === "hlc" && !zExplicit) {
-    opts.Z = 0;
-  }
-  return opts;
-}
+
+// typescript/src/cli/commands.ts
 function runNext(args) {
   const opts = parseOpts(args, false, false);
   if (opts.kind === "wid") {
-    console.log(new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next());
+    console.log(
+      new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next()
+    );
     return;
   }
-  console.log(new HLCWidGen({ node: opts.node, W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next());
+  console.log(
+    new HLCWidGen({
+      node: opts.node,
+      W: opts.W,
+      Z: opts.Z,
+      timeUnit: opts.timeUnit
+    }).next()
+  );
 }
 function runStream(args) {
   const opts = parseOpts(args, true, false);
   if (opts.kind === "wid") {
     const gen2 = new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit });
-    for (let i = 0; opts.count === 0 || i < opts.count; i += 1) console.log(gen2.next());
+    for (let i = 0; opts.count === 0 || i < opts.count; i += 1) {
+      console.log(gen2.next());
+    }
     return;
   }
-  const gen = new HLCWidGen({ node: opts.node, W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit });
-  for (let i = 0; opts.count === 0 || i < opts.count; i += 1) console.log(gen.next());
+  const gen = new HLCWidGen({
+    node: opts.node,
+    W: opts.W,
+    Z: opts.Z,
+    timeUnit: opts.timeUnit
+  });
+  for (let i = 0; opts.count === 0 || i < opts.count; i += 1) {
+    console.log(gen.next());
+  }
 }
 function runValidate(args) {
-  if (args.length === 0) throw new UsageError("validate requires an id");
+  if (args.length === 0) {
+    throw new UsageError("validate requires an id");
+  }
   const id = args[0];
+  if (!id) {
+    throw new UsageError("parse requires an id");
+  }
   const opts = parseOpts(args.slice(1), false, false);
   const ok = opts.kind === "wid" ? validateWid(id, opts.W, opts.Z, opts.timeUnit) : validateHlcWid(id, opts.W, opts.Z, opts.timeUnit);
   console.log(ok ? "true" : "false");
-  if (!ok) throw new Error("invalid wid");
+  if (!ok) {
+    throw new Error("invalid wid");
+  }
 }
-function runParse(args) {
-  if (args.length === 0) throw new UsageError("parse requires an id");
-  const id = args[0];
-  const opts = parseOpts(args.slice(1), false, true);
-  if (opts.kind === "wid") {
-    const parsed2 = parseWid(id, opts.W, opts.Z, opts.timeUnit);
-    if (!parsed2) {
-      console.log("null");
-      throw new Error("invalid wid");
-    }
-    if (opts.json) {
-      console.log(
-        JSON.stringify({
-          raw: parsed2.raw,
-          timestamp: parsed2.timestamp.toISOString(),
-          sequence: parsed2.sequence,
-          padding: parsed2.padding
-        })
-      );
-      return;
-    }
-    console.log(`raw=${parsed2.raw}`);
-    console.log(`timestamp=${parsed2.timestamp.toISOString()}`);
-    console.log(`sequence=${parsed2.sequence}`);
-    console.log(`padding=${parsed2.padding ?? ""}`);
+function runParseWid(id, opts) {
+  const parsed = parseWid(id, opts.W, opts.Z, opts.timeUnit);
+  if (!parsed) {
+    console.log("null");
+    throw new Error("invalid wid");
+  }
+  if (opts.json) {
+    console.log(
+      JSON.stringify({
+        raw: parsed.raw,
+        timestamp: parsed.timestamp.toISOString(),
+        sequence: parsed.sequence,
+        padding: parsed.padding
+      })
+    );
     return;
   }
+  console.log(`raw=${parsed.raw}`);
+  console.log(`timestamp=${parsed.timestamp.toISOString()}`);
+  console.log(`sequence=${parsed.sequence}`);
+  console.log(`padding=${parsed.padding ?? ""}`);
+}
+function runParseHlc(id, opts) {
   const parsed = parseHlcWid(id, opts.W, opts.Z, opts.timeUnit);
   if (!parsed) {
     console.log("null");
@@ -194,9 +826,29 @@ function runParse(args) {
   console.log(`node=${parsed.node}`);
   console.log(`padding=${parsed.padding ?? ""}`);
 }
+function runParse(args) {
+  if (args.length === 0) {
+    throw new UsageError("parse requires an id");
+  }
+  const id = args[0];
+  if (!id) {
+    throw new UsageError("parse requires an id");
+  }
+  const opts = parseOpts(args.slice(1), false, true);
+  if (opts.kind === "wid") {
+    runParseWid(id, opts);
+  } else {
+    runParseHlc(id, opts);
+  }
+}
 function runHealthcheck(args) {
   const opts = parseOpts(args, false, true);
-  const sample = opts.kind === "wid" ? new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next() : new HLCWidGen({ node: opts.node, W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next();
+  const sample = opts.kind === "wid" ? new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit }).next() : new HLCWidGen({
+    node: opts.node,
+    W: opts.W,
+    Z: opts.Z,
+    timeUnit: opts.timeUnit
+  }).next();
   const ok = opts.kind === "wid" ? validateWid(sample, opts.W, opts.Z, opts.timeUnit) : validateHlcWid(sample, opts.W, opts.Z, opts.timeUnit);
   if (opts.json) {
     console.log(
@@ -210,9 +862,13 @@ function runHealthcheck(args) {
       })
     );
   } else {
-    console.log(`ok=${ok ? "true" : "false"} kind=${opts.kind} sample=${sample}`);
+    console.log(
+      `ok=${ok ? "true" : "false"} kind=${opts.kind} sample=${sample}`
+    );
   }
-  if (!ok) throw new Error("healthcheck failed");
+  if (!ok) {
+    throw new Error("healthcheck failed");
+  }
 }
 function runBench(args) {
   const opts = parseOpts(args, true, false);
@@ -220,10 +876,19 @@ function runBench(args) {
   const start = process.hrtime.bigint();
   if (opts.kind === "wid") {
     const g = new WidGen({ W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit });
-    for (let i = 0; i < n; i += 1) g.next();
+    for (let i = 0; i < n; i += 1) {
+      g.next();
+    }
   } else {
-    const g = new HLCWidGen({ node: opts.node, W: opts.W, Z: opts.Z, timeUnit: opts.timeUnit });
-    for (let i = 0; i < n; i += 1) g.next();
+    const g = new HLCWidGen({
+      node: opts.node,
+      W: opts.W,
+      Z: opts.Z,
+      timeUnit: opts.timeUnit
+    });
+    for (let i = 0; i < n; i += 1) {
+      g.next();
+    }
   }
   const secs = Number(process.hrtime.bigint() - start) / 1e9;
   const s = Math.max(secs, 1e-9);
@@ -240,337 +905,64 @@ function runBench(args) {
     })
   );
 }
-function parseCanonical(args) {
-  const out = {
-    A: "next",
-    W: 4,
-    L: 3600,
-    D: "",
-    I: "auto",
-    E: "state",
-    Z: 6,
-    T: "sec",
-    R: "auto",
-    M: false,
-    N: 0,
-    LExplicit: false
-  };
-  for (const arg of args) {
-    const eq = arg.indexOf("=");
-    if (eq < 0) throw new UsageError(`expected KEY=VALUE, got '${arg}'`);
-    const k = arg.slice(0, eq);
-    const vRaw = arg.slice(eq + 1);
-    const v = vRaw === "#" ? defaultValueFor(k) : vRaw;
-    switch (k) {
-      case "A":
-        out.A = v.toLowerCase();
-        break;
-      case "W":
-        out.W = parseIntStrict(v, "W");
-        break;
-      case "L":
-        out.L = parseIntStrict(v, "L");
-        out.LExplicit = vRaw !== "#";
-        break;
-      case "D":
-        out.D = v;
-        break;
-      case "I":
-        out.I = v;
-        break;
-      case "E":
-        out.E = v;
-        break;
-      case "Z":
-        out.Z = parseIntStrict(v, "Z");
-        break;
-      case "T":
-        out.T = parseTimeUnitArg(v);
-        break;
-      case "R":
-        out.R = v;
-        break;
-      case "M":
-        out.M = ["1", "true", "yes", "y", "on"].includes(v.toLowerCase());
-        break;
-      case "N":
-        out.N = parseIntStrict(v, "N");
-        break;
-      case "WID":
-        out.WID = v;
-        break;
-      case "KEY":
-        out.KEY = v;
-        break;
-      case "SIG":
-        out.SIG = v;
-        break;
-      case "DATA":
-        out.DATA = v;
-        break;
-      case "OUT":
-        out.OUT = v;
-        break;
-      case "MODE":
-        out.MODE = v;
-        break;
-      case "CODE":
-        out.CODE = v;
-        break;
-      case "DIGITS":
-        out.DIGITS = parseIntStrict(v, "DIGITS");
-        break;
-      case "MAX_AGE_SEC":
-        out.MAX_AGE_SEC = parseIntStrict(v, "MAX_AGE_SEC");
-        break;
-      case "MAX_FUTURE_SEC":
-        out.MAX_FUTURE_SEC = parseIntStrict(v, "MAX_FUTURE_SEC");
-        break;
-      default:
-        throw new UsageError(`unknown key: ${k}`);
-    }
-  }
-  if (out.M) out.T = "ms";
-  out.A = out.A === "id" || out.A === "default" ? "next" : out.A === "hc" ? "healthcheck" : out.A;
-  if (out.W <= 0 || out.W > MAX_W) throw new UsageError("W must be between 1 and 18");
-  if (out.Z < 0 || out.Z > MAX_Z) throw new UsageError("Z must be between 0 and 64");
-  if (out.N < 0 || out.L < 0) throw new UsageError("N/L must be >= 0");
-  if (!["auto", "null", "stdout"].includes(out.R)) {
-    throw new UsageError(`transport R=${out.R} is only available in the Rust implementation (services/transports are Rust-only)`);
-  }
-  return out;
-}
-function defaultValueFor(key) {
-  switch (key) {
-    case "A":
-      return "next";
-    case "W":
-      return "4";
-    case "L":
-      return "3600";
-    case "D":
-      return "";
-    case "I":
-      return "auto";
-    case "E":
-      return "state";
-    case "Z":
-      return "6";
-    case "T":
-      return "sec";
-    case "R":
-      return "auto";
-    case "M":
-      return "false";
-    case "N":
-      return "0";
-    case "WID":
-    case "KEY":
-    case "SIG":
-    case "DATA":
-    case "OUT":
-    case "MODE":
-    case "CODE":
-      return "";
-    case "DIGITS":
-      return "6";
-    case "MAX_AGE_SEC":
-      return "0";
-    case "MAX_FUTURE_SEC":
-      return "5";
-    default:
-      return "";
-  }
-}
-function b64urlEncode(buf) {
-  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-function b64urlDecode(s) {
-  let std = s.replace(/-/g, "+").replace(/_/g, "/");
-  const m = std.length % 4;
-  if (m === 2) std += "==";
-  else if (m === 3) std += "=";
-  else if (m === 1) throw new Error("invalid base64url signature length");
-  return Buffer.from(std, "base64");
-}
-function buildSignVerifyMessage(c) {
-  const wid = c.WID ?? "";
-  if (!wid) throw new UsageError("WID=<wid_string> required");
-  const widBuf = Buffer.from(wid, "utf8");
-  const header = Buffer.from(`wid-sig-v1:${widBuf.length}:`, "ascii");
-  const parts = [header, widBuf];
-  if (c.DATA && c.DATA.length > 0) {
-    if (!existsSync(c.DATA)) throw new Error(`data file not found: ${c.DATA}`);
-    parts.push(readFileSync(c.DATA));
-  }
-  return Buffer.concat(parts);
-}
-function runSign(c) {
-  const keyPath = c.KEY ?? "";
-  if (!keyPath) throw new UsageError("KEY=<private_key_path> required for A=sign");
-  if (!existsSync(keyPath)) throw new Error(`private key file not found: ${keyPath}`);
-  const message = buildSignVerifyMessage(c);
-  const key = createPrivateKey(readFileSync(keyPath));
-  const sig = cryptoSign(null, message, key);
-  const out = b64urlEncode(sig);
-  if (c.OUT && c.OUT.length > 0) writeFileSync(c.OUT, out, "utf8");
-  else console.log(out);
-  return 0;
-}
-function runVerify(c) {
-  const keyPath = c.KEY ?? "";
-  const sigText = c.SIG ?? "";
-  if (!keyPath) throw new UsageError("KEY=<public_key_path> required for A=verify");
-  if (!sigText) throw new UsageError("SIG=<signature_string> required for A=verify");
-  if (!existsSync(keyPath)) throw new Error(`public key file not found: ${keyPath}`);
-  const message = buildSignVerifyMessage(c);
-  const key = createPublicKey(readFileSync(keyPath));
-  const ok = cryptoVerify(null, message, key, b64urlDecode(sigText));
-  if (ok) {
-    console.log("Signature valid.");
-    return 0;
-  }
-  console.error("Signature invalid.");
-  return 1;
-}
-function resolveWOtpSecret(raw) {
-  if (existsSync(raw)) return readFileSync(raw, "utf8").trim();
-  return raw.trim();
-}
-function computeWOtp(secret, wid, digits) {
-  const digest = createHmac("sha256", Buffer.from(secret, "utf8")).update(Buffer.from(wid, "utf8")).digest();
-  const binary = digest.readUInt32BE(0);
-  const mod = 10 ** digits;
-  return String(binary % mod).padStart(digits, "0");
-}
-function wotpWidTickMs(wid) {
-  const invalid = "WID timestamp is invalid for time-window verification";
-  const ts = wid.split(".", 1)[0];
-  const tIdx = ts.indexOf("T");
-  if (tIdx < 0) throw new Error(invalid);
-  const date = ts.slice(0, tIdx);
-  const time = ts.slice(tIdx + 1);
-  if (date.length !== 8 || time.length !== 6 && time.length !== 9) {
-    throw new Error(invalid);
-  }
-  const allDigits = (s) => /^[0-9]+$/.test(s);
-  if (!allDigits(date) || !allDigits(time)) throw new Error(invalid);
-  const y = Number(date.slice(0, 4));
-  const mo = Number(date.slice(4, 6));
-  const d = Number(date.slice(6, 8));
-  const hh = Number(time.slice(0, 2));
-  const mm = Number(time.slice(2, 4));
-  const ss = Number(time.slice(4, 6));
-  const ms = time.length === 9 ? Number(time.slice(6, 9)) : 0;
-  const dt = /* @__PURE__ */ new Date(0);
-  dt.setUTCFullYear(y, mo - 1, d);
-  dt.setUTCHours(hh, mm, ss, ms);
-  const tick = dt.getTime();
-  if (!Number.isFinite(tick)) throw new Error(invalid);
-  return tick;
-}
-function runWOtp(c) {
-  const mode = (c.MODE ?? "gen").toLowerCase();
-  if (mode !== "gen" && mode !== "verify") throw new UsageError("MODE must be gen or verify for A=w-otp");
-  if (!c.KEY || c.KEY.length === 0) throw new UsageError("KEY=<secret_or_path> required for A=w-otp");
-  const secret = resolveWOtpSecret(c.KEY);
-  if (!secret) throw new UsageError("w-otp secret cannot be empty");
-  const digits = c.DIGITS ?? 6;
-  if (!Number.isInteger(digits) || digits < 4 || digits > 10) throw new UsageError("DIGITS must be an integer between 4 and 10");
-  const maxAgeSec = c.MAX_AGE_SEC ?? 0;
-  const maxFutureSec = c.MAX_FUTURE_SEC ?? 5;
-  if (!Number.isInteger(maxAgeSec) || maxAgeSec < 0) throw new UsageError("MAX_AGE_SEC must be a non-negative integer");
-  if (!Number.isInteger(maxFutureSec) || maxFutureSec < 0) throw new UsageError("MAX_FUTURE_SEC must be a non-negative integer");
-  let wid = c.WID ?? "";
-  if (!wid && mode === "gen") wid = new WidGen({ W: c.W, Z: c.Z, timeUnit: c.T }).next();
-  if (!wid) throw new UsageError("WID=<wid_string> required for A=w-otp MODE=verify");
-  const otp = computeWOtp(secret, wid, digits);
-  if (mode === "gen") {
-    console.log(JSON.stringify({ wid, otp, digits }));
-    return 0;
-  }
-  const code = c.CODE ?? "";
-  if (!code) throw new UsageError("CODE=<otp_code> required for A=w-otp MODE=verify");
-  if (maxAgeSec > 0 || maxFutureSec > 0) {
-    const widMs = wotpWidTickMs(wid);
-    const nowMs = Date.now();
-    const delta = nowMs - widMs;
-    if (delta < 0 && -delta > maxFutureSec * 1e3) throw new Error("OTP invalid: WID timestamp is too far in the future");
-    if (delta >= 0 && maxAgeSec > 0 && delta > maxAgeSec * 1e3) throw new Error("OTP invalid: WID timestamp is too old");
-  }
-  const got = Buffer.from(code, "utf8");
-  const exp = Buffer.from(otp, "utf8");
-  const ok = got.length === exp.length && timingSafeEqual(got, exp);
-  if (ok) {
-    console.log("OTP valid.");
-    return 0;
-  }
-  console.error("OTP invalid.");
-  return 1;
-}
 function parseStateMode(c) {
-  if (c.E.includes("+")) return c.E.split("+", 2)[0];
-  if (c.E.includes(",")) return c.E.split(",", 2)[0];
+  if (c.E.includes("+")) {
+    return c.E.split("+", 2)[0] || "";
+  }
+  if (c.E.includes(",")) {
+    return c.E.split(",", 2)[0] || "";
+  }
   return c.E;
 }
 function dataDir(c) {
-  return c.D && c.D.length > 0 ? resolve(c.D) : resolve(".local/services");
-}
-function resolveNodeSqliteDatabaseSync() {
-  const proc = globalThis.process;
-  if (!proc?.versions?.node) throw new Error("SQLite requires Node.js");
-  const builtin = typeof proc.getBuiltinModule === "function" ? proc.getBuiltinModule("node:sqlite") : null;
-  if (builtin && typeof builtin === "object" && "DatabaseSync" in builtin) {
-    return builtin.DatabaseSync;
-  }
-  throw new Error("node:sqlite unavailable in this Node runtime");
-}
-function sqlStatePath(c) {
-  return resolve(dataDir(c), "wid_state.sqlite");
-}
-function sqlStateKey(c) {
-  return `wid:${c.W}:${c.Z}:${c.T}`;
-}
-function sqlAllocateNextWid(c) {
-  const DatabaseSync = resolveNodeSqliteDatabaseSync();
-  const db = new DatabaseSync(sqlStatePath(c), { timeout: 5e3 });
-  try {
-    db.exec("PRAGMA journal_mode=WAL;");
-    db.exec(
-      "CREATE TABLE IF NOT EXISTS wid_state (k TEXT PRIMARY KEY, last_tick INTEGER NOT NULL, last_seq INTEGER NOT NULL)"
-    );
-    const key = sqlStateKey(c);
-    db.prepare("INSERT OR IGNORE INTO wid_state(k,last_tick,last_seq) VALUES(?,0,-1)").run(key);
-    const selectStmt = db.prepare("SELECT last_tick,last_seq FROM wid_state WHERE k=?");
-    const casStmt = db.prepare("UPDATE wid_state SET last_tick=?,last_seq=? WHERE k=? AND last_tick=? AND last_seq=?");
-    for (let i = 0; i < 256; i += 1) {
-      try {
-        const row = selectStmt.get(key);
-        if (!row || typeof row.last_tick !== "number" || typeof row.last_seq !== "number") {
-          throw new Error("invalid SQL state row");
-        }
-        const gen = new WidGen({ W: c.W, Z: c.Z, timeUnit: c.T });
-        gen.restoreState(row.last_tick, row.last_seq);
-        const id = gen.next();
-        const nextState = gen.state;
-        const updated = casStmt.run(nextState.lastSec, nextState.lastSeq, key, row.last_tick, row.last_seq);
-        if ((updated.changes ?? 0) === 1) return id;
-      } catch (e) {
-        const errcode = e.errcode;
-        const msg = e.message ?? "";
-        if (errcode === 5 || msg.includes("database is locked")) continue;
-        throw e;
-      }
-    }
-    throw new Error("sql allocation contention: retry budget exhausted");
-  } finally {
-    db.close?.();
-  }
+  return c.D && c.D.length > 0 ? resolve2(c.D) : resolve2(".local/services");
 }
 function sleepSeconds(sec) {
-  if (sec <= 0) return;
+  if (sec <= 0) {
+    return;
+  }
   const i32 = new Int32Array(new SharedArrayBuffer(4));
   Atomics.wait(i32, 0, 0, sec * 1e3);
+}
+function handleCanonNext(c, stateMode) {
+  if (stateMode === "sql") {
+    console.log(sqlAllocateNextWid(c));
+  } else {
+    console.log(new WidGen({ W: c.W, Z: c.Z, timeUnit: c.T }).next());
+  }
+  return 0;
+}
+function handleCanonStream(c, stateMode) {
+  const genOptions = { W: c.W, Z: c.Z, timeUnit: c.T };
+  const gen = stateMode === "sql" ? null : new WidGen(genOptions);
+  const max = c.N <= 0 ? Number.POSITIVE_INFINITY : c.N;
+  let emitted = 0;
+  while (emitted < max) {
+    if (stateMode === "sql") {
+      console.log(sqlAllocateNextWid(c));
+    } else {
+      console.log(gen.next());
+    }
+    emitted += 1;
+    if (emitted < max && c.LExplicit && c.L > 0) {
+      sleepSeconds(c.L);
+    }
+  }
+  return 0;
+}
+function handleCanonHealthcheck(c) {
+  runHealthcheck([
+    "--kind",
+    "wid",
+    "--W",
+    String(c.W),
+    "--Z",
+    String(c.Z),
+    "--time-unit",
+    c.T,
+    "--json"
+  ]);
+  return 0;
 }
 function runCanonical(args) {
   const c = parseCanonical(args);
@@ -581,159 +973,77 @@ function runCanonical(args) {
   const stateMode = parseStateMode(c);
   const canonDataDir = dataDir(c);
   mkdirSync(canonDataDir, { recursive: true });
-  const genOptions = { W: c.W, Z: c.Z, timeUnit: c.T };
-  if (c.A === "next") {
-    if (stateMode === "sql") {
-      console.log(sqlAllocateNextWid(c));
-    } else {
-      console.log(new WidGen(genOptions).next());
-    }
-    return 0;
-  }
-  if (c.A === "stream") {
-    const gen = stateMode === "sql" ? null : new WidGen(genOptions);
-    const max = c.N <= 0 ? Number.POSITIVE_INFINITY : c.N;
-    let emitted = 0;
-    while (emitted < max) {
-      if (stateMode === "sql") {
-        console.log(sqlAllocateNextWid(c));
-      } else {
-        console.log(gen.next());
-      }
-      emitted += 1;
-      if (emitted < max && c.LExplicit && c.L > 0) sleepSeconds(c.L);
-    }
-    return 0;
-  }
-  if (c.A === "healthcheck") {
-    runHealthcheck([
-      "--kind",
-      "wid",
-      "--W",
-      String(c.W),
-      "--Z",
-      String(c.Z),
-      "--time-unit",
-      c.T,
-      "--json"
-    ]);
-    return 0;
-  }
-  if (c.A === "sign") return runSign(c);
-  if (c.A === "verify") return runVerify(c);
-  if (c.A === "w-otp") return runWOtp(c);
-  throw new UsageError(`unknown A=${c.A}`);
-}
-function printCompletion(shell) {
-  if (shell === "bash") {
-    process.stdout.write(
-      `_wid_complete() {
-  local cur="\${COMP_WORDS[COMP_CWORD]}"
-  local cmds="next stream healthcheck validate parse help-actions bench selftest completion"
-  if [[ "$cur" == *=* ]]; then
-    local key="\${cur%%=*}" val="\${cur#*=}" vals=""
-    case "$key" in
-      A) vals="next stream healthcheck sign verify w-otp help-actions" ;;
-      T) vals="sec ms" ;;
-      I) vals="auto sh bash" ;;
-      E) vals="state stateless sql" ;;
-      R) vals="auto null stdout" ;;
-      M) vals="true false" ;;
-    esac
-    local IFS=$'\\n'
-    COMPREPLY=($(for v in $vals; do [[ "$v" == "$val"* ]] && printf '%s\\n' "\${key}=\${v}"; done))
-  else
-    local kv="A= W= Z= T= N= L= D= I= E= R= M="
-    COMPREPLY=($(compgen -W "$cmds $kv" -- "$cur"))
-  fi
-}
-complete -o nospace -F _wid_complete wid-ts
-`
-    );
-  } else if (shell === "zsh") {
-    process.stdout.write(
-      `#compdef wid-ts
-_wid_complete() {
-  local cur="\${words[-1]}"
-  local -a cmds=(next stream healthcheck validate parse help-actions bench selftest completion)
-  if [[ "$cur" == *=* ]]; then
-    local key="\${cur%%=*}"
-    local -a vals=()
-    case "$key" in
-      A) vals=(next stream healthcheck sign verify w-otp help-actions) ;;
-      T) vals=(sec ms) ;;
-      I) vals=(auto sh bash) ;;
-      E) vals=(state stateless sql) ;;
-      R) vals=(auto null stdout) ;;
-      M) vals=(true false) ;;
-    esac
-    compadd -P "\${key}=" -- "\${vals[@]}"
-  else
-    compadd -- "\${cmds[@]}" A= W= Z= T= N= L= D= I= E= R= M=
-  fi
-}
-_wid_complete "$@"
-compdef _wid_complete wid-ts
-`
-    );
-  } else if (shell === "fish") {
-    process.stdout.write(
-      `complete -c wid-ts -e
-complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a next -d 'Emit one WID'
-complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a stream -d 'Stream WIDs continuously'
-complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a healthcheck -d 'Generate and validate a sample WID'
-complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a validate -d 'Validate a WID string'
-complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a parse -d 'Parse a WID string'
-complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a help-actions -d 'Show canonical action matrix'
-complete -c wid-ts -f -n 'not __fish_seen_subcommand_from next stream healthcheck validate parse help-actions bench selftest completion' -a completion -d 'Print shell completion script'
-complete -c wid-ts -f -a 'A=next A=stream A=healthcheck A=sign A=verify A=w-otp A=help-actions' -d 'Action'
-complete -c wid-ts -f -a 'T=sec T=ms' -d 'Time unit'
-complete -c wid-ts -f -a 'I=auto I=sh I=bash' -d 'Input source'
-complete -c wid-ts -f -a 'E=state E=stateless E=sql' -d 'State mode'
-complete -c wid-ts -f -a 'R=auto R=null R=stdout' -d 'Transport'
-complete -c wid-ts -f -a 'M=true M=false' -d 'Milliseconds mode'
-complete -c wid-ts -f -a 'W=' -d 'Sequence width'
-complete -c wid-ts -f -a 'Z=' -d 'Padding length'
-complete -c wid-ts -f -a 'N=' -d 'Count'
-complete -c wid-ts -f -a 'L=' -d 'Interval seconds'
-`
-    );
-  } else {
-    process.stderr.write(`error: unknown shell '${shell}'. Use: wid completion bash|zsh|fish
-`);
-    process.exit(1);
+  switch (c.A) {
+    case "next":
+      return handleCanonNext(c, stateMode);
+    case "stream":
+      return handleCanonStream(c, stateMode);
+    case "healthcheck":
+      return handleCanonHealthcheck(c);
+    case "sign":
+      return runSign(c);
+    case "verify":
+      return runVerify(c);
+    case "w-otp":
+      return runWOtp(c);
+    default:
+      throw new UsageError(`unknown A=${c.A}`);
   }
 }
 function runSelftest() {
   const wg = new WidGen({ W: 4, Z: 0, timeUnit: "sec" });
   const a = wg.next();
   const b = wg.next();
-  if (!(a < b)) return 1;
-  if (!validateWid(a, 4, 0, "sec")) return 1;
+  if (!(a < b)) {
+    return 1;
+  }
+  if (!validateWid(a, 4, 0, "sec")) {
+    return 1;
+  }
   const hg = new HLCWidGen({ node: "node01", W: 4, Z: 0, timeUnit: "sec" });
   const h = hg.next();
-  if (!validateHlcWid(h, 4, 0, "sec")) return 1;
-  if (validateWid("20260212T091530.0000Z-node01", 4, 0, "sec")) return 1;
-  if (validateHlcWid("20260212T091530.0000Z", 4, 0, "sec")) return 1;
-  if (!validateWid("20260212T091530123.0000Z", 4, 0, "ms")) return 1;
-  if (!validateHlcWid("20260212T091530123.0000Z-node01", 4, 0, "ms")) return 1;
+  if (!validateHlcWid(h, 4, 0, "sec")) {
+    return 1;
+  }
+  if (validateWid("20260212T091530.0000Z-node01", 4, 0, "sec")) {
+    return 1;
+  }
+  if (validateHlcWid("20260212T091530.0000Z", 4, 0, "sec")) {
+    return 1;
+  }
+  if (!validateWid("20260212T091530123.0000Z", 4, 0, "ms")) {
+    return 1;
+  }
+  if (!validateHlcWid("20260212T091530123.0000Z-node01", 4, 0, "ms")) {
+    return 1;
+  }
   return 0;
 }
-function main() {
-  const args = process.argv.slice(2);
-  if (args.length === 0) {
-    printHelp();
-    return 2;
+function runCommand(cmd, rest) {
+  switch (cmd) {
+    case "next":
+      runNext(rest);
+      return 0;
+    case "stream":
+      runStream(rest);
+      return 0;
+    case "validate":
+      runValidate(rest);
+      return 0;
+    case "parse":
+      runParse(rest);
+      return 0;
+    case "healthcheck":
+      runHealthcheck(rest);
+      return 0;
+    case "bench":
+      runBench(rest);
+      return 0;
+    default:
+      throw new UsageError(`unknown command: ${cmd}`);
   }
-  if (args.some((a) => a.includes("="))) {
-    try {
-      return runCanonical(args);
-    } catch (e) {
-      console.error(`error: ${e.message}`);
-      return e instanceof UsageError ? 2 : 1;
-    }
-  }
-  const [cmd, ...rest] = args;
+}
+function handleMainStaticCmd(cmd, rest) {
   if (cmd === "help" || cmd === "-h" || cmd === "--help") {
     printHelp();
     return 0;
@@ -754,33 +1064,39 @@ function main() {
     printCompletion(shell);
     return 0;
   }
-  try {
-    switch (cmd) {
-      case "next":
-        runNext(rest);
-        return 0;
-      case "stream":
-        runStream(rest);
-        return 0;
-      case "validate":
-        runValidate(rest);
-        return 0;
-      case "parse":
-        runParse(rest);
-        return 0;
-      case "healthcheck":
-        runHealthcheck(rest);
-        return 0;
-      case "bench":
-        runBench(rest);
-        return 0;
-      default:
-        throw new UsageError(`unknown command: ${cmd}`);
+  return void 0;
+}
+function main() {
+  const args = process.argv.slice(2);
+  if (args.length === 0) {
+    printHelp();
+    return 2;
+  }
+  if (args.some((a) => a.includes("="))) {
+    try {
+      return runCanonical(args);
+    } catch (e) {
+      console.error(`error: ${e.message}`);
+      return e instanceof UsageError ? 2 : 1;
     }
+  }
+  const [cmd, ...rest] = args;
+  if (!cmd) {
+    printHelp();
+    return 2;
+  }
+  const staticResult = handleMainStaticCmd(cmd, rest);
+  if (staticResult !== void 0) {
+    return staticResult;
+  }
+  try {
+    return runCommand(cmd, rest);
   } catch (e) {
     console.error(`error: ${e.message}`);
     return e instanceof UsageError ? 2 : 1;
   }
 }
+
+// typescript/src/cli.ts
 process.exitCode = main();
 //# sourceMappingURL=cli.mjs.map

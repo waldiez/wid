@@ -594,13 +594,15 @@ print(gen.next())</pre>
         <button class="cpybtn" data-c="npm install github:waldiez/wid">copy</button>
       </div>
       <pre><span class="k">npm install</span> <span class="s">github:waldiez/wid</span>
+<span class="cm"># or (bun/yarn/pnpm...)</span>
+<span class="k">bun add</span> <span class="s">github:waldiez/wid</span>
 
 <span class="cm">// ESM</span>
 <span class="v">import</span> { WidGen } <span class="v">from</span> <span class="s">'@waldiez/wid'</span>;
 <span class="v">const</span> gen = <span class="v">new</span> WidGen();
 console.log(gen.next());
 
-<span class="cm">// CLI (after npm run build)</span>
+<span class="cm">// CLI (after bun run build)</span>
 <span class="k">node</span> dist/cli.js A=next W=4 Z=6</pre>
     </div>
   </div>

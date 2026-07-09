@@ -96,9 +96,9 @@ class BrowserLocalStorageWidStateStore implements WidStateStore {
 
   load(key: string): WidStateSnapshot | null {
     const ls = this.localStorageLike();
-    if (!ls) return null;
+    if (!ls) {return null;}
     const raw = ls.getItem(this.keyOf(key));
-    if (!raw) return null;
+    if (!raw) {return null;}
     try {
       const parsed = JSON.parse(raw) as Partial<WidStateSnapshot>;
       if (
@@ -117,7 +117,7 @@ class BrowserLocalStorageWidStateStore implements WidStateStore {
 
   save(key: string, state: WidStateSnapshot): void {
     const ls = this.localStorageLike();
-    if (!ls) return;
+    if (!ls) {return;}
     ls.setItem(this.keyOf(key), JSON.stringify(state));
   }
 }
@@ -167,8 +167,8 @@ class NodeSqliteWidStateStore implements WidStateStore {
     const row = this.db
       .prepare("SELECT last_tick, last_seq FROM wid_state WHERE k = ?")
       .get(this.fullKey(key)) as { last_tick?: number; last_seq?: number } | undefined;
-    if (!row) return null;
-    if (typeof row.last_tick !== "number" || typeof row.last_seq !== "number") return null;
+    if (!row) {return null;}
+    if (typeof row.last_tick !== "number" || typeof row.last_seq !== "number") {return null;}
     return { lastSec: row.last_tick, lastSeq: row.last_seq };
   }
 
@@ -244,7 +244,7 @@ const WID_BASE_RE_CACHE = new Map<string, RegExp>();
 function widBaseRe(W: number, unit: TimeUnit): RegExp {
   const key = `${W}:${unit}`;
   const cached = WID_BASE_RE_CACHE.get(key);
-  if (cached) return cached;
+  if (cached) {return cached;}
   const re = new RegExp(`^(\\d{8})T(\\d{${timeDigits(unit)}})\\.(\\d{${W}})Z(.*)?$`);
   WID_BASE_RE_CACHE.set(key, re);
   return re;
@@ -277,19 +277,24 @@ function parsePadding(suffix: string, Z: number): { padding: string | null } | n
 }
 
 function parseCore(wid: string, W: number, Z: number, timeUnit: TimeUnit): ParsedWid | null {
-  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) return null;
+  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) {return null;}
 
   const match = widBaseRe(W, timeUnit).exec(wid);
-  if (!match) return null;
+  if (!match) {return null;}
 
   const [, dateStr, timeStr, seqStr, suffixRaw] = match;
   const suffix = suffixRaw ?? "";
+  if (!dateStr) {return null;}
+
+  if (!timeStr) {return null;}
+
+  if (!seqStr) { return null; }
 
   const timestamp = parseWidTimestamp(dateStr, timeStr, timeUnit);
-  if (!timestamp) return null;
+  if (!timestamp) {return null;}
 
   const parsedSuffix = parsePadding(suffix, Z);
-  if (!parsedSuffix) return null;
+  if (!parsedSuffix) {return null;}
 
   return {
     raw: wid,
@@ -319,8 +324,8 @@ export async function* asyncWidStream(
   options: AsyncWidStreamOptions = {}
 ): AsyncGenerator<string> {
   const { count = 0, intervalMs = 0, ...genOpts } = options;
-  if (count < 0) throw new Error("count must be >= 0");
-  if (intervalMs < 0) throw new Error("intervalMs must be >= 0");
+  if (count < 0) {throw new Error("count must be >= 0");}
+  if (intervalMs < 0) {throw new Error("intervalMs must be >= 0");}
 
   const gen = new WidGen(genOpts);
   let emitted = 0;
@@ -359,39 +364,47 @@ export class WidGen {
       autoPersist = false,
     } = options;
 
-    // Bounds match all six implementations: W > 18 would overflow an int64
-    // sequence; Z > 64 exceeds the C implementation's WID_MAX_Z.
-    if (W <= 0 || W > MAX_W) throw new Error("W must be between 1 and 18");
-    if (Z < 0 || Z > MAX_Z) throw new Error("Z must be between 0 and 64");
+    this.validateParams(W, Z);
 
     this.W = W;
     this.Z = Z;
     this.timeUnit = timeUnit;
-    // 10^W - 1 is not exactly representable above 2^53 (Math.pow(10,18) - 1
-    // evaluates to 10^18). Cap at MAX_SAFE_INTEGER - 1 so `seq > maxSeq`
-    // still triggers rollover before `seq + 1` stops incrementing.
     this.maxSeq = Math.min(Math.pow(10, W) - 1, Number.MAX_SAFE_INTEGER - 1);
     this.stateStore = stateStore ?? null;
     this.stateKey = stateKey;
     this.autoPersist = autoPersist;
 
-    if (this.autoPersist && this.stateStore) {
-      const loaded = this.stateStore.load(this.stateKey);
-      if (
-        loaded &&
-        Number.isFinite(loaded.lastSec) &&
-        Number.isFinite(loaded.lastSeq) &&
-        loaded.lastSec >= 0 &&
-        loaded.lastSeq >= -1
-      ) {
-        this.lastSec = loaded.lastSec;
-        this.lastSeq = loaded.lastSeq;
-      }
+    this.tryLoadState();
+  }
+
+  private validateParams(W: number, Z: number): void {
+    if (W <= 0 || W > MAX_W) {
+      throw new Error("W must be between 1 and 18");
+    }
+    if (Z < 0 || Z > MAX_Z) {
+      throw new Error("Z must be between 0 and 64");
+    }
+  }
+
+  private tryLoadState(): void {
+    if (!this.autoPersist || !this.stateStore) {
+      return;
+    }
+    const loaded = this.stateStore.load(this.stateKey);
+    if (
+      loaded &&
+      Number.isFinite(loaded.lastSec) &&
+      Number.isFinite(loaded.lastSeq) &&
+      loaded.lastSec >= 0 &&
+      loaded.lastSeq >= -1
+    ) {
+      this.lastSec = loaded.lastSec;
+      this.lastSeq = loaded.lastSeq;
     }
   }
 
   private persistState(): void {
-    if (!this.autoPersist || !this.stateStore) return;
+    if (!this.autoPersist || !this.stateStore) {return;}
     try {
       this.stateStore.save(this.stateKey, { lastSec: this.lastSec, lastSeq: this.lastSeq });
     } catch {

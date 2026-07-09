@@ -1,3 +1,7 @@
+var __defProp = Object.defineProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+
 // typescript/src/time.ts
 function parseTimeUnit(input) {
   if (input === "sec" || input === "ms") {
@@ -11,14 +15,20 @@ function timeDigits(unit) {
 var MAX_SEC_TICK = 253402300799;
 function clampTick(tick, unit) {
   const max = unit === "ms" ? MAX_SEC_TICK * 1e3 + 999 : MAX_SEC_TICK;
-  if (tick < 0) return 0;
-  if (tick > max) return max;
+  if (tick < 0) {
+    return 0;
+  }
+  if (tick > max) {
+    return max;
+  }
   return tick;
 }
 var HEX_RE_CACHE = /* @__PURE__ */ new Map();
 function hexRe(Z) {
   const cached = HEX_RE_CACHE.get(Z);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
   const re = new RegExp(`^[0-9a-f]{${Z}}$`);
   HEX_RE_CACHE.set(Z, re);
   return re;
@@ -45,6 +55,21 @@ function formatTickTimestamp(tick, unit) {
   return unit === "ms" ? `${base}${String(ms).padStart(3, "0")}` : base;
 }
 function parseWidTimestamp(dateStr, timeStr, timeUnit) {
+  const { year, month, day, hour, minute, second, millis } = parseRawFields(dateStr, timeStr, timeUnit);
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59 || millis < 0 || millis > 999) {
+    return null;
+  }
+  const timestamp = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millis));
+  timestamp.setUTCFullYear(year, month - 1, day);
+  if (isNaN(timestamp.getTime())) {
+    return null;
+  }
+  if (timestamp.getUTCFullYear() !== year || timestamp.getUTCMonth() + 1 !== month || timestamp.getUTCDate() !== day) {
+    return null;
+  }
+  return timestamp;
+}
+function parseRawFields(dateStr, timeStr, timeUnit) {
   const year = parseInt(dateStr.slice(0, 4), 10);
   const month = parseInt(dateStr.slice(4, 6), 10);
   const day = parseInt(dateStr.slice(6, 8), 10);
@@ -52,18 +77,7 @@ function parseWidTimestamp(dateStr, timeStr, timeUnit) {
   const minute = parseInt(timeStr.slice(2, 4), 10);
   const second = parseInt(timeStr.slice(4, 6), 10);
   const millis = timeUnit === "ms" ? parseInt(timeStr.slice(6, 9), 10) : 0;
-  if (year < 1) return null;
-  if (month < 1 || month > 12) return null;
-  if (day < 1 || day > 31) return null;
-  if (hour > 23 || minute > 59 || second > 59) return null;
-  if (millis < 0 || millis > 999) return null;
-  const timestamp = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millis));
-  timestamp.setUTCFullYear(year, month - 1, day);
-  if (isNaN(timestamp.getTime())) return null;
-  if (timestamp.getUTCFullYear() !== year || timestamp.getUTCMonth() + 1 !== month || timestamp.getUTCDate() !== day) {
-    return null;
-  }
-  return timestamp;
+  return { year, month, day, hour, minute, second, millis };
 }
 
 // typescript/src/wid.ts
@@ -71,7 +85,7 @@ var MAX_W = 18;
 var MAX_Z = 64;
 var MemoryWidStateStore = class {
   constructor() {
-    this.memory = /* @__PURE__ */ new Map();
+    __publicField(this, "memory", /* @__PURE__ */ new Map());
   }
   load(key) {
     const hit = this.memory.get(key);
@@ -83,6 +97,7 @@ var MemoryWidStateStore = class {
 };
 var BrowserLocalStorageWidStateStore = class {
   constructor(prefix = "wid") {
+    __publicField(this, "prefix");
     this.prefix = prefix;
   }
   keyOf(key) {
@@ -95,9 +110,13 @@ var BrowserLocalStorageWidStateStore = class {
   }
   load(key) {
     const ls = this.localStorageLike();
-    if (!ls) return null;
+    if (!ls) {
+      return null;
+    }
     const raw = ls.getItem(this.keyOf(key));
-    if (!raw) return null;
+    if (!raw) {
+      return null;
+    }
     try {
       const parsed = JSON.parse(raw);
       if (typeof parsed.lastSec === "number" && Number.isFinite(parsed.lastSec) && typeof parsed.lastSeq === "number" && Number.isFinite(parsed.lastSeq)) {
@@ -110,7 +129,9 @@ var BrowserLocalStorageWidStateStore = class {
   }
   save(key, state) {
     const ls = this.localStorageLike();
-    if (!ls) return;
+    if (!ls) {
+      return;
+    }
     ls.setItem(this.keyOf(key), JSON.stringify(state));
   }
 };
@@ -119,6 +140,8 @@ function createBrowserWidStateStore(prefix = "wid") {
 }
 var NodeSqliteWidStateStore = class {
   constructor(databasePath, prefix = "wid") {
+    __publicField(this, "db");
+    __publicField(this, "prefix");
     this.prefix = prefix;
     const DatabaseSync = resolveNodeSqliteDatabaseSync();
     this.db = new DatabaseSync(databasePath);
@@ -131,8 +154,12 @@ var NodeSqliteWidStateStore = class {
   }
   load(key) {
     const row = this.db.prepare("SELECT last_tick, last_seq FROM wid_state WHERE k = ?").get(this.fullKey(key));
-    if (!row) return null;
-    if (typeof row.last_tick !== "number" || typeof row.last_seq !== "number") return null;
+    if (!row) {
+      return null;
+    }
+    if (typeof row.last_tick !== "number" || typeof row.last_seq !== "number") {
+      return null;
+    }
     return { lastSec: row.last_tick, lastSeq: row.last_seq };
   }
   save(key, state) {
@@ -162,7 +189,9 @@ var WID_BASE_RE_CACHE = /* @__PURE__ */ new Map();
 function widBaseRe(W, unit) {
   const key = `${W}:${unit}`;
   const cached = WID_BASE_RE_CACHE.get(key);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
   const re = new RegExp(`^(\\d{8})T(\\d{${timeDigits(unit)}})\\.(\\d{${W}})Z(.*)?$`);
   WID_BASE_RE_CACHE.set(key, re);
   return re;
@@ -184,15 +213,32 @@ function parsePadding(suffix, Z) {
   return { padding: body };
 }
 function parseCore(wid, W, Z, timeUnit) {
-  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) return null;
+  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) {
+    return null;
+  }
   const match = widBaseRe(W, timeUnit).exec(wid);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   const [, dateStr, timeStr, seqStr, suffixRaw] = match;
   const suffix = suffixRaw ?? "";
+  if (!dateStr) {
+    return null;
+  }
+  if (!timeStr) {
+    return null;
+  }
+  if (!seqStr) {
+    return null;
+  }
   const timestamp = parseWidTimestamp(dateStr, timeStr, timeUnit);
-  if (!timestamp) return null;
+  if (!timestamp) {
+    return null;
+  }
   const parsedSuffix = parsePadding(suffix, Z);
-  if (!parsedSuffix) return null;
+  if (!parsedSuffix) {
+    return null;
+  }
   return {
     raw: wid,
     timestamp,
@@ -211,8 +257,12 @@ async function asyncNextWid(options = {}) {
 }
 async function* asyncWidStream(options = {}) {
   const { count = 0, intervalMs = 0, ...genOpts } = options;
-  if (count < 0) throw new Error("count must be >= 0");
-  if (intervalMs < 0) throw new Error("intervalMs must be >= 0");
+  if (count < 0) {
+    throw new Error("count must be >= 0");
+  }
+  if (intervalMs < 0) {
+    throw new Error("intervalMs must be >= 0");
+  }
   const gen = new WidGen(genOpts);
   let emitted = 0;
   while (count === 0 || emitted < count) {
@@ -226,10 +276,17 @@ async function* asyncWidStream(options = {}) {
 var WidGen = class {
   /** Create a generator with optional persistence and precision control. */
   constructor(options = {}) {
-    this.lastSec = 0;
-    this.lastSeq = -1;
-    this.cachedSec = -1;
-    this.cachedTs = "";
+    __publicField(this, "W");
+    __publicField(this, "Z");
+    __publicField(this, "timeUnit");
+    __publicField(this, "maxSeq");
+    __publicField(this, "stateStore");
+    __publicField(this, "stateKey");
+    __publicField(this, "autoPersist");
+    __publicField(this, "lastSec", 0);
+    __publicField(this, "lastSeq", -1);
+    __publicField(this, "cachedSec", -1);
+    __publicField(this, "cachedTs", "");
     const {
       W = 4,
       Z = 6,
@@ -238,8 +295,7 @@ var WidGen = class {
       stateKey = "wid",
       autoPersist = false
     } = options;
-    if (W <= 0 || W > MAX_W) throw new Error("W must be between 1 and 18");
-    if (Z < 0 || Z > MAX_Z) throw new Error("Z must be between 0 and 64");
+    this.validateParams(W, Z);
     this.W = W;
     this.Z = Z;
     this.timeUnit = timeUnit;
@@ -247,16 +303,30 @@ var WidGen = class {
     this.stateStore = stateStore ?? null;
     this.stateKey = stateKey;
     this.autoPersist = autoPersist;
-    if (this.autoPersist && this.stateStore) {
-      const loaded = this.stateStore.load(this.stateKey);
-      if (loaded && Number.isFinite(loaded.lastSec) && Number.isFinite(loaded.lastSeq) && loaded.lastSec >= 0 && loaded.lastSeq >= -1) {
-        this.lastSec = loaded.lastSec;
-        this.lastSeq = loaded.lastSeq;
-      }
+    this.tryLoadState();
+  }
+  validateParams(W, Z) {
+    if (W <= 0 || W > MAX_W) {
+      throw new Error("W must be between 1 and 18");
+    }
+    if (Z < 0 || Z > MAX_Z) {
+      throw new Error("Z must be between 0 and 64");
+    }
+  }
+  tryLoadState() {
+    if (!this.autoPersist || !this.stateStore) {
+      return;
+    }
+    const loaded = this.stateStore.load(this.stateKey);
+    if (loaded && Number.isFinite(loaded.lastSec) && Number.isFinite(loaded.lastSeq) && loaded.lastSec >= 0 && loaded.lastSeq >= -1) {
+      this.lastSec = loaded.lastSec;
+      this.lastSeq = loaded.lastSeq;
     }
   }
   persistState() {
-    if (!this.autoPersist || !this.stateStore) return;
+    if (!this.autoPersist || !this.stateStore) {
+      return;
+    }
     try {
       this.stateStore.save(this.stateKey, { lastSec: this.lastSec, lastSeq: this.lastSeq });
     } catch {
@@ -322,7 +392,9 @@ var NODE_RE = /^[A-Za-z0-9_]+$/;
 function hlcBaseRe(W, unit) {
   const key = `${W}:${unit}`;
   const cached = HLC_BASE_RE_CACHE.get(key);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
   const re = new RegExp(`^(\\d{8})T(\\d{${timeDigits(unit)}})\\.(\\d{${W}})Z-([A-Za-z0-9_]+)(.*)$`);
   HLC_BASE_RE_CACHE.set(key, re);
   return re;
@@ -334,34 +406,63 @@ function validateHlcWid(wid, W = 4, Z = 0, timeUnit = "sec") {
   return parseHlcWid(wid, W, Z, timeUnit) !== null;
 }
 function parseHlcWid(wid, W = 4, Z = 0, timeUnit = "sec") {
-  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) return null;
+  if (W <= 0 || W > MAX_W || Z < 0 || Z > MAX_Z) {
+    return null;
+  }
   const match = hlcBaseRe(W, timeUnit).exec(wid);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   const [, dateStr, timeStr, lcStr, node, suffixRaw] = match;
   const suffix = suffixRaw ?? "";
-  if (!isValidNode(node)) return null;
+  if (!node || !dateStr || !timeStr || !lcStr) {
+    return null;
+  }
+  if (!isValidNode(node)) {
+    return null;
+  }
   const timestamp = parseWidTimestamp(dateStr, timeStr, timeUnit);
-  if (!timestamp) return null;
+  if (!timestamp) {
+    return null;
+  }
   const logicalCounter = parseInt(lcStr, 10);
-  let padding = null;
-  if (suffix) {
-    if (!suffix.startsWith("-")) return null;
-    const seg = suffix.slice(1);
-    if (Z === 0) return null;
-    if (!hexRe(Z).test(seg)) return null;
-    padding = seg;
+  const padding = parseHlcPadding(suffix, Z);
+  if (padding === void 0) {
+    return null;
   }
   return { raw: wid, timestamp, logicalCounter, node, padding };
 }
+function parseHlcPadding(suffix, Z) {
+  if (!suffix) {
+    return null;
+  }
+  if (!suffix.startsWith("-") || Z === 0) {
+    return void 0;
+  }
+  const seg = suffix.slice(1);
+  if (!hexRe(Z).test(seg)) {
+    return void 0;
+  }
+  return seg;
+}
 var HLCWidGen = class {
   constructor(options) {
-    this.pt = 0;
-    this.lc = 0;
-    this.cachedTick = -1;
-    this.cachedTs = "";
+    __publicField(this, "W");
+    __publicField(this, "Z");
+    __publicField(this, "node");
+    __publicField(this, "timeUnit");
+    __publicField(this, "maxLC");
+    __publicField(this, "pt", 0);
+    __publicField(this, "lc", 0);
+    __publicField(this, "cachedTick", -1);
+    __publicField(this, "cachedTs", "");
     const { node, W = 4, Z = 0, timeUnit = "sec" } = options;
-    if (W <= 0 || W > MAX_W) throw new Error("W must be between 1 and 18");
-    if (Z < 0 || Z > MAX_Z) throw new Error("Z must be between 0 and 64");
+    if (W <= 0 || W > MAX_W) {
+      throw new Error("W must be between 1 and 18");
+    }
+    if (Z < 0 || Z > MAX_Z) {
+      throw new Error("Z must be between 0 and 64");
+    }
     if (!isValidNode(node)) {
       throw new Error("node must match [A-Za-z0-9_]+");
     }
@@ -433,7 +534,9 @@ var HLCWidGen = class {
     return { pt: this.pt, lc: this.lc };
   }
   restoreState(pt, lc) {
-    if (pt < 0 || lc < 0) throw new Error("invalid state");
+    if (pt < 0 || lc < 0) {
+      throw new Error("invalid state");
+    }
     this.pt = pt;
     this.lc = lc;
   }
@@ -443,8 +546,12 @@ async function asyncNextHlcWid(options) {
 }
 async function* asyncHlcWidStream(options) {
   const { count = 0, intervalMs = 0, ...genOpts } = options;
-  if (count < 0) throw new Error("count must be >= 0");
-  if (intervalMs < 0) throw new Error("intervalMs must be >= 0");
+  if (count < 0) {
+    throw new Error("count must be >= 0");
+  }
+  if (intervalMs < 0) {
+    throw new Error("intervalMs must be >= 0");
+  }
   const gen = new HLCWidGen(genOpts);
   let emitted = 0;
   while (count === 0 || emitted < count) {
@@ -479,9 +586,13 @@ function concatBytes(parts) {
   return out;
 }
 function equalBytes(a, b) {
-  if (a.length !== b.length) return false;
+  if (a.length !== b.length) {
+    return false;
+  }
   for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) return false;
+    if (a[i] !== b[i]) {
+      return false;
+    }
   }
   return true;
 }
@@ -503,6 +614,13 @@ function utf8Decode(bytes) {
 }
 var Manifest = class _Manifest {
   constructor(data) {
+    __publicField(this, "id");
+    __publicField(this, "version");
+    __publicField(this, "node");
+    __publicField(this, "data_type");
+    __publicField(this, "data_size");
+    __publicField(this, "data_hash");
+    __publicField(this, "metadata");
     this.id = data.id;
     this.version = data.version ?? MANIFEST_VERSION;
     this.node = data.node ?? "";
@@ -526,6 +644,8 @@ var Manifest = class _Manifest {
 };
 var WidFile = class _WidFile {
   constructor(manifest, payload = new Uint8Array(0)) {
+    __publicField(this, "manifest");
+    __publicField(this, "payload");
     this.manifest = manifest;
     this.payload = payload;
   }
@@ -598,4 +718,4 @@ export {
   Manifest,
   WidFile
 };
-//# sourceMappingURL=chunk-YWXMNCYI.mjs.map
+//# sourceMappingURL=chunk-EQHEOVAA.mjs.map

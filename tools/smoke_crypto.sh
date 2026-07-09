@@ -124,12 +124,12 @@ fi
 
 if [[ -f dist/cli.js ]]; then
   :
-elif command -v npm >/dev/null 2>&1; then
-  if ! npm run build >/dev/null; then
+elif command -v bun >/dev/null 2>&1; then
+  if ! bun run build >/dev/null; then
     say "TypeScript build failed; TypeScript will be skipped."
   fi
 else
-  say "TypeScript dist missing and npm unavailable."
+  say "TypeScript dist missing and bun unavailable."
 fi
 
 if command -v go >/dev/null 2>&1; then

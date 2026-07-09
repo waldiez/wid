@@ -24,8 +24,8 @@ export const MAX_SEC_TICK = 253402300799;
  */
 export function clampTick(tick: number, unit: TimeUnit): number {
   const max = unit === "ms" ? MAX_SEC_TICK * 1000 + 999 : MAX_SEC_TICK;
-  if (tick < 0) return 0;
-  if (tick > max) return max;
+  if (tick < 0) {return 0;}
+  if (tick > max) {return max;}
   return tick;
 }
 
@@ -36,7 +36,7 @@ const HEX_RE_CACHE = new Map<number, RegExp>();
 /** Compiled `^[0-9a-f]{Z}$` pattern for the random-pad suffix. */
 export function hexRe(Z: number): RegExp {
   const cached = HEX_RE_CACHE.get(Z);
-  if (cached) return cached;
+  if (cached) {return cached;}
   const re = new RegExp(`^[0-9a-f]{${Z}}$`);
   HEX_RE_CACHE.set(Z, re);
   return re;
@@ -84,27 +84,27 @@ export function parseWidTimestamp(
   timeStr: string,
   timeUnit: TimeUnit
 ): Date | null {
-  const year = parseInt(dateStr.slice(0, 4), 10);
-  const month = parseInt(dateStr.slice(4, 6), 10);
-  const day = parseInt(dateStr.slice(6, 8), 10);
-  const hour = parseInt(timeStr.slice(0, 2), 10);
-  const minute = parseInt(timeStr.slice(2, 4), 10);
-  const second = parseInt(timeStr.slice(4, 6), 10);
-  const millis = timeUnit === "ms" ? parseInt(timeStr.slice(6, 9), 10) : 0;
+  const { year, month, day, hour, minute, second, millis } = parseRawFields(dateStr, timeStr, timeUnit);
 
   // SPEC.md: valid years are 0001-9999 (Python's datetime cannot represent
   // year 0, so all implementations reject it uniformly).
-  if (year < 1) return null;
-  if (month < 1 || month > 12) return null;
-  if (day < 1 || day > 31) return null;
-  if (hour > 23 || minute > 59 || second > 59) return null;
-  if (millis < 0 || millis > 999) return null;
+  if (
+    year < 1 ||
+    month < 1 || month > 12 ||
+    day < 1 || day > 31 ||
+    hour > 23 || minute > 59 || second > 59 ||
+    millis < 0 || millis > 999
+  ) {
+    return null;
+  }
 
   const timestamp = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millis));
   // Date.UTC maps years 0-99 to 1900-1999; pin the literal 4-digit year so
   // e.g. 0050 parses as year 50 (matching Rust/Python/Go), not 1950.
   timestamp.setUTCFullYear(year, month - 1, day);
-  if (isNaN(timestamp.getTime())) return null;
+  if (isNaN(timestamp.getTime())) {
+    return null;
+  }
   if (
     timestamp.getUTCFullYear() !== year ||
     timestamp.getUTCMonth() + 1 !== month ||
@@ -113,4 +113,15 @@ export function parseWidTimestamp(
     return null;
   }
   return timestamp;
+}
+
+function parseRawFields(dateStr: string, timeStr: string, timeUnit: TimeUnit) {
+  const year = parseInt(dateStr.slice(0, 4), 10);
+  const month = parseInt(dateStr.slice(4, 6), 10);
+  const day = parseInt(dateStr.slice(6, 8), 10);
+  const hour = parseInt(timeStr.slice(0, 2), 10);
+  const minute = parseInt(timeStr.slice(2, 4), 10);
+  const second = parseInt(timeStr.slice(4, 6), 10);
+  const millis = timeUnit === "ms" ? parseInt(timeStr.slice(6, 9), 10) : 0;
+  return { year, month, day, hour, minute, second, millis };
 }

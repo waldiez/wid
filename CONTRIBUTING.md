@@ -20,14 +20,14 @@ WID is a multi-language, multi-target reference implementation. This guide keeps
 
 ## Platform prerequisites
 
-- **macOS/Linux**: `bash`, `python3`, `cargo`, `node`/`npm`, `go`, `docker` (optional). `make setup` installs the rest.
+- **macOS/Linux**: `bash`, `python3`, `cargo`, `node`/`bun`, `go`, `docker` (optional). `make setup` installs the rest.
 - **Windows**: Use Windows Subsystem for Linux (WSL) or Git Bash. `make setup` still works once the shell has `bash` and the same toolchain installed.
 
 ## Optional language-specific installs
 
 - `python`: `pip install -e ".[dev]"` (already driven by `python-setup`).
 - `rust`: `rustup` toolchain (stable + clippy). `cargo install --path rust` for CLI.
-- `typescript`: `npm install` from repo root (tsup build, vitest). `npm run build` to ensure dist.
+- `typescript`: `bun install` from repo root (tsup build, vitest). `bun run build` to ensure dist.
 - `go`: `go install ./go/cmd/wid` for local CLI.
 
 ## Workflow expectations
@@ -39,7 +39,7 @@ WID is a multi-language, multi-target reference implementation. This guide keeps
 ## QA checklist for PRs
 
 - `make quick-check` passes locally.
-- Relevant implementation tests (`cargo test`, `npm test`, etc.) are green.
+- Relevant implementation tests (`cargo test`, `bun run test`, etc.) are green.
 - `docs/qa/developer.md` or `docs/qa/README.md` updated if the change affects QA steps.
 - `spec/` updated for behavior/format changes.
 - PR description includes: summary, testing commands, expected runtime, blockers (if any).

@@ -26,7 +26,7 @@ fi
 
 echo "[hardening] packaging hygiene"
 if [ ! -f "dist/cli.js" ]; then
-  echo "[hardening] FAIL: dist/cli.js missing (run: npm run build)"
+  echo "[hardening] FAIL: dist/cli.js missing (run: bun run build)"
   exit 1
 fi
 

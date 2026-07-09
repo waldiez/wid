@@ -293,8 +293,8 @@ elif should_run "python"; then
 fi
 
 if should_run "typescript" && command -v node >/dev/null 2>&1; then
-  if [[ ! -f dist/cli.js ]] && command -v npm >/dev/null 2>&1; then
-    npm run -s build >/dev/null 2>&1 || true
+  if [[ ! -f dist/cli.js ]] && command -v bun >/dev/null 2>&1; then
+    bun run build >/dev/null 2>&1 || true
   fi
   if [[ -f dist/cli.js ]]; then
     run_case "typescript" node dist/cli.js

@@ -90,7 +90,7 @@ fmt: python-fmt rust-fmt go-fmt c-fmt
 quick-check: rust-test python-test ts-check go-test c-check sh-check next
 
 doctor:
-	@tools="bash python3 cargo node npm go"; \
+	@tools="bash python3 cargo node bun go"; \
 	for tool in $$tools; do \
 		command -v $$tool >/dev/null 2>&1 || { \
 			echo "doctor: $$tool not found on PATH" >&2; \
@@ -211,16 +211,16 @@ c-next:
 # optionalDependencies in package.json, so no post-install patching is needed.
 ts-setup:
 	bun install
-	npm run build
+	bun run build
 
 ts-test:
-	npm test
+	bun run test
 
 ts-lint:
-	npm run lint
+	bun run lint
 
 ts-build:
-	npm run build
+	bun run build
 
 ts-check: ts-lint ts-test
 
@@ -421,7 +421,7 @@ wotp-parity-check:
 	bash tools/check_wotp_parity.sh
 
 release-check: capabilities-check stream-conformance cli-surface-check check
-	npm run typecheck
+	bun run typecheck
 
 hardening-check:
 	bash tools/hardening_check.sh

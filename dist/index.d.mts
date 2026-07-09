@@ -112,6 +112,8 @@ declare class WidGen {
     private cachedTs;
     /** Create a generator with optional persistence and precision control. */
     constructor(options?: WidGenOptions);
+    private validateParams;
+    private tryLoadState;
     private persistState;
     private tsForTick;
     private nowTick;

@@ -13,7 +13,7 @@ Open a terminal in the repo root. Before running the fast readiness gates, execu
 | `cargo` / `rustc` | stable (see `Cargo.toml`). |
 | `python3` | `>= 3.10` (see `pyproject.toml`: `requires-python`). |
 | `go` | `1.22` (see `go.mod`). |
-| `node`/`npm` | Use the version that produced the committed `package-lock.json` (run `node --version`/`npm --version` to stay consistent). |
+| `node`/`bun` | Use the version that produced the committed `bun.lock` (run `node --version`/`bun --version` to stay consistent). |
 | `cc` | C11-capable compiler (gcc or clang). |
 | `bash` | `>= 4.0` (required by `sh/wid` and most QA scripts). |
 
@@ -27,6 +27,7 @@ sh tools/smoke.sh
 ```
 
 Pass criteria:
+
 - all commands exit `0`
 - crypto summary is `pass=15 fail=0 skip=0`
 
@@ -37,6 +38,7 @@ SMOKE_CRYPTO_STRICT=1 bash tools/smoke_crypto.sh
 ```
 
 Pass criteria:
+
 - exit `0`
 - summary shows `fail=0 skip=0`
 
@@ -44,7 +46,7 @@ Pass criteria:
 
 ```bash
 make release-check
-npm run lint && npm run typecheck && npm run test
+bun run lint && bun run typecheck && bun run test
 pytest -q python/tests
 go test ./...
 cargo test -q
@@ -79,6 +81,7 @@ rg -n -e "/Users/[A-Za-z0-9._-]+" -e "/home/[A-Za-z0-9._-]+" README.md docs spec
 ```
 
 Pass criteria:
+
 - no output
 
 ## 6) Go/No-Go

@@ -50,11 +50,11 @@ def ensure_builds() -> dict[str, str]:
     if not (ROOT / "c" / ".build" / "wid").exists():
         subprocess.run(["make", "-C", "c", "setup"], cwd=ROOT, check=True)
     # TypeScript dist
-    has_node = shutil.which("node") and shutil.which("npm")
-    if has_node and not (ROOT / "dist" / "cli.js").exists():
+    has_bun = shutil.which("bun")
+    if has_bun and not (ROOT / "dist" / "cli.js").exists():
         if not (ROOT / "node_modules").exists():
-            subprocess.run(["npm", "install"], cwd=ROOT, check=True)
-        subprocess.run(["npm", "run", "build"], cwd=ROOT, check=True)
+            subprocess.run(["bun", "install"], cwd=ROOT, check=True)
+        subprocess.run(["bun", "run", "build"], cwd=ROOT, check=True)
     # Rust binary
     if shutil.which("cargo") and not (ROOT / "target" / "debug" / "wid").exists():
         try:
