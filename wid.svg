@@ -1,0 +1,235 @@
+<svg
+  class="waldiez-loader"
+  viewBox="0 0 200 120"
+  width="240"
+  height="144"
+  fill="none"
+  preserveAspectRatio="xMidYMid meet"
+  xmlns="http://www.w3.org/2000/svg"
+  aria-label="Waldiez loading logo"
+  role="img"
+>
+  <style>
+    /* =========================================================
+       Waldiez Loader (generic, embeddable SVG)
+       - No global selectors (no body/html rules)
+       - Theme aware:
+         * If svg[waldiez-theme] -> forced
+         * If any ancestor [waldiez-theme] -> forced
+         * Otherwise -> auto cycle (starts dark), delayed until W finishes
+       - Background-only transition softness (fade + tiny blur)
+       - Scales responsively via viewBox; size via width/height or CSS
+       ========================================================= */
+
+    svg.waldiez-loader {
+      --cycle: 18s;
+      --start-delay: 2.2s; /* ~2.0s write + tiny breath */
+
+      /* base (dark) */
+      --cw1: #6366f1;
+      --cw2: #8b5cf6;
+      --cw3: #ec4899;
+
+      --glow: rgba(99,102,241,0.55);
+      --orbit: rgba(255,255,255,0.8);
+      --moon: rgba(255,255,255,0.9);
+
+      /* core feel */
+      display: block;
+      overflow: visible;
+      filter: drop-shadow(0 0 20px var(--glow));
+      animation: logoPulse 2.2s ease-in-out 1.5s infinite;
+    }
+
+    /* ---------- explicit light (on svg OR any ancestor) ---------- */
+    svg.waldiez-loader[waldiez-theme="light"],
+    [waldiez-theme="light"] svg.waldiez-loader {
+      --cw1: #4338ca;
+      --cw2: #7c3aed;
+      --cw3: #db2777;
+
+      --glow: rgba(124,58,237,0.30);
+      --orbit: rgba(0,0,0,0.22);
+      --moon: rgba(0,0,0,0.35);
+    }
+
+    /* ---------- explicit dark (on svg OR any ancestor) ---------- */
+    svg.waldiez-loader[waldiez-theme="dark"],
+    [waldiez-theme="dark"] svg.waldiez-loader {
+      /* uses defaults */
+    }
+
+    /* =========================================================
+       AUTO CYCLE (DEFAULT)
+       - Enabled only if NO ancestor has [waldiez-theme]
+       - Safari-friendly approach:
+         * We define the auto animations on a group (.auto)
+         * Then disable them when [waldiez-theme] exists
+       ========================================================= */
+
+    /* auto-cycling applies to these elements by default */
+    svg.waldiez-loader .auto {
+      animation: themeCycle var(--cycle) ease-in-out infinite;
+      animation-delay: var(--start-delay);
+      animation-fill-mode: both;
+    }
+
+    /* If any explicit theme exists (on svg or ancestors), stop auto cycling */
+    svg.waldiez-loader[waldiez-theme] .auto,
+    [waldiez-theme] svg.waldiez-loader .auto {
+      animation: none;
+    }
+
+    @keyframes themeCycle {
+      /* DARK */
+      0%, 20% {
+        --cw1: #6366f1;
+        --cw2: #8b5cf6;
+        --cw3: #ec4899;
+      }
+      /* LIGHT */
+      40%, 60% {
+        --cw1: #4338ca;
+        --cw2: #7c3aed;
+        --cw3: #db2777;
+      }
+      /* COSMIC ACCENT (subtle) */
+      80%, 100% {
+        --cw1: #5eead4;
+        --cw2: #38bdf8;
+        --cw3: #818cf8;
+      }
+    }
+
+    @keyframes logoPulse {
+      0%,100% { transform: scale(1); }
+      50%     { transform: scale(1.04); }
+    }
+
+    /* ================= WRITE-ON (W) ================= */
+    .w-stroke {
+      stroke-dasharray: 100;
+      stroke-dashoffset: 100;
+      animation: drawStroke 1.5s ease-out forwards;
+    }
+    .w-stroke-1 { animation-delay: 0s; }
+    .w-stroke-2 { animation-delay: 0.1s; }
+    .w-stroke-3 { animation-delay: 0.2s; }
+    .w-stroke-4 { animation-delay: 0.3s; }
+    .w-stroke-5 { animation-delay: 0.4s; }
+    .w-stroke-6 { animation-delay: 0.5s; }
+
+    @keyframes drawStroke {
+      0%   { stroke-dashoffset: 100; }
+      85%  { stroke-dashoffset: 0; }
+      100% { stroke-dashoffset: 0; }
+    }
+
+    /* =========================================================
+       Background-only smooth transition:
+       - fade + tiny blur only on background layer (.bg)
+       - uses the same cycle timing and delay as themeCycle
+       ========================================================= */
+
+    .bg {
+      opacity: 1;
+      filter: blur(0px);
+      animation: bgFade var(--cycle) ease-in-out infinite;
+      animation-delay: var(--start-delay);
+      animation-fill-mode: both;
+    }
+
+    /* If explicit theme exists, keep bg steady */
+    svg.waldiez-loader[waldiez-theme] .bg,
+    [waldiez-theme] svg.waldiez-loader .bg {
+      animation: none;
+      opacity: 1;
+      filter: blur(0px);
+    }
+
+    @keyframes bgFade {
+      0%, 20%   { opacity: 1;    filter: blur(0px); }
+      30%       { opacity: 0.88; filter: blur(0.5px); }
+      40%, 60%  { opacity: 1;    filter: blur(0px); }
+      70%       { opacity: 0.88; filter: blur(0.5px); }
+      80%, 100% { opacity: 1;    filter: blur(0px); }
+    }
+
+    /* ================= PLANETS ================= */
+    .orbit {
+      opacity: 0.18;
+      stroke: var(--orbit);
+      stroke-width: 0.6;
+      stroke-dasharray: 1.5 2.5;
+    }
+
+    .spin {
+      transform-origin: 100px 60px;
+      animation: spin 18s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .planet {
+      opacity: 0.28;
+      filter: url(#softGlow);
+    }
+
+    .moon {
+      fill: var(--moon);
+      opacity: 0.18;
+    }
+
+    /* ================= REDUCED MOTION ================= */
+    @media (prefers-reduced-motion: reduce) {
+      svg.waldiez-loader,
+      .spin,
+      .w-stroke,
+      .bg,
+      .auto {
+        animation: none !important;
+      }
+      .w-stroke { stroke-dashoffset: 0; }
+    }
+  </style>
+
+  <defs>
+    <linearGradient id="g1">
+      <stop offset="0%" stop-color="var(--cw1)" />
+      <stop offset="100%" stop-color="var(--cw2)" />
+    </linearGradient>
+    <linearGradient id="g2">
+      <stop offset="0%" stop-color="var(--cw2)" />
+      <stop offset="100%" stop-color="var(--cw3)" />
+    </linearGradient>
+    <linearGradient id="g3">
+      <stop offset="0%" stop-color="var(--cw3)" />
+      <stop offset="100%" stop-color="var(--cw1)" />
+    </linearGradient>
+
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="1.4" />
+    </filter>
+  </defs>
+
+  <!-- AUTO driver: applies themeCycle only when not overridden by [waldiez-theme] -->
+  <g class="auto">
+    <!-- Background (planets only fade/blur on transitions) -->
+    <g class="bg">
+      <ellipse class="orbit" cx="100" cy="62" rx="66" ry="34" />
+      <g class="spin">
+        <circle class="planet" cx="152" cy="52" r="6.2" fill="url(#g1)" />
+        <circle class="planet" cx="62"  cy="88" r="4.6" fill="url(#g2)" />
+        <circle class="planet" cx="78"  cy="34" r="3.6" fill="url(#g3)" />
+        <circle class="moon" cx="160" cy="60" r="1.8" />
+      </g>
+    </g>
+
+    <!-- W (stays crisp during transitions) -->
+    <path class="w-stroke w-stroke-1" d="M 20 20 L 50 100" stroke="url(#g1)" stroke-width="8" stroke-linecap="round" />
+    <path class="w-stroke w-stroke-2" d="M 50 100 L 80 40"  stroke="url(#g1)" stroke-width="8" stroke-linecap="round" />
+    <path class="w-stroke w-stroke-3" d="M 80 40 L 100 80"  stroke="url(#g2)" stroke-width="8" stroke-linecap="round" />
+    <path class="w-stroke w-stroke-4" d="M 100 80 L 120 40" stroke="url(#g2)" stroke-width="8" stroke-linecap="round" />
+    <path class="w-stroke w-stroke-5" d="M 120 40 L 150 100" stroke="url(#g3)" stroke-width="8" stroke-linecap="round" />
+    <path class="w-stroke w-stroke-6" d="M 150 100 L 180 20" stroke="url(#g3)" stroke-width="8" stroke-linecap="round" />
+  </g>
+</svg>
