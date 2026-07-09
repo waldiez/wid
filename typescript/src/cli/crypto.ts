@@ -152,7 +152,7 @@ export function wotpWidTickMs(wid: string): number {
   const { date, time } = validateWidDt(wid, invalid);
 
   const { y, mo, d, hh, mm, ss, ms } = parseWotpDateParts(date, time);
-  if (!y || !mo || !hh) {
+  if (y === undefined || mo === undefined || hh === undefined || isNaN(y) || isNaN(mo) || isNaN(hh)) {
    throw new Error(invalid);
   }
   const dt = new Date(0);

@@ -838,7 +838,7 @@ function wotpWidTickMs(wid) {
   const invalid = "WID timestamp is invalid for time-window verification";
   const { date, time } = validateWidDt(wid, invalid);
   const { y, mo, d, hh, mm, ss, ms } = parseWotpDateParts(date, time);
-  if (!y || !mo || !hh) {
+  if (y === void 0 || mo === void 0 || hh === void 0 || isNaN(y) || isNaN(mo) || isNaN(hh)) {
     throw new Error(invalid);
   }
   const dt = /* @__PURE__ */ new Date(0);
